@@ -6,7 +6,6 @@ namespace MarketDataCollector.Worker;
 public class Worker : BackgroundService
 {
     private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ErrorRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -27,62 +26,51 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Запускает клиентов и процессор с автоматическим перезапуском при ошибках.
-    /// Циклически перезапускает при сбоях, пока не будет запрошена отмена.
+    /// Запускает клиентов и процессор. При критической ошибке Worker завершается —
+    /// перезапуск управляется внешним оркестратором (Docker/K8s).
     /// </summary>
     private async Task RunWithRecoveryAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        using var scope = _scopeFactory.CreateScope();
+        var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
+        var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
+
+        var clients = clientFactory.CreateAllClients().ToList();
+
+        if (clients.Count == 0)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
-            var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
+            _logger.LogError("No exchanges configured in 'Exchanges' section. Worker will exit.");
+            return;
+        }
 
-            var clients = clientFactory.CreateAllClients().ToList();
+        try
+        {
+            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
 
-            if (clients.Count == 0)
+            // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
+            foreach (var client in clients)
             {
-                _logger.LogError("No exchanges configured in 'Exchanges' section. Retrying in {Delay}s...",
-                    ErrorRetryDelay.TotalSeconds);
-                await Task.Delay(ErrorRetryDelay, stoppingToken);
-                continue;
+                client.StartAsync(stoppingToken).GetAwaiter().GetResult();
             }
 
-            try
-            {
-                _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
+            marketDataProcessor.StartProcessing();
+            _logger.LogInformation("Market data processor started");
 
-                // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
-                foreach (var client in clients)
-                {
-                    client.StartAsync(stoppingToken).GetAwaiter().GetResult();
-                }
-
-                marketDataProcessor.StartProcessing();
-                _logger.LogInformation("Market data processor started");
-
-                // Активный health-check: мониторинг + перезапуск отключённых клиентов
-                await RunHealthCheckAsync(clients, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("Worker is stopping due to cancellation.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Critical error (processor or infrastructure). Retrying in {Delay}s...",
-                    ErrorRetryDelay.TotalSeconds);
-            }
-            finally
-            {
-                await CleanupAsync(marketDataProcessor, clients, stoppingToken);
-            }
-
-            // Задержка перед перезапуском (если не запрошена отмена)
-            if (!stoppingToken.IsCancellationRequested)
-            {
-                await Task.Delay(ErrorRetryDelay, stoppingToken);
-            }
+            // Активный health-check: мониторинг + перезапуск отключённых клиентов
+            await RunHealthCheckAsync(clients, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Worker is stopping due to cancellation.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "Critical error (processor or infrastructure). Worker will exit.");
+            throw;
+        }
+        finally
+        {
+            await CleanupAsync(marketDataProcessor, clients, stoppingToken);
         }
     }
 
