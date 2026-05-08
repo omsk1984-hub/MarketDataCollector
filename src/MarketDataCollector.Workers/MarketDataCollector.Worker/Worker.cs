@@ -6,6 +6,7 @@ namespace MarketDataCollector.Worker;
 public class Worker : BackgroundService
 {
     private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ErrorRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -20,87 +21,92 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Worker starting with automatic recovery mode...");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
-            var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
-
-            var clients = clientFactory.CreateAllClients().ToList();
-
-            if (clients.Count == 0)
-            {
-                _logger.LogError("No exchanges configured in 'Exchanges' section.");
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-                continue;
-            }
-
-            try
-            {
-                _logger.LogInformation("Starting {Count} WebSocket clients with automatic recovery...", clients.Count);
-
-                // Запускаем всех клиентов в режиме автоматического восстановления
-                var startTasks = clients.Select(client => StartClientWithRecoveryAsync(client, stoppingToken));
-                await Task.WhenAll(startTasks);
-
-                // Запускаем обработчик данных
-                marketDataProcessor.StartProcessing();
-                _logger.LogInformation("Market data processor started");
-
-                // Упрощённый health-check: просто мониторим состояние
-                using var healthCheckTimer = new Timer(
-                    _ => LogClientStatus(clients),
-                    null,
-                    HealthCheckInterval,
-                    HealthCheckInterval);
-
-                // Ожидаем отмены
-                await Task.Delay(Timeout.Infinite, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("Worker is stopping due to cancellation.");
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An unexpected error occurred in the worker. Retrying in 30 seconds...");
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-            }
-            finally
-            {
-                // Останавливаем обработчик
-                await marketDataProcessor.StopProcessingAsync(stoppingToken);
-
-                // Останавливаем всех клиентов
-                _logger.LogInformation("Stopping WebSocket clients...");
-                var stopTasks = clients.Select(client => StopClientAsync(client));
-                await Task.WhenAll(stopTasks);
-            }
-        }
-
+        _logger.LogInformation("Worker starting...");
+        await RunWithRecoveryAsync(stoppingToken);
         _logger.LogInformation("Worker stopped.");
     }
 
-    private async Task StartClientWithRecoveryAsync(IExchangeWebSocketClient client, CancellationToken stoppingToken)
+    /// <summary>
+    /// Запускает клиентов и процессор с автоматическим перезапуском при ошибках.
+    /// Рекурсивно вызывает себя при сбоях, пока не будет запрошена отмена.
+    /// </summary>
+    private async Task RunWithRecoveryAsync(CancellationToken stoppingToken)
     {
+        if (stoppingToken.IsCancellationRequested)
+            return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
+        var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
+
+        var clients = clientFactory.CreateAllClients().ToList();
+
+        if (clients.Count == 0)
+        {
+            _logger.LogError("No exchanges configured in 'Exchanges' section. Retrying in {Delay}s...",
+                ErrorRetryDelay.TotalSeconds);
+            return;
+        }
+
         try
         {
-            await client.StartAsync(stoppingToken);
-            _logger.LogInformation("Started {Exchange} ({Symbol}) with automatic recovery and subscription",
-                client.ExchangeName, client.Symbol);
+            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
+
+            var startTasks = clients.Select(client => client.StartAsync(stoppingToken));
+            await Task.WhenAll(startTasks);
+
+            marketDataProcessor.StartProcessing();
+            _logger.LogInformation("Market data processor started");
+
+            // Health-check таймер
+            using var healthCheckTimer = new Timer(
+                _ => LogClientStatus(clients),
+                null,
+                HealthCheckInterval,
+                HealthCheckInterval);
+
+            // Блокируем до отмены
+            await Task.Delay(Timeout.Infinite, stoppingToken);
         }
         catch (OperationCanceledException)
         {
-            throw;
+            _logger.LogInformation("Worker is stopping due to cancellation.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start client {Exchange} ({Symbol})",
-                client.ExchangeName, client.Symbol);
+            _logger.LogError(ex, "An unexpected error occurred. Retrying in {Delay}s...",
+                ErrorRetryDelay.TotalSeconds);
+            await Task.Delay(ErrorRetryDelay, stoppingToken);
         }
+        finally
+        {
+            await CleanupAsync(marketDataProcessor, clients, stoppingToken);
+        }
+
+        // Перезапуск при ошибке (не при отмене)
+        if (!stoppingToken.IsCancellationRequested)
+        {
+            await RunWithRecoveryAsync(stoppingToken);
+        }
+    }
+
+    private async Task CleanupAsync(
+        IMarketDataProcessor marketDataProcessor,
+        List<IExchangeWebSocketClient> clients,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            await marketDataProcessor.StopProcessingAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping market data processor");
+        }
+
+        _logger.LogInformation("Stopping WebSocket clients...");
+        var stopTasks = clients.Select(client => StopClientAsync(client));
+        await Task.WhenAll(stopTasks);
     }
 
     private async Task StopClientAsync(IExchangeWebSocketClient client)
@@ -130,5 +136,4 @@ public class Worker : BackgroundService
                 client.ExchangeName, client.Symbol);
         }
     }
-
 }
