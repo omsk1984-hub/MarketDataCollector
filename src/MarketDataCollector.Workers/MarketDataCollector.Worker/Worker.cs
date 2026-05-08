@@ -28,65 +28,65 @@ public class Worker : BackgroundService
 
     /// <summary>
     /// Запускает клиентов и процессор с автоматическим перезапуском при ошибках.
-    /// Рекурсивно вызывает себя при сбоях, пока не будет запрошена отмена.
+    /// Циклически перезапускает при сбоях, пока не будет запрошена отмена.
     /// </summary>
     private async Task RunWithRecoveryAsync(CancellationToken stoppingToken)
     {
-        if (stoppingToken.IsCancellationRequested)
-            return;
-
-        using var scope = _scopeFactory.CreateScope();
-        var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
-        var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
-
-        var clients = clientFactory.CreateAllClients().ToList();
-
-        if (clients.Count == 0)
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _logger.LogError("No exchanges configured in 'Exchanges' section. Retrying in {Delay}s...",
-                ErrorRetryDelay.TotalSeconds);
-            return;
-        }
+            using var scope = _scopeFactory.CreateScope();
+            var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
+            var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
 
-        try
-        {
-            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
+            var clients = clientFactory.CreateAllClients().ToList();
 
-            var startTasks = clients.Select(client => client.StartAsync(stoppingToken));
-            await Task.WhenAll(startTasks);
+            if (clients.Count == 0)
+            {
+                _logger.LogError("No exchanges configured in 'Exchanges' section. Retrying in {Delay}s...",
+                    ErrorRetryDelay.TotalSeconds);
+                await Task.Delay(ErrorRetryDelay, stoppingToken);
+                continue;
+            }
 
-            marketDataProcessor.StartProcessing();
-            _logger.LogInformation("Market data processor started");
+            try
+            {
+                _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
 
-            // Health-check таймер
-            using var healthCheckTimer = new Timer(
-                _ => LogClientStatus(clients),
-                null,
-                HealthCheckInterval,
-                HealthCheckInterval);
+                var startTasks = clients.Select(client => client.StartAsync(stoppingToken));
+                await Task.WhenAll(startTasks);
 
-            // Блокируем до отмены
-            await Task.Delay(Timeout.Infinite, stoppingToken);
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogInformation("Worker is stopping due to cancellation.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An unexpected error occurred. Retrying in {Delay}s...",
-                ErrorRetryDelay.TotalSeconds);
-            await Task.Delay(ErrorRetryDelay, stoppingToken);
-        }
-        finally
-        {
-            await CleanupAsync(marketDataProcessor, clients, stoppingToken);
-        }
+                marketDataProcessor.StartProcessing();
+                _logger.LogInformation("Market data processor started");
 
-        // Перезапуск при ошибке (не при отмене)
-        if (!stoppingToken.IsCancellationRequested)
-        {
-            await RunWithRecoveryAsync(stoppingToken);
+                // Health-check таймер
+                using var healthCheckTimer = new Timer(
+                    _ => LogClientStatus(clients),
+                    null,
+                    HealthCheckInterval,
+                    HealthCheckInterval);
+
+                // Блокируем до отмены
+                await Task.Delay(Timeout.Infinite, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Worker is stopping due to cancellation.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An unexpected error occurred. Retrying in {Delay}s...",
+                    ErrorRetryDelay.TotalSeconds);
+            }
+            finally
+            {
+                await CleanupAsync(marketDataProcessor, clients, stoppingToken);
+            }
+
+            // Задержка перед перезапуском (если не запрошена отмена)
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(ErrorRetryDelay, stoppingToken);
+            }
         }
     }
 
