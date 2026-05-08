@@ -1,3 +1,4 @@
+using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,14 +23,10 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Worker starting...");
-
-        // Список клиентов, которые были успешно подключены — для health-check
-        List<IExchangeWebSocketClient> connectedClients = new();
+        _logger.LogInformation("Worker starting with automatic recovery mode...");
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Create a scope for each attempt (scoped services)
             using var scope = _scopeFactory.CreateScope();
             var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
             var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
@@ -45,69 +42,24 @@ public class Worker : BackgroundService
 
             try
             {
-                // Шаг 1: Подключаем каждого клиента независимо, ошибки изолируются
-                connectedClients = new List<IExchangeWebSocketClient>();
-                foreach (var client in clients)
-                {
-                    try
-                    {
-                        await client.ConnectAsync(stoppingToken);
-                        connectedClients.Add(client);
-                        _logger.LogInformation("Connected to {Exchange} ({Symbol})", client.ExchangeName, client.Symbol);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to connect to {Exchange} ({Symbol}). " +
-                            "Will be retried by health-check.", client.ExchangeName, client.Symbol);
-                    }
-                }
-
-                if (connectedClients.Count == 0)
-                {
-                    _logger.LogError("No clients connected. Retrying in 30 seconds...");
-                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-                    continue;
-                }
-
-                _logger.LogInformation("Connected to {Connected}/{Total} WebSocket(s)", connectedClients.Count, clients.Count);
-
-                // Шаг 2: Подписываемся на тикеры независимо для каждого клиента
-                foreach (var client in connectedClients)
-                {
-                    try
-                    {
-                        await SubscribeWithRetryAsync(client, stoppingToken);
-                        _logger.LogInformation("Subscribed {Exchange} to {Symbol}", client.ExchangeName, client.Symbol);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        // Ошибка подписки — не критична, клиент остаётся подключённым
-                        _logger.LogError(ex, "Failed to subscribe {Exchange} to {Symbol}. " +
-                            "Will be retried by health-check.", client.ExchangeName, client.Symbol);
-                    }
-                }
-
-                // Запускаем обработчик очереди
+                _logger.LogInformation("Starting {Count} WebSocket clients with automatic recovery...", clients.Count);
+                
+                // Запускаем всех клиентов в режиме автоматического восстановления
+                var startTasks = clients.Select(client => StartClientWithRecoveryAsync(client, stoppingToken));
+                await Task.WhenAll(startTasks);
+                
+                // Запускаем обработчик данных
                 marketDataProcessor.StartProcessing();
                 _logger.LogInformation("Market data processor started");
 
-                // Шаг 3: Запускаем health-check таймер и ожидаем отмены
-                _logger.LogInformation("Worker is running. Health-check interval: {Interval}s", HealthCheckInterval.TotalSeconds);
-
+                // Упрощённый health-check: просто мониторим состояние
                 using var healthCheckTimer = new Timer(
-                    async _ => await RestartDisconnectedClientsAsync(connectedClients, stoppingToken),
+                    _ => LogClientStatus(clients),
                     null,
                     HealthCheckInterval,
                     HealthCheckInterval);
 
+                // Ожидаем отмены
                 await Task.Delay(Timeout.Infinite, stoppingToken);
             }
             catch (OperationCanceledException)
@@ -122,71 +74,92 @@ public class Worker : BackgroundService
             }
             finally
             {
-                // Останавливаем health-check таймер (через using выше)
-
-                // Останавливаем обработчик (graceful shutdown)
+                // Останавливаем обработчик
                 await marketDataProcessor.StopProcessingAsync(stoppingToken);
-
-                // Корректно отключаем все клиенты
-                foreach (var client in connectedClients)
-                {
-                    if (client.IsConnected)
-                    {
-                        try
-                        {
-                            await client.DisconnectAsync(CancellationToken.None);
-                            _logger.LogInformation("Disconnected {Exchange}", client.ExchangeName);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error while disconnecting {Exchange}", client.ExchangeName);
-                        }
-                    }
-                }
+                
+                // Останавливаем всех клиентов
+                _logger.LogInformation("Stopping WebSocket clients...");
+                var stopTasks = clients.Select(client => StopClientAsync(client));
+                await Task.WhenAll(stopTasks);
             }
         }
 
         _logger.LogInformation("Worker stopped.");
     }
 
-    /// <summary>
-    /// Health-check: перезапускает клиентов, которые отключились.
-    /// Вызывается таймером каждые 30 секунд.
-    /// </summary>
-    private async Task RestartDisconnectedClientsAsync(
-        List<IExchangeWebSocketClient> clients,
-        CancellationToken stoppingToken)
+    private async Task StartClientWithRecoveryAsync(IExchangeWebSocketClient client, CancellationToken stoppingToken)
     {
-        foreach (var client in clients)
+        try
         {
-            if (stoppingToken.IsCancellationRequested)
-                break;
-
-            if (!client.IsConnected)
+            // Используем новый метод StartAsync для автоматического восстановления
+            if (client is BaseWebSocketClient baseClient)
             {
-                _logger.LogWarning("Health-check: {Exchange} ({Symbol}) is disconnected. Attempting restart...",
+                await baseClient.StartAsync(stoppingToken);
+                _logger.LogInformation("Started automatic recovery for {Exchange} ({Symbol})", 
                     client.ExchangeName, client.Symbol);
-                try
+            }
+            else
+            {
+                // Для обратной совместимости с клиентами, не поддерживающими StartAsync
+                await client.ConnectAsync(stoppingToken);
+                _logger.LogInformation("Connected to {Exchange} ({Symbol}) (legacy mode)", 
+                    client.ExchangeName, client.Symbol);
+            }
+            
+            // Подписываемся на тикер
+            await SubscribeWithRetryAsync(client, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start client {Exchange} ({Symbol})", 
+                client.ExchangeName, client.Symbol);
+        }
+    }
+
+    private async Task StopClientAsync(IExchangeWebSocketClient client)
+    {
+        try
+        {
+            if (client is BaseWebSocketClient baseClient)
+            {
+                await baseClient.StopAsync(CancellationToken.None);
+            }
+            else
+            {
+                if (client.IsConnected)
                 {
-                    await client.ConnectAsync(stoppingToken);
-                    await SubscribeWithRetryAsync(client, stoppingToken);
-                    _logger.LogInformation("Health-check: {Exchange} restarted successfully", client.ExchangeName);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Health-check: Failed to restart {Exchange}", client.ExchangeName);
+                    await client.DisconnectAsync(CancellationToken.None);
                 }
             }
+            _logger.LogInformation("Stopped {Exchange}", client.ExchangeName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while stopping {Exchange}", client.ExchangeName);
+        }
+    }
+
+    private void LogClientStatus(List<IExchangeWebSocketClient> clients)
+    {
+        var connected = clients.Count(c => c.IsConnected);
+        var disconnected = clients.Count - connected;
+        
+        _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected", 
+            connected, disconnected);
+        
+        foreach (var client in clients.Where(c => !c.IsConnected))
+        {
+            _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected", 
+                client.ExchangeName, client.Symbol);
         }
     }
 
     /// <summary>
     /// Подписка на тикер с экспоненциальной задержкой при ошибке.
-    /// После исчерпания попыток выбрасывает исключение — вызывающий код решает, что делать.
     /// </summary>
     private async Task SubscribeWithRetryAsync(
         IExchangeWebSocketClient client,
@@ -206,7 +179,6 @@ public class Worker : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                // Отмена — пробрасываем наверх, не маскируем
                 throw;
             }
             catch (Exception ex)
@@ -219,18 +191,13 @@ public class Worker : BackgroundService
                 if (attempt < MaxSubscribeRetryAttempts)
                 {
                     await Task.Delay(delay, stoppingToken);
-                    delay = delay * 2; // Экспоненциальная задержка: 2с, 4с, 8с, 16с, 32с
+                    delay = delay * 2;
                 }
             }
         }
 
         _logger.LogError(
-            "All {MaxAttempts} subscribe attempts exhausted for {Symbol} on {Exchange}. " +
-            "Client will remain without subscription until health-check restarts it.",
+            "All {MaxAttempts} subscribe attempts exhausted for {Symbol} on {Exchange}.",
             MaxSubscribeRetryAttempts, client.Symbol, client.ExchangeName);
-
-        // Пробрасываем исключение — вызывающий код (Worker) поймает и продолжит
-        throw new InvalidOperationException(
-            $"Subscribe exhausted after {MaxSubscribeRetryAttempts} attempts for {client.ExchangeName}/{client.Symbol}");
     }
 }

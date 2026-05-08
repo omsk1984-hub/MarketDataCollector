@@ -9,7 +9,7 @@ using Polly.Retry;
 
 namespace MarketDataCollector.Core.Clients
 {
-    public abstract class BaseWebSocketClient : IExchangeWebSocketClient
+    public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisposable
     {
         private ClientWebSocket _webSocket;
         private readonly Uri _uri;
@@ -18,6 +18,13 @@ namespace MarketDataCollector.Core.Clients
         private readonly AsyncRetryPolicy _retryPolicy;
         private Task _receiveLoopTask;
         private CancellationTokenSource _receiveLoopCts;
+        
+        // Поля для автоматического восстановления
+        private Task? _backgroundRecoveryTask;
+        private CancellationTokenSource? _backgroundRecoveryCts;
+        private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(5);
+        private readonly int _maxReconnectAttempts = 10;
+        private readonly object _backgroundLock = new object();
 
         public bool IsConnected => Volatile.Read(ref _webSocket)?.State == WebSocketState.Open;
         public string ExchangeName { get; protected set; }
@@ -75,6 +82,56 @@ namespace MarketDataCollector.Core.Clients
                 OnConnected();
                 await StartReceiveLoopAsync();
             });
+        }
+
+        /// <summary>
+        /// Запускает автоматическое управление жизненным циклом WebSocket-клиента.
+        /// Клиент будет автоматически переподключаться при разрыве соединения.
+        /// </summary>
+        public virtual Task StartAsync(CancellationToken cancellationToken)
+        {
+            lock (_backgroundLock)
+            {
+                if (_backgroundRecoveryTask != null && !_backgroundRecoveryTask.IsCompleted)
+                    return Task.CompletedTask;
+
+                _backgroundRecoveryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                _backgroundRecoveryTask = RunBackgroundRecoveryLoopAsync(_backgroundRecoveryCts.Token);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Останавливает автоматическое управление жизненным циклом.
+        /// </summary>
+        public virtual async Task StopAsync(CancellationToken cancellationToken)
+        {
+            Task? backgroundTask;
+            CancellationTokenSource? backgroundCts;
+
+            lock (_backgroundLock)
+            {
+                backgroundTask = _backgroundRecoveryTask;
+                backgroundCts = _backgroundRecoveryCts;
+                _backgroundRecoveryTask = null;
+                _backgroundRecoveryCts = null;
+            }
+
+            if (backgroundCts != null)
+            {
+                backgroundCts.Cancel();
+                try
+                {
+                    if (backgroundTask != null && !backgroundTask.IsCompleted)
+                        await backgroundTask.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ожидаемое поведение при отмене
+                }
+                backgroundCts.Dispose();
+            }
         }
 
         public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
@@ -146,6 +203,53 @@ namespace MarketDataCollector.Core.Clients
 
             var buffer = Encoding.UTF8.GetBytes(message);
             await ws.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, cancellationToken);
+        }
+
+        private async Task RunBackgroundRecoveryLoopAsync(CancellationToken cancellationToken)
+        {
+            int reconnectAttempt = 0;
+            
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    // Используем существующий ConnectAsync с политикой повторных попыток
+                    await ConnectAsync(cancellationToken);
+                    reconnectAttempt = 0; // Сброс счётчика при успешном подключении
+                    
+                    // Ждём, пока соединение активно
+                    while (IsConnected && !cancellationToken.IsCancellationRequested)
+                    {
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    
+                    // Если соединение разорвано, логируем и продолжаем цикл
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        await LogAsync($"Соединение разорвано, начинаем переподключение...");
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    reconnectAttempt++;
+                    await LogAsync($"Ошибка подключения (попытка {reconnectAttempt}/{_maxReconnectAttempts}): {ex.Message}");
+                    
+                    if (reconnectAttempt >= _maxReconnectAttempts)
+                    {
+                        await LogAsync("Превышено максимальное количество попыток переподключения");
+                        break;
+                    }
+                    
+                    // Задержка перед следующей попыткой
+                    await Task.Delay(_reconnectDelay, cancellationToken);
+                }
+            }
+            
+            await LogAsync("Фоновый цикл восстановления завершён");
         }
 
         protected virtual async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -251,6 +355,16 @@ namespace MarketDataCollector.Core.Clients
             });
         }
 
+        /// <summary>
+        /// Логирует сообщение с временной меткой.
+        /// Может быть переопределён в производных классах для интеграции с системой логирования.
+        /// </summary>
+        protected virtual Task LogAsync(string message)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {Name}: {message}");
+            return Task.CompletedTask;
+        }
+
         protected virtual Task ProcessMessageAsync(string message)
         {
             // Override in derived classes to process specific message formats
@@ -282,11 +396,52 @@ namespace MarketDataCollector.Core.Clients
             if (_disposed)
                 return;
 
+            // Останавливаем фоновую задачу восстановления синхронно
+            try
+            {
+                StopAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(5));
+            }
+            catch
+            {
+                // Игнорируем ошибки при остановке фоновой задачи
+            }
+            
             StopReceiveLoop();
             _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
             var ws = Interlocked.Exchange(ref _webSocket, null);
             ws?.Dispose();
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+
+        public virtual async ValueTask DisposeAsync()
+        {
+            if (_disposed)
+                return;
+
+            // Останавливаем фоновую задачу восстановления
+            await StopAsync(CancellationToken.None);
+            
+            StopReceiveLoop();
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            var ws = Interlocked.Exchange(ref _webSocket, null);
+            if (ws != null)
+            {
+                if (ws.State == WebSocketState.Open)
+                {
+                    try
+                    {
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // Игнорируем ошибки закрытия при диспозе
+                    }
+                }
+                ws.Dispose();
+            }
             _disposed = true;
             GC.SuppressFinalize(this);
         }
