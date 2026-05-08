@@ -23,7 +23,7 @@ namespace MarketDataCollector.Core.Clients
         private Task? _backgroundRecoveryTask;
         private CancellationTokenSource? _backgroundRecoveryCts;
         private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(5);
-        private readonly int _maxReconnectAttempts = 10;
+        private readonly TimeSpan _maxReconnectDelay = TimeSpan.FromSeconds(60);
         private readonly object _backgroundLock = new object();
 
         public bool IsConnected => Volatile.Read(ref _webSocket)?.State == WebSocketState.Open;
@@ -241,7 +241,7 @@ namespace MarketDataCollector.Core.Clients
         private async Task RunBackgroundRecoveryLoopAsync(CancellationToken cancellationToken)
         {
             int reconnectAttempt = 0;
-            
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
@@ -249,13 +249,13 @@ namespace MarketDataCollector.Core.Clients
                     // Используем существующий ConnectAsync с политикой повторных попыток
                     await ConnectAsync(cancellationToken);
                     reconnectAttempt = 0; // Сброс счётчика при успешном подключении
-                    
+
                     // Ждём, пока соединение активно
                     while (IsConnected && !cancellationToken.IsCancellationRequested)
                     {
                         await Task.Delay(1000, cancellationToken);
                     }
-                    
+
                     // Если соединение разорвано, логируем и продолжаем цикл
                     if (!cancellationToken.IsCancellationRequested)
                     {
@@ -269,19 +269,23 @@ namespace MarketDataCollector.Core.Clients
                 catch (Exception ex)
                 {
                     reconnectAttempt++;
-                    await LogAsync($"Ошибка подключения (попытка {reconnectAttempt}/{_maxReconnectAttempts}): {ex.Message}");
-                    
-                    if (reconnectAttempt >= _maxReconnectAttempts)
+                    // Экспоненциальный backoff с cap: 5, 10, 20, 40, 60, 60, 60...
+                    var delay = TimeSpan.FromSeconds(
+                        Math.Min(_reconnectDelay.TotalSeconds * Math.Pow(2, reconnectAttempt - 1), _maxReconnectDelay.TotalSeconds));
+
+                    await LogAsync($"Ошибка подключения (попытка {reconnectAttempt}): {ex.Message}. Повтор через {delay.TotalSeconds}с...");
+
+                    try
                     {
-                        await LogAsync("Превышено максимальное количество попыток переподключения");
+                        await Task.Delay(delay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
                         break;
                     }
-                    
-                    // Задержка перед следующей попыткой
-                    await Task.Delay(_reconnectDelay, cancellationToken);
                 }
             }
-            
+
             await LogAsync("Фоновый цикл восстановления завершён");
         }
 

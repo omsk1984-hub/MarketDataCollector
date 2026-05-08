@@ -52,21 +52,17 @@ public class Worker : BackgroundService
             {
                 _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
 
-                var startTasks = clients.Select(client => client.StartAsync(stoppingToken));
-                await Task.WhenAll(startTasks);
+                // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
+                foreach (var client in clients)
+                {
+                    client.StartAsync(stoppingToken).GetAwaiter().GetResult();
+                }
 
                 marketDataProcessor.StartProcessing();
                 _logger.LogInformation("Market data processor started");
 
-                // Health-check таймер
-                using var healthCheckTimer = new Timer(
-                    _ => LogClientStatus(clients),
-                    null,
-                    HealthCheckInterval,
-                    HealthCheckInterval);
-
-                // Блокируем до отмены
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                // Активный health-check: мониторинг + перезапуск отключённых клиентов
+                await RunHealthCheckAsync(clients, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -74,7 +70,7 @@ public class Worker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unexpected error occurred. Retrying in {Delay}s...",
+                _logger.LogError(ex, "Critical error (processor or infrastructure). Retrying in {Delay}s...",
                     ErrorRetryDelay.TotalSeconds);
             }
             finally
@@ -122,18 +118,46 @@ public class Worker : BackgroundService
         }
     }
 
-    private void LogClientStatus(List<IExchangeWebSocketClient> clients)
+    /// <summary>
+    /// Активный health-check: блокируется до отмены, периодически проверяет состояние клиентов.
+    /// Если клиент отключён — запускает повторно (StartAsync идемпотентен).
+    /// </summary>
+    private async Task RunHealthCheckAsync(
+        List<IExchangeWebSocketClient> clients,
+        CancellationToken stoppingToken)
     {
-        var connected = clients.Count(c => c.IsConnected);
-        var disconnected = clients.Count - connected;
-
-        _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected",
-            connected, disconnected);
-
-        foreach (var client in clients.Where(c => !c.IsConnected))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected",
-                client.ExchangeName, client.Symbol);
+            try
+            {
+                await Task.Delay(HealthCheckInterval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            var connected = clients.Count(c => c.IsConnected);
+            var disconnected = clients.Count - connected;
+
+            _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected",
+                connected, disconnected);
+
+            foreach (var client in clients.Where(c => !c.IsConnected))
+            {
+                _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected, triggering restart...",
+                    client.ExchangeName, client.Symbol);
+
+                try
+                {
+                    // StartAsync идемпотентен — безопасно вызывать повторно
+                    await client.StartAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to restart {Exchange}", client.ExchangeName);
+                }
+            }
         }
     }
 }
