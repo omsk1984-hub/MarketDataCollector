@@ -50,7 +50,7 @@ public class Worker : BackgroundService
             // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
             foreach (var client in clients)
             {
-                client.StartAsync(stoppingToken).GetAwaiter().GetResult();
+                await client.StartAsync(stoppingToken);
             }
 
             marketDataProcessor.StartProcessing();
