@@ -1,0 +1,54 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{177788B7-DB2A-4E40-BEB0-8F36EAD6E130}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Core", "src\MarketDataCollector.Core\MarketDataCollector.Core.csproj", "{8F3436E6-147F-4697-8515-458EB7FB4820}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Domain", "src\MarketDataCollector.Domain\MarketDataCollector.Domain.csproj", "{3249F01C-DD69-424B-9419-CDF48D13E904}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Infrastructure", "src\MarketDataCollector.Infrastructure\MarketDataCollector.Infrastructure.csproj", "{3044994A-3BEA-4753-8457-EBDB44D04031}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Application", "src\MarketDataCollector.Application\MarketDataCollector.Application.csproj", "{FA3A6FAD-82A6-48CC-8195-2E62CC60D655}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Worker", "src\MarketDataCollector.Workers\MarketDataCollector.Worker\MarketDataCollector.Worker.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8F3436E6-147F-4697-8515-458EB7FB4820}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F3436E6-147F-4697-8515-458EB7FB4820}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F3436E6-147F-4697-8515-458EB7FB4820}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F3436E6-147F-4697-8515-458EB7FB4820}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3249F01C-DD69-424B-9419-CDF48D13E904}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3249F01C-DD69-424B-9419-CDF48D13E904}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3249F01C-DD69-424B-9419-CDF48D13E904}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3249F01C-DD69-424B-9419-CDF48D13E904}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3044994A-3BEA-4753-8457-EBDB44D04031}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3044994A-3BEA-4753-8457-EBDB44D04031}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3044994A-3BEA-4753-8457-EBDB44D04031}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3044994A-3BEA-4753-8457-EBDB44D04031}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8F3436E6-147F-4697-8515-458EB7FB4820} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+		{3249F01C-DD69-424B-9419-CDF48D13E904} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+		{3044994A-3BEA-4753-8457-EBDB44D04031} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+	EndGlobalSection
+EndGlobal

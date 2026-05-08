@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: marketdata-postgres
+    environment:
+      POSTGRES_DB: MarketDataDb
+      POSTGRES_USER: marketdata_user
+      POSTGRES_PASSWORD: StrongPassword123!
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - marketdata-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketdata_user -d MarketDataDb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: marketdata-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@marketdata.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    networks:
+      - marketdata-network
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+
+networks:
+  marketdata-network:
+    driver: bridge

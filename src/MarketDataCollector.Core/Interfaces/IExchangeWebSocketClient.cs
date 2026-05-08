@@ -1,0 +1,73 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MarketDataCollector.Core.Interfaces
+{
+    /// <summary>
+    /// Интерфейс клиента WebSocket для конкретной биржи.
+    /// Использует композицию вместо наследования от IWebSocketClient.
+    /// </summary>
+    public interface IExchangeWebSocketClient : IDisposable
+    {
+        /// <summary>
+        /// Имя биржи (например, "binance", "kraken")
+        /// </summary>
+        string ExchangeName { get; }
+        
+        /// <summary>
+        /// Уникальное имя клиента (может совпадать с ExchangeName или включать символ)
+        /// </summary>
+        string Name { get; }
+        
+        /// <summary>
+        /// Текущий символ, на который подписан клиент
+        /// </summary>
+        string Symbol { get; }
+        
+        /// <summary>
+        /// Флаг подключения
+        /// </summary>
+        bool IsConnected { get; }
+        
+        /// <summary>
+        /// Подключиться к WebSocket
+        /// </summary>
+        Task ConnectAsync(CancellationToken ct);
+        
+        /// <summary>
+        /// Отключиться от WebSocket
+        /// </summary>
+        Task DisconnectAsync(CancellationToken ct);
+        
+        /// <summary>
+        /// Отправить сообщение
+        /// </summary>
+        Task SendAsync(string message, CancellationToken ct);
+        
+        /// <summary>
+        /// Подписаться на тикер
+        /// </summary>
+        Task SubscribeToTicker(string symbol, CancellationToken ct);
+        
+        /// <summary>
+        /// Событие получения сообщения
+        /// </summary>
+        event EventHandler<string> MessageReceived;
+        
+        /// <summary>
+        /// Событие успешного подключения
+        /// </summary>
+        event EventHandler Connected;
+        
+        /// <summary>
+        /// Событие отключения
+        /// </summary>
+        event EventHandler Disconnected;
+        
+        /// <summary>
+        /// Событие ошибки
+        /// </summary>
+        event EventHandler<Exception> ErrorOccurred;
+    }
+}
