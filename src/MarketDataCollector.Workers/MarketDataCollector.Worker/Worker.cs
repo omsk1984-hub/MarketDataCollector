@@ -72,7 +72,7 @@ public class Worker : BackgroundService
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, processorErrorCts.Token);
             await RunHealthCheckAsync(clients, combinedCts.Token);
 
-            // После выхода из health-check проверяем, не было ли ошибки процессора
+            // Выбрасываем ошибку для внешнего оркестратора
             if (processorErrorException != null)
             {
                 throw new InvalidOperationException("MarketDataProcessor failed", processorErrorException);
