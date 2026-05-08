@@ -22,6 +22,8 @@ namespace MarketDataCollector.Application.Services
         private Task _processingTask = null!;
         private int _processedCount;
 
+        public event EventHandler<Exception>? OnError;
+
         private readonly record struct TickData(
             string Ticker,
             decimal Price,
@@ -180,7 +182,8 @@ namespace MarketDataCollector.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing batch of {Count} ticks", batch.Count);
+                _logger.LogError(ex, "Critical error processing batch of {Count} ticks", batch.Count);
+                OnError?.Invoke(this, ex);
             }
         }
 

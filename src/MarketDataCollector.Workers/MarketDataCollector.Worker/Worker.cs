@@ -1,3 +1,4 @@
+using System;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,20 +44,39 @@ public class Worker : BackgroundService
             return;
         }
 
+        // Используем отдельный CancellationTokenSource для прерывания health-check
+        // при критической ошибке процессора
+        using var processorErrorCts = new CancellationTokenSource();
+        var processorErrorException = (Exception?)null;
+
         try
         {
             _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
 
-            // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
-            foreach (var client in clients)
+            // Подписываемся на критические ошибки процессора
+            marketDataProcessor.OnError += (sender, ex) =>
             {
-                await client.StartAsync(stoppingToken);
-            }
+                _logger.LogCritical(ex, "MarketDataProcessor raised a critical error. Worker will exit.");
+                processorErrorException = ex;
+                processorErrorCts.Cancel();
+            };
+
+            // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
+            var tasks = clients.Select(client => client.StartAsync(stoppingToken));
+            await Task.WhenAll(tasks);
 
             await marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
-            await RunHealthCheckAsync(clients, stoppingToken);
+            // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
+            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, processorErrorCts.Token);
+            await RunHealthCheckAsync(clients, combinedCts.Token);
+
+            // После выхода из health-check проверяем, не было ли ошибки процессора
+            if (processorErrorException != null)
+            {
+                throw new InvalidOperationException("MarketDataProcessor failed", processorErrorException);
+            }
         }
         catch (OperationCanceledException)
         {
