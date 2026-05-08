@@ -14,57 +14,67 @@ namespace MarketDataCollector.Core.Interfaces
         /// Имя биржи (например, "binance", "kraken")
         /// </summary>
         string ExchangeName { get; }
-        
+
         /// <summary>
         /// Уникальное имя клиента (может совпадать с ExchangeName или включать символ)
         /// </summary>
         string Name { get; }
-        
+
         /// <summary>
         /// Текущий символ, на который подписан клиент
         /// </summary>
         string Symbol { get; }
-        
+
         /// <summary>
         /// Флаг подключения
         /// </summary>
         bool IsConnected { get; }
-        
+
         /// <summary>
         /// Подключиться к WebSocket
         /// </summary>
         Task ConnectAsync(CancellationToken ct);
-        
+
         /// <summary>
         /// Отключиться от WebSocket
         /// </summary>
         Task DisconnectAsync(CancellationToken ct);
-        
+
+        /// <summary>
+        /// Запускает клиент с автоматическим восстановлением соединения.
+        /// </summary>
+        Task StartAsync(CancellationToken ct);
+
+        /// <summary>
+        /// Останавливает клиент и фоновое восстановление.
+        /// </summary>
+        Task StopAsync(CancellationToken ct);
+
         /// <summary>
         /// Отправить сообщение
         /// </summary>
         Task SendAsync(string message, CancellationToken ct);
-        
+
         /// <summary>
         /// Подписаться на тикер
         /// </summary>
         Task SubscribeToTicker(string symbol, CancellationToken ct);
-        
+
         /// <summary>
         /// Событие получения сообщения
         /// </summary>
         event EventHandler<string> MessageReceived;
-        
+
         /// <summary>
         /// Событие успешного подключения
         /// </summary>
         event EventHandler Connected;
-        
+
         /// <summary>
         /// Событие отключения
         /// </summary>
         event EventHandler Disconnected;
-        
+
         /// <summary>
         /// Событие ошибки
         /// </summary>

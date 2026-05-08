@@ -1,4 +1,3 @@
-using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,11 +42,11 @@ public class Worker : BackgroundService
             try
             {
                 _logger.LogInformation("Starting {Count} WebSocket clients with automatic recovery...", clients.Count);
-                
+
                 // Запускаем всех клиентов в режиме автоматического восстановления
                 var startTasks = clients.Select(client => StartClientWithRecoveryAsync(client, stoppingToken));
                 await Task.WhenAll(startTasks);
-                
+
                 // Запускаем обработчик данных
                 marketDataProcessor.StartProcessing();
                 _logger.LogInformation("Market data processor started");
@@ -76,7 +75,7 @@ public class Worker : BackgroundService
             {
                 // Останавливаем обработчик
                 await marketDataProcessor.StopProcessingAsync(stoppingToken);
-                
+
                 // Останавливаем всех клиентов
                 _logger.LogInformation("Stopping WebSocket clients...");
                 var stopTasks = clients.Select(client => StopClientAsync(client));
@@ -91,21 +90,10 @@ public class Worker : BackgroundService
     {
         try
         {
-            // Используем новый метод StartAsync для автоматического восстановления
-            if (client is BaseWebSocketClient baseClient)
-            {
-                await baseClient.StartAsync(stoppingToken);
-                _logger.LogInformation("Started automatic recovery for {Exchange} ({Symbol})", 
-                    client.ExchangeName, client.Symbol);
-            }
-            else
-            {
-                // Для обратной совместимости с клиентами, не поддерживающими StartAsync
-                await client.ConnectAsync(stoppingToken);
-                _logger.LogInformation("Connected to {Exchange} ({Symbol}) (legacy mode)", 
-                    client.ExchangeName, client.Symbol);
-            }
-            
+            await client.StartAsync(stoppingToken);
+            _logger.LogInformation("Started automatic recovery for {Exchange} ({Symbol})",
+                client.ExchangeName, client.Symbol);
+
             // Подписываемся на тикер
             await SubscribeWithRetryAsync(client, stoppingToken);
         }
@@ -115,7 +103,7 @@ public class Worker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start client {Exchange} ({Symbol})", 
+            _logger.LogError(ex, "Failed to start client {Exchange} ({Symbol})",
                 client.ExchangeName, client.Symbol);
         }
     }
@@ -124,17 +112,7 @@ public class Worker : BackgroundService
     {
         try
         {
-            if (client is BaseWebSocketClient baseClient)
-            {
-                await baseClient.StopAsync(CancellationToken.None);
-            }
-            else
-            {
-                if (client.IsConnected)
-                {
-                    await client.DisconnectAsync(CancellationToken.None);
-                }
-            }
+            await client.StopAsync(CancellationToken.None);
             _logger.LogInformation("Stopped {Exchange}", client.ExchangeName);
         }
         catch (Exception ex)
@@ -147,13 +125,13 @@ public class Worker : BackgroundService
     {
         var connected = clients.Count(c => c.IsConnected);
         var disconnected = clients.Count - connected;
-        
-        _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected", 
+
+        _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected",
             connected, disconnected);
-        
+
         foreach (var client in clients.Where(c => !c.IsConnected))
         {
-            _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected", 
+            _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected",
                 client.ExchangeName, client.Symbol);
         }
     }
