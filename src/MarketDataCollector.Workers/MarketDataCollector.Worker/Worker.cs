@@ -53,8 +53,7 @@ public class Worker : BackgroundService
                 await client.StartAsync(stoppingToken);
             }
 
-            marketDataProcessor.StartProcessing(stoppingToken);
-            _logger.LogInformation("Market data processor started");
+            await marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             await RunHealthCheckAsync(clients, stoppingToken);

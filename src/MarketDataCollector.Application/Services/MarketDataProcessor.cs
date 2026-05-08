@@ -57,13 +57,23 @@ namespace MarketDataCollector.Application.Services
             _logger.LogDebug("Tick enqueued: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
         }
 
-        public void StartProcessing(CancellationToken cancellationToken = default)
+        public Task StartProcessingAsync(CancellationToken cancellationToken = default)
         {
             if (_processingTask != null && !_processingTask.IsCompleted)
-                return;
+                return Task.CompletedTask;
 
-            _processingTask = Task.Run(async () => await ProcessBatchesAsync(cancellationToken), cancellationToken);
+            // Логируем ошибку предыдущей задачи, если она завершилась с ошибкой
+            if (_processingTask?.IsFaulted == true)
+            {
+                _logger.LogError(_processingTask.Exception?.InnerException ?? _processingTask.Exception,
+                    "Previous processing task failed, restarting");
+            }
+
+            // Запускаем обработку напрямую без избыточного Task.Run
+            _processingTask = ProcessBatchesAsync(cancellationToken);
             _logger.LogInformation("Market data processor started");
+            
+            return _processingTask;
         }
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
