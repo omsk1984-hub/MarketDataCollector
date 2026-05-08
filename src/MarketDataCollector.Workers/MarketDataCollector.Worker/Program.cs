@@ -32,7 +32,6 @@ builder.Services.AddScoped<IMarketDataProcessor>(sp =>
         logger,
         timeService,
         options.BatchSize,
-        options.BatchTimeoutMs,
         options.ChannelCapacity
     );
 });

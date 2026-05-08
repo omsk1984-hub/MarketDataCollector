@@ -8,7 +8,7 @@ namespace MarketDataCollector.Core.Interfaces
     {
         Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange);
         Task<int> GetProcessedCountAsync();
-        void StartProcessing();
+        void StartProcessing(CancellationToken cancellationToken = default);
         Task StopProcessingAsync(CancellationToken cancellationToken = default);
     }
 }

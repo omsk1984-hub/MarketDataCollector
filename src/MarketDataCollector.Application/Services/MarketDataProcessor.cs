@@ -18,11 +18,9 @@ namespace MarketDataCollector.Application.Services
         private readonly ITimeService _timeService;
         private readonly Channel<TickData> _channel;
         private readonly int _batchSize;
-        private readonly TimeSpan _batchTimeout;
 
         private Task _processingTask = null!;
         private int _processedCount;
-        private readonly object _lockObject = new object();
 
         private readonly record struct TickData(
             string Ticker,
@@ -37,14 +35,12 @@ namespace MarketDataCollector.Application.Services
             ILogger<MarketDataProcessor> logger,
             ITimeService timeService,
             int batchSize = 100,
-            int batchTimeoutMs = 1000,
             int channelCapacity = 10000)
         {
             _rawTickRepository = rawTickRepository;
             _logger = logger;
             _timeService = timeService;
             _batchSize = batchSize;
-            _batchTimeout = TimeSpan.FromMilliseconds(batchTimeoutMs);
             _processedCount = 0;
 
             _channel = Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
@@ -61,12 +57,12 @@ namespace MarketDataCollector.Application.Services
             _logger.LogDebug("Tick enqueued: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
         }
 
-        public void StartProcessing()
+        public void StartProcessing(CancellationToken cancellationToken = default)
         {
             if (_processingTask != null && !_processingTask.IsCompleted)
                 return;
 
-            _processingTask = Task.Run(async () => await ProcessBatchesAsync());
+            _processingTask = Task.Run(async () => await ProcessBatchesAsync(cancellationToken), cancellationToken);
             _logger.LogInformation("Market data processor started");
         }
 
@@ -89,23 +85,27 @@ namespace MarketDataCollector.Application.Services
             _logger.LogInformation("Market data processor stopped. Total processed: {Count}", _processedCount);
         }
 
-        private async Task ProcessBatchesAsync()
+        private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
         {
             var batch = new List<TickData>(_batchSize);
-            using var timer = new Timer(_ => FlushBatch(), null, _batchTimeout, _batchTimeout);
 
             try
             {
-                await foreach (var tick in _channel.Reader.ReadAllAsync())
+                await foreach (var tick in _channel.Reader.ReadAllAsync(cancellationToken))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     batch.Add(tick);
 
                     if (batch.Count >= _batchSize)
                     {
-                        await ProcessBatchAsync(batch);
+                        await ProcessBatchAsync(batch, cancellationToken);
                         batch.Clear();
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Processing was cancelled");
             }
             catch (ChannelClosedException)
             {
@@ -113,26 +113,20 @@ namespace MarketDataCollector.Application.Services
             }
             finally
             {
-                timer.Dispose();
-                
                 // Финальный flush
                 if (batch.Count > 0)
                 {
-                    await ProcessBatchAsync(batch);
+                    await ProcessBatchAsync(batch, cancellationToken);
                 }
             }
         }
 
-        private void FlushBatch()
-        {
-            // Timer callback — не используем, так как ReadAllAsync блокирует
-            // Оставлен для совместимости с планом
-        }
-
-        private async Task ProcessBatchAsync(List<TickData> batch)
+        private async Task ProcessBatchAsync(List<TickData> batch, CancellationToken cancellationToken)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // 1. Убираем дубликаты в памяти
                 var uniqueTicks = batch
                     .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
@@ -140,7 +134,7 @@ namespace MarketDataCollector.Application.Services
                     .ToList();
 
                 // 2. Проверяем существующие в БД одним запросом
-                var existingKeys = await GetExistingKeysFromDbAsync(uniqueTicks);
+                var existingKeys = await GetExistingKeysFromDbAsync(uniqueTicks, cancellationToken);
                 var newTicks = uniqueTicks
                     .Where(t => !existingKeys.Contains((t.Ticker, t.Exchange, t.Timestamp)))
                     .ToList();
@@ -156,8 +150,8 @@ namespace MarketDataCollector.Application.Services
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
 
-                await _rawTickRepository.AddRangeAsync(entities);
-                await _rawTickRepository.SaveChangesAsync();
+                await _rawTickRepository.AddRangeAsync(entities, cancellationToken);
+                await _rawTickRepository.SaveChangesAsync(cancellationToken);
 
                 var count = Interlocked.Add(ref _processedCount, entities.Count);
                 
@@ -166,8 +160,13 @@ namespace MarketDataCollector.Application.Services
                     _logger.LogInformation("Processed {Count} ticks total", count);
                 }
 
-                _logger.LogDebug("Batch saved: {Saved} new, {Duplicates} duplicates skipped", 
+                _logger.LogDebug("Batch saved: {Saved} new, {Duplicates} duplicates skipped",
                     entities.Count, batch.Count - entities.Count);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Batch processing was cancelled");
+                throw;
             }
             catch (Exception ex)
             {
@@ -175,7 +174,9 @@ namespace MarketDataCollector.Application.Services
             }
         }
 
-        private async Task<HashSet<(string, string, DateTime)>> GetExistingKeysFromDbAsync(List<TickData> ticks)
+        private async Task<HashSet<(string, string, DateTime)>> GetExistingKeysFromDbAsync(
+            List<TickData> ticks,
+            CancellationToken cancellationToken)
         {
             // Для простоты проверяем каждый тик отдельно
             // В продакшене лучше использовать один запрос с WHERE IN
@@ -183,7 +184,9 @@ namespace MarketDataCollector.Application.Services
             
             foreach (var tick in ticks)
             {
-                if (await _rawTickRepository.ExistsAsync(tick.Ticker, tick.Exchange, tick.Timestamp))
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (await _rawTickRepository.ExistsAsync(tick.Ticker, tick.Exchange, tick.Timestamp, cancellationToken))
                 {
                     existing.Add((tick.Ticker, tick.Exchange, tick.Timestamp));
                 }
