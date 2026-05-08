@@ -5,8 +5,6 @@ namespace MarketDataCollector.Worker;
 
 public class Worker : BackgroundService
 {
-    private const int MaxSubscribeRetryAttempts = 5;
-    private static readonly TimeSpan InitialSubscribeDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(30);
 
     private readonly ILogger<Worker> _logger;
@@ -91,11 +89,8 @@ public class Worker : BackgroundService
         try
         {
             await client.StartAsync(stoppingToken);
-            _logger.LogInformation("Started automatic recovery for {Exchange} ({Symbol})",
+            _logger.LogInformation("Started {Exchange} ({Symbol}) with automatic recovery and subscription",
                 client.ExchangeName, client.Symbol);
-
-            // Подписываемся на тикер
-            await SubscribeWithRetryAsync(client, stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -136,46 +131,4 @@ public class Worker : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Подписка на тикер с экспоненциальной задержкой при ошибке.
-    /// </summary>
-    private async Task SubscribeWithRetryAsync(
-        IExchangeWebSocketClient client,
-        CancellationToken stoppingToken)
-    {
-        var delay = InitialSubscribeDelay;
-
-        for (int attempt = 1; attempt <= MaxSubscribeRetryAttempts; attempt++)
-        {
-            try
-            {
-                await client.SubscribeToTicker(client.Symbol, stoppingToken);
-                _logger.LogInformation(
-                    "Subscribed to ticker {Symbol} on {Exchange} (attempt {Attempt}/{MaxAttempts})",
-                    client.Symbol, client.ExchangeName, attempt, MaxSubscribeRetryAttempts);
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "Subscribe attempt {Attempt}/{MaxAttempts} failed for {Symbol} on {Exchange}. " +
-                    "Retrying in {Delay}s...",
-                    attempt, MaxSubscribeRetryAttempts, client.Symbol, client.ExchangeName, delay.TotalSeconds);
-
-                if (attempt < MaxSubscribeRetryAttempts)
-                {
-                    await Task.Delay(delay, stoppingToken);
-                    delay = delay * 2;
-                }
-            }
-        }
-
-        _logger.LogError(
-            "All {MaxAttempts} subscribe attempts exhausted for {Symbol} on {Exchange}.",
-            MaxSubscribeRetryAttempts, client.Symbol, client.ExchangeName);
-    }
 }

@@ -50,5 +50,14 @@ namespace MarketDataCollector.Infrastructure.Clients
             var subscribeMessage = $"{{\"method\":\"SUBSCRIBE\",\"params\":[\"{symbol.ToLower()}@trade\"],\"id\":1}}";
             await SendAsync(subscribeMessage, cancellationToken);
         }
+
+        /// <summary>
+        /// Переопределённый метод для автоматической подписки при подключении.
+        /// Использует свойство Symbol вместо параметра.
+        /// </summary>
+        protected override async Task SubscribeToTickerAsync(CancellationToken cancellationToken)
+        {
+            await SubscribeToTicker(Symbol, cancellationToken);
+        }
     }
 }

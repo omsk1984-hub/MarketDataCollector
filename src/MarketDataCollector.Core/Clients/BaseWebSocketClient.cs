@@ -81,6 +81,7 @@ namespace MarketDataCollector.Core.Clients
                 
                 OnConnected();
                 await StartReceiveLoopAsync();
+                await SubscribeToTickerWithRetryAsync(cancellationToken);
             });
         }
 
@@ -161,6 +162,38 @@ namespace MarketDataCollector.Core.Clients
             // Базовая реализация просто отправляет сообщение подписки
             // Конкретные реализации должны переопределить этот метод для специфичных форматов сообщений
             throw new NotImplementedException("SubscribeToTicker must be implemented in derived classes");
+        }
+
+        /// <summary>
+        /// Подписывается на тикер. Вызывается автоматически при каждом подключении.
+        /// Переопределяется в производных классах для отправки специфичных сообщений подписки.
+        /// </summary>
+        protected virtual Task SubscribeToTickerAsync(CancellationToken cancellationToken)
+        {
+            // По умолчанию ничего не делает (для бирж с подпиской в URL)
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Подписка на тикер с повторными попытками при ошибке.
+        /// </summary>
+        private async Task SubscribeToTickerWithRetryAsync(CancellationToken cancellationToken)
+        {
+            const int maxSubscribeRetries = 3;
+            var subscribeRetryPolicy = Policy
+                .Handle<Exception>()
+                .WaitAndRetryAsync(
+                    retryCount: maxSubscribeRetries,
+                    sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                    onRetry: (exception, timeSpan, retryCount, context) =>
+                    {
+                        OnErrorOccurred(new Exception($"Subscribe attempt {retryCount} failed. Retrying in {timeSpan.TotalSeconds}s.", exception));
+                    });
+
+            await subscribeRetryPolicy.ExecuteAsync(async () =>
+            {
+                await SubscribeToTickerAsync(cancellationToken);
+            });
         }
 
         private async Task StartReceiveLoopAsync()
