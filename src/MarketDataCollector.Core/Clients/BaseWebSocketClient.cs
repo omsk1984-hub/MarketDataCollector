@@ -1,486 +1,438 @@
+using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
-using System;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Polly;
-using Polly.Retry;
 
-namespace MarketDataCollector.Core.Clients
+namespace MarketDataCollector.Core.Clients;
+
+/// <summary>
+/// Базовый координатор WebSocket-клиента для бирж.
+/// Делегирует управление соединением, приём сообщений и подписку специализированным компонентам.
+/// </summary>
+/// <remarks>
+/// <para><b>SRP:</b> Класс выступает координатором, а не монолитом. Вся логика вынесена в:</para>
+/// <list type="bullet">
+///   <item><see cref="IWebSocketConnectionManager"/> — управление соединением</item>
+///   <item><see cref="IWebSocketMessageReceiver"/> — цикл приёма сообщений</item>
+///   <item><see cref="IReconnectStrategy"/> — стратегия переподключения</item>
+///   <item><see cref="ISubscriptionManager"/> — логика подписки</item>
+/// </list>
+/// <para><b>Наследование:</b> Производные классы должны переопределить <see cref="SubscribeToTickerAsync"/>
+/// для отправки специфичных сообщений подписки и <see cref="ProcessMessageAsync"/> для парсинга сообщений.</para>
+/// <para><b>Управление ресурсами:</b> Приоритет за <see cref="IAsyncDisposable"/>. Синхронный <see cref="Dispose"/>
+/// реализован для обратной совместимости, но может вызывать deadlock в синхронном контексте.</para>
+/// </remarks>
+public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisposable
 {
-    public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisposable
+    private readonly IWebSocketConnectionManager _connectionManager;
+    private readonly IWebSocketMessageReceiver _messageReceiver;
+    private readonly IReconnectStrategy _reconnectStrategy;
+    private ISubscriptionManager _subscriptionManager;
+    private readonly WebSocketClientOptions _options;
+    private readonly ILogger<BaseWebSocketClient> _logger;
+
+    private Task? _backgroundRecoveryTask;
+    private CancellationTokenSource? _backgroundRecoveryCts;
+    private CancellationTokenSource? _receiveLoopCts;
+    private Task? _receiveLoopTask;
+    private readonly object _backgroundLock = new();
+    private bool _disposed;
+
+    /// <inheritdoc />
+    public bool IsConnected => _connectionManager.IsConnected;
+
+    /// <inheritdoc />
+    public string ExchangeName { get; }
+
+    /// <inheritdoc />
+    public string Name { get; }
+
+    /// <inheritdoc />
+    public string Symbol { get; }
+
+    /// <inheritdoc />
+    public event EventHandler<string> MessageReceived = null!;
+
+    /// <inheritdoc />
+    public event EventHandler Connected = null!;
+
+    /// <inheritdoc />
+    public event EventHandler Disconnected = null!;
+
+    /// <inheritdoc />
+    public event EventHandler<Exception> ErrorOccurred = null!;
+
+    /// <summary>
+    /// Создаёт экземпляр базового WebSocket-клиента.
+    /// </summary>
+    /// <param name="uri">Адрес WebSocket-сервера.</param>
+    /// <param name="exchangeName">Имя биржи.</param>
+    /// <param name="symbol">Торговая пара.</param>
+    /// <param name="connectionManager">Менеджер соединения.</param>
+    /// <param name="messageReceiver">Приёмник сообщений.</param>
+    /// <param name="reconnectStrategy">Стратегия переподключения.</param>
+    /// <param name="subscriptionManager">Менеджер подписки.</param>
+    /// <param name="options">Параметры конфигурации.</param>
+    /// <param name="logger">Логгер.</param>
+    protected BaseWebSocketClient(
+        Uri uri,
+        string exchangeName,
+        string symbol,
+        IWebSocketConnectionManager connectionManager,
+        IWebSocketMessageReceiver messageReceiver,
+        IReconnectStrategy reconnectStrategy,
+        ISubscriptionManager subscriptionManager,
+        IOptions<WebSocketClientOptions> options,
+        ILogger<BaseWebSocketClient> logger)
     {
-        private ClientWebSocket _webSocket;
-        private readonly Uri _uri;
-        private readonly CancellationTokenSource _cancellationTokenSource;
-        private bool _disposed;
-        private readonly AsyncRetryPolicy _retryPolicy;
-        private Task _receiveLoopTask;
-        private CancellationTokenSource _receiveLoopCts;
-        
-        // Поля для автоматического восстановления
-        private Task? _backgroundRecoveryTask;
-        private CancellationTokenSource? _backgroundRecoveryCts;
-        private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(5);
-        private readonly TimeSpan _maxReconnectDelay = TimeSpan.FromSeconds(60);
-        private readonly object _backgroundLock = new object();
+        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
+        _messageReceiver = messageReceiver ?? throw new ArgumentNullException(nameof(messageReceiver));
+        _reconnectStrategy = reconnectStrategy ?? throw new ArgumentNullException(nameof(reconnectStrategy));
+        _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
+        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        public bool IsConnected => Volatile.Read(ref _webSocket)?.State == WebSocketState.Open;
-        public string ExchangeName { get; protected set; }
-        public string Name { get; protected set; }
-        public string Symbol { get; protected set; }
+        ExchangeName = exchangeName ?? throw new ArgumentNullException(nameof(exchangeName));
+        Name = $"{exchangeName}_{symbol}";
+        Symbol = symbol ?? throw new ArgumentNullException(nameof(symbol));
 
-        public event EventHandler<string> MessageReceived = null!;
-        public event EventHandler Connected = null!;
-        public event EventHandler Disconnected = null!;
-        public event EventHandler<Exception> ErrorOccurred = null!;
+        // Подписываемся на событие изменения состояния соединения
+        _connectionManager.StateChanged += OnConnectionStateChanged;
+    }
 
-        protected BaseWebSocketClient(string uri, string exchangeName, string symbol)
+    /// <summary>
+    /// Устанавливает менеджер подписки после создания клиента.
+    /// Используется фабрикой для разрешения циклической зависимости между клиентом и SubscriptionManager.
+    /// </summary>
+    /// <param name="subscriptionManager">Менеджер подписки.</param>
+    public void SetSubscriptionManager(ISubscriptionManager subscriptionManager)
+    {
+        _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
+    }
+
+    /// <inheritdoc />
+    public virtual async Task ConnectAsync(CancellationToken cancellationToken)
+    {
+        if (IsConnected)
         {
-            _uri = new Uri(uri);
-            ExchangeName = exchangeName;
-            Name = $"{exchangeName}_{symbol}";
-            Symbol = symbol;
-            _cancellationTokenSource = new CancellationTokenSource();
-            _webSocket = null;
-            _receiveLoopTask = null;
-            _receiveLoopCts = null;
-            
-            // Политика повторных попыток с экспоненциальной задержкой
-            _retryPolicy = Policy
-                .Handle<Exception>()
-                .WaitAndRetryAsync(
-                    retryCount: 5,
-                    sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)), // экспоненциальная задержка 2,4,8,16,32 секунды
-                    onRetry: (exception, timeSpan, retryCount, context) =>
-                    {
-                        // Логирование попытки реконнекта
-                        OnErrorOccurred(new Exception($"WebSocket reconnect attempt {retryCount} failed. Waiting {timeSpan.TotalSeconds} seconds before next attempt.", exception));
-                    });
+            _logger.LogDebug("{Name}: Соединение уже установлено — пропуск.", Name);
+            return;
         }
 
-        public virtual async Task ConnectAsync(CancellationToken cancellationToken)
+        _logger.LogInformation("{Name}: Подключение к бирже {Exchange}...", Name, ExchangeName);
+
+        await _connectionManager.ConnectAsync(GetWebSocketUri(), cancellationToken);
+
+        OnConnected();
+        await StartReceiveLoopAsync(cancellationToken);
+        await _subscriptionManager.SubscribeWithRetryAsync(Symbol, cancellationToken);
+
+        _logger.LogInformation("{Name}: Подключение завершено, подписка оформлена.", Name);
+    }
+
+    /// <summary>
+    /// Возвращает WebSocket URI для подключения.
+    /// Может быть переопределён в наследниках для динамической генерации URI.
+    /// </summary>
+    protected virtual Uri GetWebSocketUri()
+    {
+        // По умолчанию используем базовый URI из конструктора.
+        // Наследники могут переопределить для специфичной логики.
+        throw new InvalidOperationException(
+            $"{nameof(GetWebSocketUri)} должен быть переопределён или URI должен передаваться в конструктор напрямую.");
+    }
+
+    /// <inheritdoc />
+    public virtual Task StartAsync(CancellationToken cancellationToken)
+    {
+        lock (_backgroundLock)
         {
-            if (IsConnected)
-                return;
-
-            await _retryPolicy.ExecuteAsync(async () =>
+            if (_backgroundRecoveryTask != null && !_backgroundRecoveryTask.IsCompleted)
             {
-                // Если уже подключились в предыдущей попытке (например, после задержки), проверяем снова
-                if (IsConnected)
-                    return;
-
-                // Создаём новый ClientWebSocket для каждой попытки
-                var ws = new ClientWebSocket();
-                await ws.ConnectAsync(_uri, cancellationToken);
-                
-                // Атомарно заменяем старый сокет, старый диспозим
-                var oldWs = Interlocked.Exchange(ref _webSocket, ws);
-                oldWs?.Dispose();
-                
-                OnConnected();
-                await StartReceiveLoopAsync();
-                await SubscribeToTickerWithRetryAsync(cancellationToken);
-            });
-        }
-
-        /// <summary>
-        /// Запускает автоматическое управление жизненным циклом WebSocket-клиента.
-        /// Клиент будет автоматически переподключаться при разрыве соединения.
-        /// </summary>
-        public virtual Task StartAsync(CancellationToken cancellationToken)
-        {
-            lock (_backgroundLock)
-            {
-                if (_backgroundRecoveryTask != null && !_backgroundRecoveryTask.IsCompleted)
-                    return Task.CompletedTask;
-
-                _backgroundRecoveryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _backgroundRecoveryTask = RunBackgroundRecoveryLoopAsync(_backgroundRecoveryCts.Token);
+                _logger.LogDebug("{Name}: Фоновый цикл восстановления уже запущен.", Name);
+                return Task.CompletedTask;
             }
 
-            return Task.CompletedTask;
+            _backgroundRecoveryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _backgroundRecoveryTask = RunBackgroundRecoveryLoopAsync(_backgroundRecoveryCts.Token);
         }
 
-        /// <summary>
-        /// Останавливает автоматическое управление жизненным циклом.
-        /// </summary>
-        public virtual async Task StopAsync(CancellationToken cancellationToken)
+        _logger.LogInformation("{Name}: Фоновый цикл восстановления запущен.", Name);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public virtual async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Task? backgroundTask;
+        CancellationTokenSource? backgroundCts;
+
+        lock (_backgroundLock)
         {
-            Task? backgroundTask;
-            CancellationTokenSource? backgroundCts;
-
-            lock (_backgroundLock)
-            {
-                backgroundTask = _backgroundRecoveryTask;
-                backgroundCts = _backgroundRecoveryCts;
-                _backgroundRecoveryTask = null;
-                _backgroundRecoveryCts = null;
-            }
-
-            if (backgroundCts != null)
-            {
-                backgroundCts.Cancel();
-                try
-                {
-                    if (backgroundTask != null && !backgroundTask.IsCompleted)
-                        await backgroundTask.WaitAsync(cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Ожидаемое поведение при отмене
-                }
-                backgroundCts.Dispose();
-            }
+            backgroundTask = _backgroundRecoveryTask;
+            backgroundCts = _backgroundRecoveryCts;
+            _backgroundRecoveryTask = null;
+            _backgroundRecoveryCts = null;
         }
 
-        public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
+        if (backgroundCts != null)
         {
-            var ws = Volatile.Read(ref _webSocket);
-            if (ws?.State != WebSocketState.Open)
-                return;
-
+            backgroundCts.Cancel();
             try
             {
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", cancellationToken);
-                OnDisconnected();
+                if (backgroundTask != null && !backgroundTask.IsCompleted)
+                    await backgroundTask.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("{Name}: Остановка отменена по токену.", Name);
+            }
+            backgroundCts.Dispose();
+        }
+
+        _logger.LogInformation("{Name}: Фоновый цикл восстановления остановлен.", Name);
+    }
+
+    /// <inheritdoc />
+    public virtual async Task DisconnectAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConnected)
+            return;
+
+        try
+        {
+            await _connectionManager.DisconnectAsync(cancellationToken);
+            OnDisconnected();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "{Name}: Ошибка при отключении.", Name);
+            OnErrorOccurred(ex);
+            throw;
+        }
+        finally
+        {
+            StopReceiveLoop();
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Базовая реализация вызывает <see cref="SubscribeToTickerAsync"/> с переданным символом.
+    /// Производные классы могут переопределить этот метод для специфичных форматов сообщений.
+    /// </remarks>
+    public virtual Task SubscribeToTicker(string symbol, CancellationToken cancellationToken)
+    {
+        return SubscribeToTickerAsync(symbol, cancellationToken);
+    }
+
+    /// <summary>
+    /// Отправляет сообщение подписки на тикер.
+    /// Вызывается автоматически при каждом подключении.
+    /// </summary>
+    /// <param name="symbol">Символ для подписки.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <remarks>
+    /// По умолчанию ничего не делает (для бирж с подпиской в URL).
+    /// Переопределите этот метод для отправки специфичных сообщений подписки.
+    /// </remarks>
+    protected virtual Task SubscribeToTickerAsync(string symbol, CancellationToken cancellationToken)
+    {
+        // По умолчанию ничего не делает (для бирж с подпиской в URL)
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public virtual Task SendAsync(string message, CancellationToken cancellationToken)
+    {
+        return _connectionManager.SendAsync(message, cancellationToken);
+    }
+
+    /// <summary>
+    /// Обрабатывает полученное сообщение.
+    /// </summary>
+    /// <param name="message">Текст сообщения.</param>
+    /// <remarks>
+    /// Переопределите этот метод в производных классах для парсинга специфичных форматов сообщений.
+    /// </remarks>
+    protected virtual Task ProcessMessageAsync(string message)
+    {
+        // По умолчанию ничего не делает — наследники переопределяют
+        return Task.CompletedTask;
+    }
+
+    private async Task StartReceiveLoopAsync(CancellationToken cancellationToken)
+    {
+        // Отменяем предыдущий ReceiveLoop, если он есть
+        StopReceiveLoop();
+
+        _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _receiveLoopTask = _messageReceiver.StartReceiveLoopAsync(
+            processMessage: ProcessMessageAsync,
+            onMessageReceived: OnMessageReceived,
+            onError: OnErrorOccurred,
+            cancellationToken: _receiveLoopCts.Token);
+
+        await Task.CompletedTask; // Запускаем в фоне
+    }
+
+    private void StopReceiveLoop()
+    {
+        _receiveLoopCts?.Cancel();
+        _receiveLoopCts?.Dispose();
+        _receiveLoopCts = null;
+        _receiveLoopTask = null;
+    }
+
+    private async Task RunBackgroundRecoveryLoopAsync(CancellationToken cancellationToken)
+    {
+        int reconnectAttempt = 0;
+
+        _logger.LogDebug("{Name}: Фоновый цикл восстановления запущен.", Name);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ConnectAsync(cancellationToken);
+                reconnectAttempt = 0;
+                _reconnectStrategy.Reset();
+
+                // Ждём, пока соединение активно
+                while (IsConnected && !cancellationToken.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, cancellationToken);
+                }
+
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning("{Name}: Соединение разорвано, начинаем переподключение...", Name);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
-                OnErrorOccurred(ex);
-                throw;
-            }
-            finally
-            {
-                StopReceiveLoop();
-            }
-        }
+                reconnectAttempt++;
 
-        public virtual async Task SubscribeToTicker(string symbol, CancellationToken cancellationToken)
-        {
-            // Базовая реализация просто отправляет сообщение подписки
-            // Конкретные реализации должны переопределить этот метод для специфичных форматов сообщений
-            throw new NotImplementedException("SubscribeToTicker must be implemented in derived classes");
-        }
-
-        /// <summary>
-        /// Подписывается на тикер. Вызывается автоматически при каждом подключении.
-        /// Переопределяется в производных классах для отправки специфичных сообщений подписки.
-        /// </summary>
-        protected virtual Task SubscribeToTickerAsync(CancellationToken cancellationToken)
-        {
-            // По умолчанию ничего не делает (для бирж с подпиской в URL)
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Подписка на тикер с повторными попытками при ошибке.
-        /// </summary>
-        private async Task SubscribeToTickerWithRetryAsync(CancellationToken cancellationToken)
-        {
-            const int maxSubscribeRetries = 3;
-            var subscribeRetryPolicy = Policy
-                .Handle<Exception>()
-                .WaitAndRetryAsync(
-                    retryCount: maxSubscribeRetries,
-                    sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    onRetry: (exception, timeSpan, retryCount, context) =>
-                    {
-                        OnErrorOccurred(new Exception($"Subscribe attempt {retryCount} failed. Retrying in {timeSpan.TotalSeconds}s.", exception));
-                    });
-
-            await subscribeRetryPolicy.ExecuteAsync(async () =>
-            {
-                await SubscribeToTickerAsync(cancellationToken);
-            });
-        }
-
-        private async Task StartReceiveLoopAsync()
-        {
-            // Отменяем предыдущий ReceiveLoop, если он есть
-            if (_receiveLoopCts != null)
-            {
-                _receiveLoopCts.Cancel();
-                try
+                if (!_reconnectStrategy.ShouldRetry(reconnectAttempt))
                 {
-                    if (_receiveLoopTask != null && !_receiveLoopTask.IsCompleted)
-                        await _receiveLoopTask;
-                }
-                catch (OperationCanceledException) { }
-                catch (Exception ex)
-                {
-                    OnErrorOccurred(ex);
-                }
-                _receiveLoopCts.Dispose();
-            }
-
-            // Создаём новый CTS для нового ReceiveLoop
-            _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
-            _receiveLoopTask = ReceiveLoopAsync(_receiveLoopCts.Token);
-        }
-
-        private void StopReceiveLoop()
-        {
-            _receiveLoopCts?.Cancel();
-            _receiveLoopCts?.Dispose();
-            _receiveLoopCts = null;
-            _receiveLoopTask = null;
-        }
-
-        public virtual async Task SendAsync(string message, CancellationToken cancellationToken)
-        {
-            var ws = Volatile.Read(ref _webSocket);
-            if (ws?.State != WebSocketState.Open)
-                throw new InvalidOperationException("WebSocket is not connected");
-
-            var buffer = Encoding.UTF8.GetBytes(message);
-            await ws.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, cancellationToken);
-        }
-
-        private async Task RunBackgroundRecoveryLoopAsync(CancellationToken cancellationToken)
-        {
-            int reconnectAttempt = 0;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    // Используем существующий ConnectAsync с политикой повторных попыток
-                    await ConnectAsync(cancellationToken);
-                    reconnectAttempt = 0; // Сброс счётчика при успешном подключении
-
-                    // Ждём, пока соединение активно
-                    while (IsConnected && !cancellationToken.IsCancellationRequested)
-                    {
-                        await Task.Delay(1000, cancellationToken);
-                    }
-
-                    // Если соединение разорвано, логируем и продолжаем цикл
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        await LogAsync($"Соединение разорвано, начинаем переподключение...");
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
+                    _logger.LogError("{Name}: Исчерпаны попытки переподключения.", Name);
                     break;
                 }
-                catch (Exception ex)
-                {
-                    reconnectAttempt++;
-                    // Экспоненциальный backoff с cap: 5, 10, 20, 40, 60, 60, 60...
-                    var delay = TimeSpan.FromSeconds(
-                        Math.Min(_reconnectDelay.TotalSeconds * Math.Pow(2, reconnectAttempt - 1), _maxReconnectDelay.TotalSeconds));
 
-                    await LogAsync($"Ошибка подключения (попытка {reconnectAttempt}): {ex.Message}. Повтор через {delay.TotalSeconds}с...");
+                var delay = _reconnectStrategy.GetDelay(reconnectAttempt);
+                _logger.LogWarning(ex,
+                    "{Name}: Ошибка подключения (попытка {Attempt}). Повтор через {Delay}s...",
+                    Name, reconnectAttempt, delay.TotalSeconds);
 
-                    try
-                    {
-                        await Task.Delay(delay, cancellationToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            await LogAsync("Фоновый цикл восстановления завершён");
-        }
-
-        protected virtual async Task ReceiveLoopAsync(CancellationToken cancellationToken)
-        {
-            var buffer = new byte[4096];
-            var stringBuilder = new StringBuilder();
-            var reconnectAttempts = 0;
-            const int maxInternalReconnects = 3;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
                 try
                 {
-                    // Если соединение разорвано, пытаемся переподключиться
-                    if (!IsConnected)
-                    {
-                        if (reconnectAttempts >= maxInternalReconnects)
-                        {
-                            // Исчерпали внутренние попытки — выходим, внешний health-check перезапустит
-                            OnErrorOccurred(new Exception(
-                                $"{Name}: Max internal reconnect attempts ({maxInternalReconnects}) exhausted. " +
-                                "Waiting for external restart by health-check."));
-                            break;
-                        }
-
-                        await ReconnectAsync(cancellationToken);
-                        reconnectAttempts++;
-                        continue;
-                    }
-
-                    // Сброс счётчика после успешного подключения
-                    reconnectAttempts = 0;
-
-                    var ws = Volatile.Read(ref _webSocket);
-                    if (ws == null)
-                        break;
-
-                    var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        await DisconnectAsync(cancellationToken);
-                        break;
-                    }
-
-                    stringBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-
-                    if (result.EndOfMessage)
-                    {
-                        var message = stringBuilder.ToString();
-                        stringBuilder.Clear();
-                        OnMessageReceived(message);
-                        await ProcessMessageAsync(message);
-                    }
+                    await Task.Delay(delay, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Expected when cancelled
                     break;
                 }
-                catch (Exception ex)
-                {
-                    OnErrorOccurred(ex);
-                    // Попытка переподключения при следующей итерации цикла
-                    await Task.Delay(1000, cancellationToken); // небольшая пауза перед повторной попыткой
-                }
             }
         }
 
-        private async Task ReconnectAsync(CancellationToken cancellationToken)
-        {
-            // Останавливаем текущий ReceiveLoop
-            StopReceiveLoop();
-
-            // Освобождаем старое соединение, если оно есть
-            var oldWs = Interlocked.Exchange(ref _webSocket, null);
-            if (oldWs != null && oldWs.State != WebSocketState.Closed)
-            {
-                try
-                {
-                    await oldWs.CloseAsync(WebSocketCloseStatus.NormalClosure, "Reconnecting", cancellationToken);
-                }
-                catch
-                {
-                    // Игнорируем ошибки закрытия
-                }
-                oldWs.Dispose();
-            }
-
-            // Используем политику повторных попыток для подключения с созданием нового WebSocket внутри
-            await _retryPolicy.ExecuteAsync(async () =>
-            {
-                // Создаём новый ClientWebSocket для каждой попытки
-                var ws = new ClientWebSocket();
-                await ws.ConnectAsync(_uri, cancellationToken);
-                
-                // Атомарно заменяем старый сокет (уже null), старый диспозим
-                var previousWs = Interlocked.Exchange(ref _webSocket, ws);
-                previousWs?.Dispose();
-                
-                OnConnected();
-                await StartReceiveLoopAsync();
-            });
-        }
-
-        /// <summary>
-        /// Логирует сообщение с временной меткой.
-        /// Может быть переопределён в производных классах для интеграции с системой логирования.
-        /// </summary>
-        protected virtual Task LogAsync(string message)
-        {
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {Name}: {message}");
-            return Task.CompletedTask;
-        }
-
-        protected virtual Task ProcessMessageAsync(string message)
-        {
-            // Override in derived classes to process specific message formats
-            return Task.CompletedTask;
-        }
-
-        protected virtual void OnMessageReceived(string message)
-        {
-            MessageReceived?.Invoke(this, message);
-        }
-
-        protected virtual void OnConnected()
-        {
-            Connected?.Invoke(this, EventArgs.Empty);
-        }
-
-        protected virtual void OnDisconnected()
-        {
-            Disconnected?.Invoke(this, EventArgs.Empty);
-        }
-
-        protected virtual void OnErrorOccurred(Exception ex)
-        {
-            ErrorOccurred?.Invoke(this, ex);
-        }
-
-        public virtual void Dispose()
-        {
-            if (_disposed)
-                return;
-
-            // Останавливаем фоновую задачу восстановления синхронно
-            try
-            {
-                StopAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(5));
-            }
-            catch
-            {
-                // Игнорируем ошибки при остановке фоновой задачи
-            }
-            
-            StopReceiveLoop();
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource?.Dispose();
-            var ws = Interlocked.Exchange(ref _webSocket, null);
-            ws?.Dispose();
-            _disposed = true;
-            GC.SuppressFinalize(this);
-        }
-
-        public virtual async ValueTask DisposeAsync()
-        {
-            if (_disposed)
-                return;
-
-            // Останавливаем фоновую задачу восстановления
-            await StopAsync(CancellationToken.None);
-            
-            StopReceiveLoop();
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource?.Dispose();
-            var ws = Interlocked.Exchange(ref _webSocket, null);
-            if (ws != null)
-            {
-                if (ws.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None);
-                    }
-                    catch
-                    {
-                        // Игнорируем ошибки закрытия при диспозе
-                    }
-                }
-                ws.Dispose();
-            }
-            _disposed = true;
-            GC.SuppressFinalize(this);
-        }
+        _logger.LogDebug("{Name}: Фоновый цикл восстановления завершён.", Name);
     }
+
+    private void OnConnectionStateChanged(object? sender, WebSocketState state)
+    {
+        _logger.LogTrace("{Name}: Состояние соединения изменилось на {State}.", Name, state);
+    }
+
+    /// <summary>
+    /// Вызывается при получении сообщения.
+    /// </summary>
+    /// <param name="message">Текст сообщения.</param>
+    protected virtual void OnMessageReceived(string message)
+    {
+        MessageReceived?.Invoke(this, message);
+    }
+
+    /// <summary>
+    /// Вызывается при успешном подключении.
+    /// </summary>
+    protected virtual void OnConnected()
+    {
+        _logger.LogInformation("{Name}: Подключено.", Name);
+        Connected?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Вызывается при отключении.
+    /// </summary>
+    protected virtual void OnDisconnected()
+    {
+        _logger.LogInformation("{Name}: Отключено.", Name);
+        Disconnected?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Вызывается при возникновении ошибки.
+    /// </summary>
+    /// <param name="ex">Исключение.</param>
+    protected virtual void OnErrorOccurred(Exception ex)
+    {
+        _logger.LogError(ex, "{Name}: Ошибка.", Name);
+        ErrorOccurred?.Invoke(this, ex);
+    }
+
+    #region IDisposable / IAsyncDisposable
+
+    /// <summary>
+    /// Синхронное освобождение ресурсов.
+    /// Внимание: может вызвать deadlock в средах с синхронным контекстом (например, SynchronizationContext).
+    /// Рекомендуется использовать <see cref="DisposeAsync"/>.
+    /// </summary>
+    public virtual void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            StopAsync(CancellationToken.None).Wait(_options.DisposeTimeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "{Name}: Ошибка при синхронной остановке.", Name);
+        }
+
+        DisposeCore();
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Асинхронное освобождение ресурсов. Приоритетный метод очистки.
+    /// </summary>
+    public virtual async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        await StopAsync(CancellationToken.None);
+        DisposeCore();
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    private void DisposeCore()
+    {
+        StopReceiveLoop();
+        _backgroundRecoveryCts?.Cancel();
+        _backgroundRecoveryCts?.Dispose();
+        _connectionManager.StateChanged -= OnConnectionStateChanged;
+        (_connectionManager as IDisposable)?.Dispose();
+    }
+
+    #endregion
 }
