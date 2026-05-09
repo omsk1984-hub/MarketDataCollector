@@ -1,14 +1,32 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using MarketDataCollector.Domain.Interfaces;
 
 namespace MarketDataCollector.Domain.Entities
 {
+    [Table("connectionlogs")]
     public class ConnectionLog
     {
+        [Key]
+        [Column("id")]
         public Guid Id { get; private set; }
+
+        [Column("exchange")]
+        [Required]
+        [MaxLength(50)]
         public string Exchange { get; private set; } = null!;
+
+        [Column("eventtype")]
+        [Required]
+        [MaxLength(20)]
         public string EventType { get; private set; } = null!;
+
+        [Column("message")]
         public string Message { get; private set; } = null!;
+
+        [Column("createdat")]
+        [Required]
         public DateTime CreatedAt { get; private set; }
 
         private ConnectionLog() { } // For EF Core
