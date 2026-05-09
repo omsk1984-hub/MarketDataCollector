@@ -56,7 +56,7 @@ namespace MarketDataCollector.Application.Services
         public async Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
             await _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange));
-            _logger.LogDebug("Tick enqueued: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
+            _logger.LogDebug("Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
         }
 
         public Task StartProcessingAsync(CancellationToken cancellationToken = default)
@@ -68,12 +68,12 @@ namespace MarketDataCollector.Application.Services
             if (_processingTask?.IsFaulted == true)
             {
                 _logger.LogError(_processingTask.Exception?.InnerException ?? _processingTask.Exception,
-                    "Previous processing task failed, restarting");
+                    "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
             // Запускаем обработку напрямую без избыточного Task.Run
             _processingTask = ProcessBatchesAsync(cancellationToken);
-            _logger.LogInformation("Market data processor started");
+            _logger.LogInformation("Обработчик рыночных данных запущен");
             
             return _processingTask;
         }
@@ -90,11 +90,11 @@ namespace MarketDataCollector.Application.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Processing stop was cancelled");
+                    _logger.LogWarning("Остановка обработки отменена");
                 }
             }
             
-            _logger.LogInformation("Market data processor stopped. Total processed: {Count}", _processedCount);
+            _logger.LogInformation("Обработчик рыночных данных остановлен. Всего обработано: {Count}", _processedCount);
         }
 
         private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
@@ -117,11 +117,11 @@ namespace MarketDataCollector.Application.Services
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Processing was cancelled");
+                _logger.LogInformation("Обработка отменена");
             }
             catch (ChannelClosedException)
             {
-                // Expected when channel is completed
+                // Ожидаемо при завершении канала
             }
             finally
             {
@@ -153,7 +153,7 @@ namespace MarketDataCollector.Application.Services
 
                 if (newTicks.Count == 0)
                 {
-                    _logger.LogDebug("All {Count} ticks in batch were duplicates", batch.Count);
+                    _logger.LogDebug("Все {Count} тиков в батче были дубликатами", batch.Count);
                     return;
                 }
 
@@ -169,20 +169,20 @@ namespace MarketDataCollector.Application.Services
                 
                 if (count % 100 < entities.Count)
                 {
-                    _logger.LogInformation("Processed {Count} ticks total", count);
+                    _logger.LogInformation("Всего обработано тиков: {Count}", count);
                 }
 
-                _logger.LogDebug("Batch saved: {Saved} new, {Duplicates} duplicates skipped",
+                _logger.LogDebug("Батч сохранён: {Saved} новых, {Duplicates} дубликатов пропущено",
                     entities.Count, batch.Count - entities.Count);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("Batch processing was cancelled");
+                _logger.LogWarning("Обработка батча отменена");
                 throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error processing batch of {Count} ticks", batch.Count);
+                _logger.LogError(ex, "Критическая ошибка при обработке батча из {Count} тиков", batch.Count);
                 OnError?.Invoke(this, ex);
             }
         }

@@ -36,7 +36,7 @@ public class Worker : BackgroundService
         var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
         var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
 
-        var clients = clientFactory.CreateAllClients().ToList();
+        var clients = clientFactory.CreateAllClients().Take(1).ToList();
 
         if (clients.Count == 0)
         {
