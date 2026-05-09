@@ -30,7 +30,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     private readonly IReconnectStrategy _reconnectStrategy;
     private ISubscriptionManager? _subscriptionManager;
     private readonly WebSocketClientOptions _options;
-    private readonly ILogger<BaseWebSocketClient> _logger;
+    protected readonly ILogger<BaseWebSocketClient> _logger;
 
     private Task? _backgroundRecoveryTask;
     private CancellationTokenSource? _backgroundRecoveryCts;
