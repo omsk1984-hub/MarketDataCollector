@@ -61,7 +61,6 @@ public class BinanceWebSocketClient : BaseWebSocketClient
         try
         {
             var json = JObject.Parse(message);
-            _logger.LogInformation("Received message: {Message}", message);
             if (json["e"]?.ToString() == "trade")
             {
                 var ticker = json["s"]?.ToString();
