@@ -53,7 +53,7 @@ public class WebSocketClientFactory : IWebSocketClientFactory
         var messageReceiver = new WebSocketMessageReceiver(connectionManager, wsOptionsWrapper, receiverLogger);
         var reconnectStrategy = new ExponentialReconnectStrategy(wsOptionsWrapper, reconnectLogger);
 
-        // Фаза 1: Создаём клиент без SubscriptionManager (null! — будет установлен позже)
+        // Фаза 1: Создаём клиент без SubscriptionManager
         var client = new BinanceWebSocketClient(
             webSocketUri,
             exchangeName,
@@ -62,7 +62,6 @@ public class WebSocketClientFactory : IWebSocketClientFactory
             connectionManager,
             messageReceiver,
             reconnectStrategy,
-            null!,
             wsOptionsWrapper,
             clientLogger);
 

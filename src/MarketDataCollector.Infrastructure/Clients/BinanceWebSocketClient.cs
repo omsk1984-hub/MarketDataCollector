@@ -28,11 +28,10 @@ public class BinanceWebSocketClient : BaseWebSocketClient
         IWebSocketConnectionManager connectionManager,
         IWebSocketMessageReceiver messageReceiver,
         IReconnectStrategy reconnectStrategy,
-        ISubscriptionManager subscriptionManager,
         IOptions<WebSocketClientOptions> options,
         ILogger<BinanceWebSocketClient> logger)
         : base(webSocketUri, exchangeName, symbol, connectionManager, messageReceiver,
-              reconnectStrategy, subscriptionManager, options, logger)
+              reconnectStrategy, options, logger)
     {
         _webSocketUri = webSocketUri;
         _dataProcessor = dataProcessor ?? throw new ArgumentNullException(nameof(dataProcessor));

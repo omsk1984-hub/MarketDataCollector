@@ -28,7 +28,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     private readonly IWebSocketConnectionManager _connectionManager;
     private readonly IWebSocketMessageReceiver _messageReceiver;
     private readonly IReconnectStrategy _reconnectStrategy;
-    private ISubscriptionManager _subscriptionManager;
+    private ISubscriptionManager? _subscriptionManager;
     private readonly WebSocketClientOptions _options;
     private readonly ILogger<BaseWebSocketClient> _logger;
 
@@ -72,7 +72,6 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <param name="connectionManager">Менеджер соединения.</param>
     /// <param name="messageReceiver">Приёмник сообщений.</param>
     /// <param name="reconnectStrategy">Стратегия переподключения.</param>
-    /// <param name="subscriptionManager">Менеджер подписки.</param>
     /// <param name="options">Параметры конфигурации.</param>
     /// <param name="logger">Логгер.</param>
     protected BaseWebSocketClient(
@@ -82,14 +81,12 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
         IWebSocketConnectionManager connectionManager,
         IWebSocketMessageReceiver messageReceiver,
         IReconnectStrategy reconnectStrategy,
-        ISubscriptionManager subscriptionManager,
         IOptions<WebSocketClientOptions> options,
         ILogger<BaseWebSocketClient> logger)
     {
         _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
         _messageReceiver = messageReceiver ?? throw new ArgumentNullException(nameof(messageReceiver));
         _reconnectStrategy = reconnectStrategy ?? throw new ArgumentNullException(nameof(reconnectStrategy));
-        _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -126,7 +123,11 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
         OnConnected();
         await StartReceiveLoopAsync(cancellationToken);
-        await _subscriptionManager.SubscribeWithRetryAsync(Symbol, cancellationToken);
+        
+        if (_subscriptionManager != null)
+        {
+            await _subscriptionManager.SubscribeWithRetryAsync(Symbol, cancellationToken);
+        }
 
         _logger.LogInformation("{Name}: Подключение завершено, подписка оформлена.", Name);
     }
