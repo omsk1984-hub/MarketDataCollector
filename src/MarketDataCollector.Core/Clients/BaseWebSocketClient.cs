@@ -225,7 +225,9 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// </remarks>
     public virtual Task SubscribeToTicker(string symbol, CancellationToken cancellationToken)
     {
-        return SubscribeToTickerAsync(symbol, cancellationToken);
+        var task = SubscribeToTickerAsync(symbol, cancellationToken);
+        _logger.LogInformation("Успешно подписались на тикер {Symbol} - {ExchangeName}.", symbol, ExchangeName);
+        return task;
     }
 
     /// <summary>

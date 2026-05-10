@@ -48,9 +48,7 @@ public class SubscriptionManager : ISubscriptionManager
 
         await retryPolicy.ExecuteAsync(async () =>
         {
-            _logger.LogInformation("Подписка на тикер {Symbol}...", symbol);
             await _subscribeAction(symbol, cancellationToken);
-            _logger.LogInformation("Успешно подписались на тикер {Symbol}.", symbol);
         });
     }
 }
