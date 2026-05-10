@@ -6,7 +6,7 @@ namespace MarketDataCollector.Worker;
 
 public class Worker : BackgroundService
 {
-    private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromSeconds(10);
 
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
