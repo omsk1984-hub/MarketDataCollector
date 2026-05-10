@@ -83,7 +83,7 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     public async Task SendAsync(string message, CancellationToken cancellationToken)
     {
         var ws = _webSocket;
-        if (!IsConnected)
+        if (ws.State != WebSocketState.Open)
             throw new InvalidOperationException("WebSocket не подключён.");
 
         var buffer = System.Text.Encoding.UTF8.GetBytes(message);
@@ -94,7 +94,7 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     public async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
         var ws = _webSocket;
-        if (!IsConnected)
+        if (ws.State != WebSocketState.Open)
             throw new InvalidOperationException("WebSocket не подключён.");
 
         return await ws.ReceiveAsync(buffer, cancellationToken);
