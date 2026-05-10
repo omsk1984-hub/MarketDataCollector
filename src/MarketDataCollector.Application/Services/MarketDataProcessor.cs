@@ -73,7 +73,7 @@ namespace MarketDataCollector.Application.Services
 
             // Запускаем обработку напрямую без избыточного Task.Run
             _processingTask = ProcessBatchesAsync(cancellationToken);
-            _logger.LogInformation("Обработчик рыночных данных запущен");
+            _logger.LogInformation("Обработчик рыночных данных запущен batchSize={_batchSize}", _batchSize);
             
             return _processingTask;
         }

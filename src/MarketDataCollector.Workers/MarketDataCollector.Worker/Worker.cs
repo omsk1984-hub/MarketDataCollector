@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -65,7 +66,8 @@ public class Worker : BackgroundService
             var tasks = clients.Select(client => client.StartAsync(stoppingToken));
             await Task.WhenAll(tasks);
 
-            await marketDataProcessor.StartProcessingAsync(stoppingToken);
+            // Запускаем процессор в фоновом режиме — он работает до отмены stoppingToken
+            _ = marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
@@ -133,6 +135,7 @@ public class Worker : BackgroundService
         List<IExchangeWebSocketClient> clients,
         CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Health-check: Запущен");
         while (!stoppingToken.IsCancellationRequested)
         {
             try
