@@ -1,7 +1,4 @@
-using System;
-using System.Linq;
 using MarketDataCollector.Core.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace MarketDataCollector.Worker;
 

@@ -36,8 +36,8 @@ namespace MarketDataCollector.Application.Services
             IRawTickRepository rawTickRepository,
             ILogger<MarketDataProcessor> logger,
             ITimeService timeService,
-            int batchSize = 100,
-            int channelCapacity = 10000)
+            int batchSize,
+            int channelCapacity)
         {
             _rawTickRepository = rawTickRepository;
             _logger = logger;
