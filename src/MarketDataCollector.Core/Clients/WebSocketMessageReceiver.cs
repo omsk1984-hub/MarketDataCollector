@@ -34,11 +34,9 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         Action<Exception>? onError,
         CancellationToken cancellationToken)
     {
+        int totalReceived = 0;
         var buffer = new byte[_options.ReceiveBufferSize];
-        var stringBuilder = new StringBuilder();
-
         _logger.LogDebug("Цикл приёма сообщений запущен.");
-
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -57,23 +55,27 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     _logger.LogInformation("Получен сообщение закрытия WebSocket.");
                     break;
                 }
-
-                stringBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-
+                totalReceived += result.Count;
                 if (result.EndOfMessage)
                 {
-                    var message = stringBuilder.ToString();
-                    stringBuilder.Clear();
-
-                    try
+                    if (totalReceived > _options.ReceiveBufferSize)// Пропускаем обработку
                     {
-                        onMessageReceived?.Invoke(message);
-                        await processMessage(message);
+                        _logger.LogWarning("Получено слишком большое сообщение. ({0} байт)", result.Count);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        onError?.Invoke(ex);
+                        try
+                        {
+                            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                            onMessageReceived?.Invoke(message);
+                            await processMessage(message);
+                        }
+                        catch (Exception ex)
+                        {
+                            onError?.Invoke(ex);
+                        }
                     }
+                    totalReceived = 0;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
