@@ -147,7 +147,8 @@ public class SubscriptionManagerTests
         await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
 
         // Assert
-        // Polly должен попытаться maxRetries + 1 раз (первичная попытка + retries)
+        // Polly: retryCount = maxRetries (3), значит всего попыток: 1 (initial) + 3 (retries) = 4
+        // subscribeAction вызывается 4 раза: 3 раза с исключением, 4-й успешно
         retryCount.Should().Be(maxRetries + 1);
         
         // Должны быть вызовы onRetry для каждой неудачной попытки
@@ -191,9 +192,7 @@ public class SubscriptionManagerTests
         // Arrange
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
-            // Проверяем, что токен отмены передан правильно
-            ct.Should().NotBe(CancellationToken.None);
-            ct.IsCancellationRequested.Should().BeTrue();
+            // Этот код не должен выполниться, т.к. Polly увидит отменённый токен ДО вызова
             await Task.Delay(100, ct);
         });
 
@@ -208,15 +207,26 @@ public class SubscriptionManagerTests
         cts.Cancel();
 
         // Act & Assert
+        // Polly.ExecuteAsync(cancellationToken) выбрасывает OperationCanceledException
+        // до вызова delegate, если токен уже отменён
         var act = async () => await manager.SubscribeWithRetryAsync(symbol, cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
+        
+        // Убеждаемся, что subscribeAction НЕ вызывался — отмена произошла до него
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Попытка подписки")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
     }
 
     [Fact]
     public async Task SubscribeWithRetryAsync_RetryDelayIsExponential()
     {
         // Arrange
-        var retryDelays = new List<TimeSpan>();
         var maxRetries = 3;
         
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
@@ -233,7 +243,6 @@ public class SubscriptionManagerTests
             MaxSubscribeRetries = maxRetries
         };
 
-        // Создаем кастомный менеджер с перехватом onRetry
         var manager = new SubscriptionManager(
             _connectionManagerMock.Object,
             Options.Create(options),
@@ -243,7 +252,7 @@ public class SubscriptionManagerTests
         var symbol = "BTCUSDT";
         var cancellationToken = CancellationToken.None;
 
-        // Act & Assert
+        // Act
         var act = async () => await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
         
         try
@@ -255,16 +264,23 @@ public class SubscriptionManagerTests
             // Ожидаем исключение после исчерпания попыток
         }
         
-        // Проверяем, что были попытки с экспоненциальной задержкой
-        // 2^1 = 2, 2^2 = 4, 2^3 = 8 секунд
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Повтор через")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Exactly(maxRetries));
+        // Assert
+        // Проверяем, что лог содержит сообщения с правильными экспоненциальными задержками:
+        // retryAttempt=1 → 2^1 = 2s, retryAttempt=2 → 2^2 = 4s, retryAttempt=3 → 2^3 = 8s
+        var expectedDelays = new[] { 2, 4, 8 };
+        
+        foreach (var expectedDelay in expectedDelays)
+        {
+            _loggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((o, t) =>
+                        o.ToString()!.Contains($"Повтор через {expectedDelay}")),
+                    It.Is<Exception>(e => e.Message == "Subscription failed"),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.AtLeastOnce);
+        }
     }
 
     [Fact]

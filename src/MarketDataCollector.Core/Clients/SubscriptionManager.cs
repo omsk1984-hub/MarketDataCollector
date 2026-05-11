@@ -46,9 +46,9 @@ public class SubscriptionManager : ISubscriptionManager
                         retryCount, timeSpan.TotalSeconds);
                 });
 
-        await retryPolicy.ExecuteAsync(async () =>
+        await retryPolicy.ExecuteAsync(async ct =>
         {
-            await _subscribeAction(symbol, cancellationToken);
-        });
+            await _subscribeAction(symbol, ct);
+        }, cancellationToken);
     }
 }
