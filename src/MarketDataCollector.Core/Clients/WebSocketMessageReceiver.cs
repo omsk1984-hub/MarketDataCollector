@@ -1,3 +1,4 @@
+using System.Buffers;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -34,68 +35,103 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         Action<Exception>? onError,
         CancellationToken cancellationToken)
     {
-        int totalReceived = 0;
-        var buffer = new byte[_options.ReceiveBufferSize];
         _logger.LogDebug("Цикл приёма сообщений запущен.");
-        while (!cancellationToken.IsCancellationRequested)
+        
+        // Используем ArrayPool для эффективного управления памятью
+        var tempBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
+        var messageStream = new MemoryStream(_options.ReceiveBufferSize);
+        
+        try
         {
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                if (!_connectionManager.IsConnected)
+                try
                 {
-                    _logger.LogWarning("Соединение разорвано. Ожидание переподключения...");
-                    break;
-                }
-
-                var result = await _connectionManager.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), cancellationToken);
-
-                if (result.MessageType == WebSocketMessageType.Close)
-                {
-                    _logger.LogInformation("Получен сообщение закрытия WebSocket.");
-                    break;
-                }
-                totalReceived += result.Count;
-                if (result.EndOfMessage)
-                {
-                    if (totalReceived > _options.ReceiveBufferSize)// Пропускаем обработку
+                    if (!_connectionManager.IsConnected)
                     {
-                        _logger.LogWarning("Получено слишком большое сообщение. ({0} байт)", result.Count);
+                        _logger.LogWarning("Соединение разорвано. Ожидание переподключения...");
+                        break;
                     }
-                    else
+
+                    var result = await _connectionManager.ReceiveAsync(
+                        new ArraySegment<byte>(tempBuffer), cancellationToken);
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        _logger.LogInformation("Получено сообщение закрытия WebSocket.");
+                        break;
+                    }
+
+                    // Проверяем, не превышает ли фрагмент максимальный размер сообщения
+                    if (messageStream.Length + result.Count > _options.MaxMessageSize)
+                    {
+                        _logger.LogWarning(
+                            "Сообщение превышает максимальный размер ({0} байт). Отбрасываем сообщение.",
+                            _options.MaxMessageSize);
+                        
+                        // Пропускаем оставшиеся фрагменты до EndOfMessage
+                        while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested)
+                        {
+                            result = await _connectionManager.ReceiveAsync(
+                                new ArraySegment<byte>(tempBuffer), cancellationToken);
+                        }
+                        
+                        messageStream.SetLength(0); // Очищаем поток для следующего сообщения
+                        continue;
+                    }
+
+                    // Записываем фрагмент в поток
+                    messageStream.Write(tempBuffer, 0, result.Count);
+
+                    if (result.EndOfMessage)
                     {
                         try
                         {
-                            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                            // Декодируем сообщение из потока
+                            var message = Encoding.UTF8.GetString(messageStream.GetBuffer(), 0, (int)messageStream.Length);
+                            
                             onMessageReceived?.Invoke(message);
                             await processMessage(message);
                         }
                         catch (Exception ex)
                         {
+                            _logger.LogError(ex, "Ошибка при обработке сообщения.");
                             onError?.Invoke(ex);
                         }
+                        finally
+                        {
+                            // Очищаем поток для следующего сообщения
+                            messageStream.SetLength(0);
+                        }
                     }
-                    totalReceived = 0;
                 }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                // Ожидаемое поведение при отмене
-                break;
-            }
-            catch (Exception ex)
-            {
-                onError?.Invoke(ex);
-                // Небольшая пауза перед повторной попыткой
-                try
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    await Task.Delay(1000, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
+                    // Ожидаемое поведение при отмене
                     break;
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ошибка при приёме сообщения.");
+                    onError?.Invoke(ex);
+                    
+                    // Небольшая пауза перед повторной попыткой
+                    try
+                    {
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
             }
+        }
+        finally
+        {
+            // Возвращаем буфер в пул
+            ArrayPool<byte>.Shared.Return(tempBuffer);
+            messageStream.Dispose();
         }
 
         _logger.LogDebug("Цикл приёма сообщений завершён.");

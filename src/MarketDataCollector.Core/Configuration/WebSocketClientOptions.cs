@@ -39,6 +39,13 @@ public class WebSocketClientOptions
     public int ReceiveBufferSize { get; set; } = 4096;
 
     /// <summary>
+    /// Максимальный размер одного сообщения (в байтах).
+    /// Если сообщение превышает этот размер, оно отбрасывается.
+    /// По умолчанию: 1 МБ (1_048_576 байт).
+    /// </summary>
+    public int MaxMessageSize { get; set; } = 1_048_576;
+
+    /// <summary>
     /// Таймаут ожидания при остановке клиента (Dispose).
     /// По умолчанию: 5 секунд.
     /// </summary>
