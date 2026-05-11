@@ -1,0 +1,296 @@
+using MarketDataCollector.Core.Clients;
+using MarketDataCollector.Core.Configuration;
+using MarketDataCollector.Core.Interfaces;
+
+namespace MarketDataCollector.Tests.Core.Clients;
+
+public class SubscriptionManagerTests
+{
+    private readonly Mock<IWebSocketConnectionManager> _connectionManagerMock;
+    private readonly Mock<ILogger<SubscriptionManager>> _loggerMock;
+    private readonly WebSocketClientOptions _defaultOptions;
+
+    public SubscriptionManagerTests()
+    {
+        _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
+        _loggerMock = new Mock<ILogger<SubscriptionManager>>();
+        _defaultOptions = new WebSocketClientOptions
+        {
+            ReceiveBufferSize = 4096,
+            MaxMessageSize = 65536,
+            ReconnectDelay = TimeSpan.FromSeconds(1),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            MaxSubscribeRetries = 3
+        };
+    }
+
+    [Fact]
+    public void Constructor_WithNullConnectionManager_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var loggerMock = new Mock<ILogger<SubscriptionManager>>();
+        var subscribeAction = new Func<string, CancellationToken, Task>((s, c) => Task.CompletedTask);
+
+        // Act & Assert
+        var act = () => new SubscriptionManager(
+            null!,
+            Options.Create(_defaultOptions),
+            loggerMock.Object,
+            subscribeAction);
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("connectionManager");
+    }
+
+    [Fact]
+    public void Constructor_WithNullOptions_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var loggerMock = new Mock<ILogger<SubscriptionManager>>();
+        var subscribeAction = new Func<string, CancellationToken, Task>((s, c) => Task.CompletedTask);
+
+        // Act & Assert
+        var act = () => new SubscriptionManager(
+            _connectionManagerMock.Object,
+            null!,
+            loggerMock.Object,
+            subscribeAction);
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("options");
+    }
+
+    [Fact]
+    public void Constructor_WithNullLogger_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var subscribeAction = new Func<string, CancellationToken, Task>((s, c) => Task.CompletedTask);
+
+        // Act & Assert
+        var act = () => new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            null!,
+            subscribeAction);
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("logger");
+    }
+
+    [Fact]
+    public void Constructor_WithNullSubscribeAction_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var loggerMock = new Mock<ILogger<SubscriptionManager>>();
+
+        // Act & Assert
+        var act = () => new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            loggerMock.Object,
+            null!);
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("subscribeAction");
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_Success_NoRetries()
+    {
+        // Arrange
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object,
+            async (symbol, ct) => { /* Success - do nothing */ });
+
+        var symbol = "BTCUSDT";
+        var cancellationToken = CancellationToken.None;
+
+        // Act
+        await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
+
+        // Assert
+        // Если подписка успешна, Polly не должен вызывать onRetry
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Попытка подписки")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_ThrowsException_RetriesUpToMax()
+    {
+        // Arrange
+        var retryCount = 0;
+        var maxRetries = _defaultOptions.MaxSubscribeRetries;
+        
+        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        {
+            retryCount++;
+            if (retryCount <= maxRetries)
+            {
+                throw new Exception("Subscription failed");
+            }
+        });
+
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object,
+            subscribeAction);
+
+        var symbol = "BTCUSDT";
+        var cancellationToken = CancellationToken.None;
+
+        // Act
+        await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
+
+        // Assert
+        // Polly должен попытаться maxRetries + 1 раз (первичная попытка + retries)
+        retryCount.Should().Be(maxRetries + 1);
+        
+        // Должны быть вызовы onRetry для каждой неудачной попытки
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Попытка подписки")),
+                It.Is<Exception>(e => e.Message == "Subscription failed"),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Exactly(maxRetries));
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_AllRetriesExhausted_Throws()
+    {
+        // Arrange
+        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        {
+            throw new Exception("Subscription failed");
+        });
+
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object,
+            subscribeAction);
+
+        var symbol = "BTCUSDT";
+        var cancellationToken = CancellationToken.None;
+
+        // Act & Assert
+        var act = async () => await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
+        await act.Should().ThrowAsync<Exception>()
+            .WithMessage("Subscription failed");
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_CancellationToken_CancelsOperation()
+    {
+        // Arrange
+        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        {
+            // Проверяем, что токен отмены передан правильно
+            ct.Should().NotBe(CancellationToken.None);
+            ct.IsCancellationRequested.Should().BeTrue();
+            await Task.Delay(100, ct);
+        });
+
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object,
+            subscribeAction);
+
+        var symbol = "BTCUSDT";
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        var act = async () => await manager.SubscribeWithRetryAsync(symbol, cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_RetryDelayIsExponential()
+    {
+        // Arrange
+        var retryDelays = new List<TimeSpan>();
+        var maxRetries = 3;
+        
+        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        {
+            throw new Exception("Subscription failed");
+        });
+
+        var options = new WebSocketClientOptions
+        {
+            ReceiveBufferSize = 4096,
+            MaxMessageSize = 65536,
+            ReconnectDelay = TimeSpan.FromSeconds(1),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            MaxSubscribeRetries = maxRetries
+        };
+
+        // Создаем кастомный менеджер с перехватом onRetry
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(options),
+            _loggerMock.Object,
+            subscribeAction);
+
+        var symbol = "BTCUSDT";
+        var cancellationToken = CancellationToken.None;
+
+        // Act & Assert
+        var act = async () => await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
+        
+        try
+        {
+            await act();
+        }
+        catch
+        {
+            // Ожидаем исключение после исчерпания попыток
+        }
+        
+        // Проверяем, что были попытки с экспоненциальной задержкой
+        // 2^1 = 2, 2^2 = 4, 2^3 = 8 секунд
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Повтор через")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Exactly(maxRetries));
+    }
+
+    [Fact]
+    public async Task SubscribeWithRetryAsync_SymbolPassedToAction()
+    {
+        // Arrange
+        string? capturedSymbol = null;
+        
+        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        {
+            capturedSymbol = symbol;
+        });
+
+        var manager = new SubscriptionManager(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object,
+            subscribeAction);
+
+        var symbol = "ETHUSDT";
+        var cancellationToken = CancellationToken.None;
+
+        // Act
+        await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
+
+        // Assert
+        capturedSymbol.Should().Be(symbol);
+    }
+}

@@ -10,13 +10,19 @@ namespace MarketDataCollector.Core.Clients;
 /// </summary>
 public class WebSocketConnectionManager : IWebSocketConnectionManager
 {
-    private ClientWebSocket _webSocket = new();
+    private IClientWebSocket _webSocket;
     private readonly ILogger<WebSocketConnectionManager> _logger;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
 
     public WebSocketConnectionManager(ILogger<WebSocketConnectionManager> logger)
+        : this(logger, new ClientWebSocketWrapper())
+    {
+    }
+
+    public WebSocketConnectionManager(ILogger<WebSocketConnectionManager> logger, IClientWebSocket webSocket)
     {
         _logger = logger;
+        _webSocket = webSocket ?? throw new ArgumentNullException(nameof(webSocket));
     }
 
     /// <inheritdoc />
@@ -41,7 +47,7 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
             }
 
             // Создаём новый ClientWebSocket для каждой попытки
-            var ws = new ClientWebSocket();
+            var ws = new ClientWebSocketWrapper();
             await ws.ConnectAsync(uri, cancellationToken);
 
             // Атомарно заменяем старый сокет, старый диспозим
@@ -105,7 +111,7 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     /// </summary>
     public void DisposeCurrentSocket()
     {
-        var ws = Interlocked.Exchange(ref _webSocket, new ClientWebSocket());
+        var ws = Interlocked.Exchange(ref _webSocket, new ClientWebSocketWrapper());
         try { ws.Dispose(); } catch { /* игнорируем */ }
     }
 

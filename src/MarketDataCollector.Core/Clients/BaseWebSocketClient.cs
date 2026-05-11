@@ -259,7 +259,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <remarks>
     /// Переопределите этот метод в производных классах для парсинга специфичных форматов сообщений.
     /// </remarks>
-    protected virtual Task ProcessMessageAsync(string message)
+    protected internal virtual Task ProcessMessageAsync(string message)
     {
         // По умолчанию ничего не делает — наследники переопределяют
         return Task.CompletedTask;
@@ -355,7 +355,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// Вызывается при получении сообщения.
     /// </summary>
     /// <param name="message">Текст сообщения.</param>
-    protected virtual void OnMessageReceived(string message)
+    protected internal virtual void OnMessageReceived(string message)
     {
         MessageReceived?.Invoke(this, message);
     }
@@ -363,7 +363,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <summary>
     /// Вызывается при успешном подключении.
     /// </summary>
-    protected virtual void OnConnected()
+    protected internal virtual void OnConnected()
     {
         _logger.LogInformation("{Name}: Подключено.", Name);
         Connected?.Invoke(this, EventArgs.Empty);
@@ -372,7 +372,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <summary>
     /// Вызывается при отключении.
     /// </summary>
-    protected virtual void OnDisconnected()
+    protected internal virtual void OnDisconnected()
     {
         _logger.LogInformation("{Name}: Отключено.", Name);
         Disconnected?.Invoke(this, EventArgs.Empty);
@@ -382,7 +382,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// Вызывается при возникновении ошибки.
     /// </summary>
     /// <param name="ex">Исключение.</param>
-    protected virtual void OnErrorOccurred(Exception ex)
+    protected internal virtual void OnErrorOccurred(Exception ex)
     {
         _logger.LogError(ex, "{Name}: Ошибка.", Name);
         ErrorOccurred?.Invoke(this, ex);
