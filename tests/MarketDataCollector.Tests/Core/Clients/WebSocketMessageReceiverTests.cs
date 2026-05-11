@@ -13,6 +13,8 @@ public class WebSocketMessageReceiverTests
 
     public WebSocketMessageReceiverTests()
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        
         _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
         _loggerMock = new Mock<ILogger<WebSocketMessageReceiver>>();
         _defaultOptions = new WebSocketClientOptions
@@ -28,6 +30,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public void Constructor_WithValidDependencies_SetsProperties()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: Constructor_WithValidDependencies_SetsProperties");
+        
         // Arrange & Act
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -41,6 +45,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -84,6 +90,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_ConnectionLost_BreaksLoop()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_ConnectionLost_BreaksLoop");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -115,6 +123,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage");
+        
         // Arrange
         var options = new WebSocketClientOptions
         {
@@ -162,6 +172,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -203,6 +215,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -252,6 +266,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -291,6 +307,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public async Task StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -328,6 +346,8 @@ public class WebSocketMessageReceiverTests
     [Fact]
     public void StopReceiveLoop_LogsDebugMessage()
     {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запуск теста: StopReceiveLoop_LogsDebugMessage");
+        
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
