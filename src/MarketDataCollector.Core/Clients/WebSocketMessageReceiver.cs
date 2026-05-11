@@ -39,7 +39,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         
         // Используем ArrayPool для эффективного управления памятью
         var tempBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
-        var messageStream = new MemoryStream(_options.ReceiveBufferSize);
+        var messageStream = new MemoryStream(_options.MaxMessageSize);
         
         try
         {
