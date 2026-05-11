@@ -2,6 +2,7 @@ using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using System.Net.WebSockets;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Core.Clients;
 
@@ -36,6 +37,7 @@ public class TestableWebSocketClient : BaseWebSocketClient
 
 public class BaseWebSocketClientTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IWebSocketConnectionManager> _connectionManagerMock;
     private readonly Mock<IWebSocketMessageReceiver> _messageReceiverMock;
     private readonly Mock<IReconnectStrategy> _reconnectStrategyMock;
@@ -43,8 +45,9 @@ public class BaseWebSocketClientTests
     private readonly WebSocketClientOptions _defaultOptions;
     private readonly Uri _testUri;
 
-    public BaseWebSocketClientTests()
+    public BaseWebSocketClientTests(ITestOutputHelper output)
     {
+        _output = output;
         _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
         _messageReceiverMock = new Mock<IWebSocketMessageReceiver>();
         _reconnectStrategyMock = new Mock<IReconnectStrategy>();
@@ -259,9 +262,10 @@ public class BaseWebSocketClientTests
             .WithParameterName("subscriptionManager");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ConnectAsync_WhenAlreadyConnected_DoesNothing()
     {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WhenAlreadyConnected_DoesNothing)} ===");
         // Arrange
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
@@ -292,9 +296,10 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ConnectAsync_WhenNotConnected_CallsConnectionManagerAndStartsReceiveLoop()
     {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WhenNotConnected_CallsConnectionManagerAndStartsReceiveLoop)} ===");
         // Arrange
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
         
@@ -322,9 +327,10 @@ public class BaseWebSocketClientTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ConnectAsync_WithSubscriptionManager_CallsSubscribeWithRetryAsync()
     {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WithSubscriptionManager_CallsSubscribeWithRetryAsync)} ===");
         // Arrange
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
         
@@ -382,9 +388,10 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StopAsync_StopsBackgroundRecoveryLoop()
     {
+        _output.WriteLine($"=== Running: {nameof(StopAsync_StopsBackgroundRecoveryLoop)} ===");
         // Arrange
         var client = new TestableWebSocketClient(
             _testUri,
@@ -416,9 +423,10 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisconnectAsync_WhenConnected_ClosesConnection()
     {
+        _output.WriteLine($"=== Running: {nameof(DisconnectAsync_WhenConnected_ClosesConnection)} ===");
         // Arrange
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
@@ -442,9 +450,10 @@ public class BaseWebSocketClientTests
         _messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisconnectAsync_WhenNotConnected_DoesNothing()
     {
+        _output.WriteLine($"=== Running: {nameof(DisconnectAsync_WhenNotConnected_DoesNothing)} ===");
         // Arrange
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
         
@@ -639,9 +648,10 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisposeAsync_DisposesResources()
     {
+        _output.WriteLine($"=== Running: {nameof(DisposeAsync_DisposesResources)} ===");
         // Arrange
         var client = new TestableWebSocketClient(
             _testUri,

@@ -2,17 +2,20 @@ using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using System.Net.WebSockets;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Core.Clients;
 
 public class WebSocketMessageReceiverTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IWebSocketConnectionManager> _connectionManagerMock;
     private readonly Mock<ILogger<WebSocketMessageReceiver>> _loggerMock;
     private readonly WebSocketClientOptions _defaultOptions;
 
-    public WebSocketMessageReceiverTests()
+    public WebSocketMessageReceiverTests(ITestOutputHelper output)
     {
+        _output = output;
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         
         _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
@@ -40,9 +43,10 @@ public class WebSocketMessageReceiverTests
         receiver.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -84,9 +88,10 @@ public class WebSocketMessageReceiverTests
         _connectionManagerMock.Verify(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_ConnectionLost_BreaksLoop()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ConnectionLost_BreaksLoop)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -115,9 +120,10 @@ public class WebSocketMessageReceiverTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage)} ===");
         // Arrange
         var options = new WebSocketClientOptions
         {
@@ -162,9 +168,10 @@ public class WebSocketMessageReceiverTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -203,9 +210,10 @@ public class WebSocketMessageReceiverTests
             Times.AtLeastOnce);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -254,9 +262,10 @@ public class WebSocketMessageReceiverTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -293,9 +302,10 @@ public class WebSocketMessageReceiverTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop()
     {
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,

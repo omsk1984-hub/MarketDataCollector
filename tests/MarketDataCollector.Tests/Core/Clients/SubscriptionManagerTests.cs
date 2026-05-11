@@ -1,17 +1,20 @@
 using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Core.Clients;
 
 public class SubscriptionManagerTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IWebSocketConnectionManager> _connectionManagerMock;
     private readonly Mock<ILogger<SubscriptionManager>> _loggerMock;
     private readonly WebSocketClientOptions _defaultOptions;
 
-    public SubscriptionManagerTests()
+    public SubscriptionManagerTests(ITestOutputHelper output)
     {
+        _output = output;
         _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
         _loggerMock = new Mock<ILogger<SubscriptionManager>>();
         _defaultOptions = new WebSocketClientOptions
@@ -90,9 +93,10 @@ public class SubscriptionManagerTests
             .WithParameterName("subscribeAction");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_Success_NoRetries()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_Success_NoRetries)} ===");
         // Arrange
         var manager = new SubscriptionManager(
             _connectionManagerMock.Object,
@@ -118,9 +122,10 @@ public class SubscriptionManagerTests
             Times.Never);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_ThrowsException_RetriesUpToMax()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_ThrowsException_RetriesUpToMax)} ===");
         // Arrange
         var retryCount = 0;
         var maxRetries = _defaultOptions.MaxSubscribeRetries;
@@ -162,9 +167,10 @@ public class SubscriptionManagerTests
             Times.Exactly(maxRetries));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_AllRetriesExhausted_Throws()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_AllRetriesExhausted_Throws)} ===");
         // Arrange
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
@@ -186,9 +192,10 @@ public class SubscriptionManagerTests
             .WithMessage("Subscription failed");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_CancellationToken_CancelsOperation()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_CancellationToken_CancelsOperation)} ===");
         // Arrange
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
@@ -223,9 +230,10 @@ public class SubscriptionManagerTests
             Times.Never);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_RetryDelayIsExponential()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_RetryDelayIsExponential)} ===");
         // Arrange
         var maxRetries = 3;
         
@@ -283,9 +291,10 @@ public class SubscriptionManagerTests
         }
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeWithRetryAsync_SymbolPassedToAction()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_SymbolPassedToAction)} ===");
         // Arrange
         string? capturedSymbol = null;
         

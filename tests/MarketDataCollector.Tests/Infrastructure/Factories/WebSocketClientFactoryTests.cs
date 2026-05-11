@@ -7,19 +7,22 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Infrastructure.Factories;
 
 public class WebSocketClientFactoryTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IMarketDataProcessor> _dataProcessorMock;
     private readonly Mock<IMonitoringService> _monitoringServiceMock;
     private readonly Mock<IOptions<ExchangeOptions>> _exchangeOptionsMock;
     private readonly Mock<IOptions<WebSocketClientOptions>> _wsOptionsMock;
     private readonly ILoggerFactory _loggerFactory;
 
-    public WebSocketClientFactoryTests()
+    public WebSocketClientFactoryTests(ITestOutputHelper output)
     {
+        _output = output;
         _dataProcessorMock = new Mock<IMarketDataProcessor>();
         _monitoringServiceMock = new Mock<IMonitoringService>();
         _exchangeOptionsMock = new Mock<IOptions<ExchangeOptions>>();

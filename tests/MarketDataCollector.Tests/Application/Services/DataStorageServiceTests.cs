@@ -9,16 +9,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Application.Services;
 
 public class DataStorageServiceTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IRawTickRepository> _repositoryMock;
     private readonly Mock<ILogger<DataStorageService>> _loggerMock;
 
-    public DataStorageServiceTests()
+    public DataStorageServiceTests(ITestOutputHelper output)
     {
+        _output = output;
         _repositoryMock = new Mock<IRawTickRepository>();
         _loggerMock = new Mock<ILogger<DataStorageService>>();
     }
@@ -47,9 +50,10 @@ public class DataStorageServiceTests
             _loggerMock.Object));
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTickAsync_SavesTickToRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTickAsync_SavesTickToRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -66,9 +70,10 @@ public class DataStorageServiceTests
         _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTickAsync_LogsDebugMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTickAsync_LogsDebugMessage)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -91,9 +96,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTickAsync_LogsTickDetails()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTickAsync_LogsTickDetails)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -118,9 +124,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTickAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTickAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -147,9 +154,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTicksBatchAsync_SavesBatchToRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTicksBatchAsync_SavesBatchToRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -170,9 +178,10 @@ public class DataStorageServiceTests
         _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTicksBatchAsync_LogsBatchSize()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTicksBatchAsync_LogsBatchSize)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -198,9 +207,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StoreRawTicksBatchAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTicksBatchAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -229,9 +239,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTicksByTickerAsync_ReturnsTicksFromRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTicksByTickerAsync_ReturnsTicksFromRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -255,9 +266,10 @@ public class DataStorageServiceTests
         result.First().Ticker.Should().Be("BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTicksByTickerAsync_WithDateRange_ReturnsTicksFromRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTicksByTickerAsync_WithDateRange_ReturnsTicksFromRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -282,9 +294,10 @@ public class DataStorageServiceTests
         result.Should().HaveCount(1);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTicksByTickerAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTicksByTickerAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -308,9 +321,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTicksByExchangeAsync_ReturnsTicksFromRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTicksByExchangeAsync_ReturnsTicksFromRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -333,9 +347,10 @@ public class DataStorageServiceTests
         result.Should().HaveCount(2);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTicksByExchangeAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTicksByExchangeAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -359,9 +374,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTotalTicksCountAsync_ReturnsCountFromRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTotalTicksCountAsync_ReturnsCountFromRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -377,9 +393,10 @@ public class DataStorageServiceTests
         count.Should().Be(100);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTotalTicksCountAsync_WithDateRange_ReturnsCountFromRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTotalTicksCountAsync_WithDateRange_ReturnsCountFromRepository)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -398,9 +415,10 @@ public class DataStorageServiceTests
         count.Should().Be(50);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetTotalTicksCountAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(GetTotalTicksCountAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -424,9 +442,10 @@ public class DataStorageServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task TickExistsAsync_ReturnsTrueWhenTickExists()
     {
+        _output.WriteLine($"=== Running: {nameof(TickExistsAsync_ReturnsTrueWhenTickExists)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -442,9 +461,10 @@ public class DataStorageServiceTests
         exists.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task TickExistsAsync_ReturnsFalseWhenTickDoesNotExist()
     {
+        _output.WriteLine($"=== Running: {nameof(TickExistsAsync_ReturnsFalseWhenTickDoesNotExist)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,
@@ -460,9 +480,10 @@ public class DataStorageServiceTests
         exists.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task TickExistsAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
     {
+        _output.WriteLine($"=== Running: {nameof(TickExistsAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
         // Arrange
         var service = new DataStorageService(
             _repositoryMock.Object,

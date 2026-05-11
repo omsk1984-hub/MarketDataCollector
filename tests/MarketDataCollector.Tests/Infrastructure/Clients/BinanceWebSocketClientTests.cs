@@ -5,11 +5,13 @@ using MarketDataCollector.Infrastructure.Clients;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Infrastructure.Clients;
 
 public class BinanceWebSocketClientTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IWebSocketConnectionManager> _connectionManagerMock;
     private readonly Mock<IWebSocketMessageReceiver> _messageReceiverMock;
     private readonly Mock<IReconnectStrategy> _reconnectStrategyMock;
@@ -18,8 +20,9 @@ public class BinanceWebSocketClientTests
     private readonly WebSocketClientOptions _defaultOptions;
     private readonly Uri _testUri;
 
-    public BinanceWebSocketClientTests()
+    public BinanceWebSocketClientTests(ITestOutputHelper output)
     {
+        _output = output;
         _connectionManagerMock = new Mock<IWebSocketConnectionManager>();
         _messageReceiverMock = new Mock<IWebSocketMessageReceiver>();
         _reconnectStrategyMock = new Mock<IReconnectStrategy>();
@@ -114,9 +117,10 @@ public class BinanceWebSocketClientTests
         uri.Should().Be(_testUri);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeToTickerAsync_SendsCorrectJsonMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeToTickerAsync_SendsCorrectJsonMessage)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -151,9 +155,10 @@ public class BinanceWebSocketClientTests
         _connectionManagerMock.Verify(cm => cm.SendAsync(expectedMessage, cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SubscribeToTickerAsync_SendsLowercaseSymbol()
     {
+        _output.WriteLine($"=== Running: {nameof(SubscribeToTickerAsync_SendsLowercaseSymbol)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -188,9 +193,10 @@ public class BinanceWebSocketClientTests
         _connectionManagerMock.Verify(cm => cm.SendAsync(expectedMessage, cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_ValidTradeMessage_CallsDataProcessor()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_ValidTradeMessage_CallsDataProcessor)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -239,9 +245,10 @@ public class BinanceWebSocketClientTests
             "Binance"), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_NonTradeMessage_DoesNothing()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_NonTradeMessage_DoesNothing)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -281,9 +288,10 @@ public class BinanceWebSocketClientTests
             It.IsAny<string>()), Times.Never);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_MissingTicker_DoesNotCallDataProcessor()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_MissingTicker_DoesNotCallDataProcessor)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -327,9 +335,10 @@ public class BinanceWebSocketClientTests
             It.IsAny<string>()), Times.Never);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_InvalidJson_CallsOnErrorOccurred()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_InvalidJson_CallsOnErrorOccurred)} ===");
         // Arrange
         var errorOccurred = false;
         Exception? capturedException = null;
@@ -372,9 +381,10 @@ public class BinanceWebSocketClientTests
         capturedException.Should().BeOfType<Exception>();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_MissingFields_UsesDefaultValues()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_MissingFields_UsesDefaultValues)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,
@@ -419,9 +429,10 @@ public class BinanceWebSocketClientTests
             "Binance"), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_WithAllFields_CallsDataProcessorWithCorrectValues()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_WithAllFields_CallsDataProcessorWithCorrectValues)} ===");
         // Arrange
         var client = new BinanceWebSocketClient(
             _testUri,

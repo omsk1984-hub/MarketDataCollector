@@ -1,16 +1,19 @@
 using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Interfaces;
 using System.Net.WebSockets;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Core.Clients;
 
 public class WebSocketConnectionManagerTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<ILogger<WebSocketConnectionManager>> _loggerMock;
     private readonly Mock<IClientWebSocket> _webSocketMock;
 
-    public WebSocketConnectionManagerTests()
+    public WebSocketConnectionManagerTests(ITestOutputHelper output)
     {
+        _output = output;
         _loggerMock = new Mock<ILogger<WebSocketConnectionManager>>();
         _webSocketMock = new Mock<IClientWebSocket>();
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
@@ -55,9 +58,10 @@ public class WebSocketConnectionManagerTests
         result.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ConnectAsync_WhenNotConnected_CreatesNewWebSocketAndConnects()
     {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WhenNotConnected_CreatesNewWebSocketAndConnects)} ===");
         // Arrange
         var newWebSocketMock = new Mock<IClientWebSocket>();
         newWebSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
@@ -80,9 +84,10 @@ public class WebSocketConnectionManagerTests
         newWebSocketMock.Verify(ws => ws.ConnectAsync(uri, cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ConnectAsync_WhenAlreadyConnected_DoesNothing()
     {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WhenAlreadyConnected_DoesNothing)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -104,9 +109,10 @@ public class WebSocketConnectionManagerTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisconnectAsync_WhenOpen_ClosesGracefully()
     {
+        _output.WriteLine($"=== Running: {nameof(DisconnectAsync_WhenOpen_ClosesGracefully)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -127,9 +133,10 @@ public class WebSocketConnectionManagerTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisconnectAsync_WhenClosed_DoesNothing()
     {
+        _output.WriteLine($"=== Running: {nameof(DisconnectAsync_WhenClosed_DoesNothing)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -142,9 +149,10 @@ public class WebSocketConnectionManagerTests
         _webSocketMock.Verify(ws => ws.CloseAsync(It.IsAny<WebSocketCloseStatus>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task DisconnectAsync_WhenCloseThrows_LogsWarning()
     {
+        _output.WriteLine($"=== Running: {nameof(DisconnectAsync_WhenCloseThrows_LogsWarning)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
         _webSocketMock.Setup(ws => ws.CloseAsync(
@@ -170,9 +178,10 @@ public class WebSocketConnectionManagerTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SendAsync_WhenNotOpen_ThrowsInvalidOperationException()
     {
+        _output.WriteLine($"=== Running: {nameof(SendAsync_WhenNotOpen_ThrowsInvalidOperationException)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -184,9 +193,10 @@ public class WebSocketConnectionManagerTests
             .WithMessage("WebSocket не подключён.");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task SendAsync_WhenOpen_SendsMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(SendAsync_WhenOpen_SendsMessage)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -207,9 +217,10 @@ public class WebSocketConnectionManagerTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ReceiveAsync_WhenNotOpen_ThrowsInvalidOperationException()
     {
+        _output.WriteLine($"=== Running: {nameof(ReceiveAsync_WhenNotOpen_ThrowsInvalidOperationException)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
         var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
@@ -222,9 +233,10 @@ public class WebSocketConnectionManagerTests
             .WithMessage("WebSocket не подключён.");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public async Task ReceiveAsync_WhenOpen_ReturnsResult()
     {
+        _output.WriteLine($"=== Running: {nameof(ReceiveAsync_WhenOpen_ReturnsResult)} ===");
         // Arrange
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
         var expectedResult = new WebSocketReceiveResult(

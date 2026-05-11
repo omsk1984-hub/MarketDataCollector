@@ -6,17 +6,20 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Application.Services;
 
 public class MarketDataProcessorTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<IRawTickRepository> _repositoryMock;
     private readonly Mock<ILogger<MarketDataProcessor>> _loggerMock;
     private readonly Mock<ITimeService> _timeServiceMock;
 
-    public MarketDataProcessorTests()
+    public MarketDataProcessorTests(ITestOutputHelper output)
     {
+        _output = output;
         _repositoryMock = new Mock<IRawTickRepository>();
         _loggerMock = new Mock<ILogger<MarketDataProcessor>>();
         _timeServiceMock = new Mock<ITimeService>();
@@ -52,9 +55,10 @@ public class MarketDataProcessorTests
         processor.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessTickAsync_WritesToChannel()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WritesToChannel)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -76,9 +80,10 @@ public class MarketDataProcessorTests
         processor.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessTickAsync_LogsDebugMessage()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsDebugMessage)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -107,9 +112,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessTickAsync_LogsTickerDetails()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsTickerDetails)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -141,9 +147,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StartProcessingAsync_StartsBackgroundTask()
     {
+        _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_StartsBackgroundTask)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -169,9 +176,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StartProcessingAsync_LogsBatchSize()
     {
+        _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_LogsBatchSize)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -196,9 +204,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StopProcessingAsync_StopsProcessing()
     {
+        _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_StopsProcessing)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -226,9 +235,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task StopProcessingAsync_LogsProcessedCount()
     {
+        _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_LogsProcessedCount)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -257,9 +267,10 @@ public class MarketDataProcessorTests
             Times.AtLeastOnce);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetProcessedCountAsync_ReturnsZeroInitially()
     {
+        _output.WriteLine($"=== Running: {nameof(GetProcessedCountAsync_ReturnsZeroInitially)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -275,9 +286,10 @@ public class MarketDataProcessorTests
         count.Should().Be(0);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessTickAsync_WithDifferentValues_WritesMultipleTicks()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WithDifferentValues_WritesMultipleTicks)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -295,9 +307,10 @@ public class MarketDataProcessorTests
         processor.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_SavesNewTicksToRepository()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SavesNewTicksToRepository)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -325,9 +338,10 @@ public class MarketDataProcessorTests
         _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_SkipsDuplicateTicks()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SkipsDuplicateTicks)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -356,9 +370,10 @@ public class MarketDataProcessorTests
         _repositoryMock.Verify(x => x.AddRangeAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_LogsSkippedDuplicates()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSkippedDuplicates)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -392,9 +407,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -438,9 +454,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_LogsSavedCount()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSavedCount)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,
@@ -474,9 +491,10 @@ public class MarketDataProcessorTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_LogsTotalProcessedEvery100()
     {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsTotalProcessedEvery100)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
             _repositoryMock.Object,

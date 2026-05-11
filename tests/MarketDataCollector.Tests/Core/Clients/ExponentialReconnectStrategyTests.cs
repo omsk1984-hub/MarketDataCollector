@@ -1,15 +1,18 @@
 using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Configuration;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Core.Clients;
 
 public class ExponentialReconnectStrategyTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly WebSocketClientOptions _defaultOptions;
     private readonly Mock<ILogger<ExponentialReconnectStrategy>> _loggerMock;
 
-    public ExponentialReconnectStrategyTests()
+    public ExponentialReconnectStrategyTests(ITestOutputHelper output)
     {
+        _output = output;
         _defaultOptions = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(1),

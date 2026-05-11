@@ -7,16 +7,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Infrastructure.Repositories;
 
 public class RawTickRepositoryTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly MarketDataDbContext _context;
     private readonly RawTickRepository _repository;
 
-    public RawTickRepositoryTests()
+    public RawTickRepositoryTests(ITestOutputHelper output)
     {
+        _output = output;
         var options = new DbContextOptionsBuilder<MarketDataDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -25,9 +28,10 @@ public class RawTickRepositoryTests
         _repository = new RawTickRepository(_context);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByIdAsync_WhenExists_ReturnsTick()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByIdAsync_WhenExists_ReturnsTick)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
         await _repository.AddAsync(tick);
@@ -42,9 +46,10 @@ public class RawTickRepositoryTests
         result.Ticker.Should().Be("BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByIdAsync_WhenNotExists_ReturnsNull()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByIdAsync_WhenNotExists_ReturnsNull)} ===");
         // Arrange
         var nonExistentId = Guid.NewGuid();
 
@@ -55,9 +60,10 @@ public class RawTickRepositoryTests
         result.Should().BeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetAllAsync_ReturnsAllTicks()
     {
+        _output.WriteLine($"=== Running: {nameof(GetAllAsync_ReturnsAllTicks)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -79,9 +85,10 @@ public class RawTickRepositoryTests
         result.Should().HaveCount(3);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task AddAsync_AddsTickToDatabase()
     {
+        _output.WriteLine($"=== Running: {nameof(AddAsync_AddsTickToDatabase)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
 
@@ -95,9 +102,10 @@ public class RawTickRepositoryTests
         result!.Ticker.Should().Be("BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task AddRangeAsync_AddsMultipleTicksToDatabase()
     {
+        _output.WriteLine($"=== Running: {nameof(AddRangeAsync_AddsMultipleTicksToDatabase)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -115,9 +123,10 @@ public class RawTickRepositoryTests
         allTicks.Should().HaveCount(3);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task Update_UpdatesTickInDatabase()
     {
+        _output.WriteLine($"=== Running: {nameof(Update_UpdatesTickInDatabase)} ===");
         // Arrange
         var timeService = new SystemTimeService();
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", timeService);
@@ -134,9 +143,10 @@ public class RawTickRepositoryTests
         result!.Price.Should().Be(2000.00m);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task Remove_RemovesTickFromDatabase()
     {
+        _output.WriteLine($"=== Running: {nameof(Remove_RemovesTickFromDatabase)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
         await _repository.AddAsync(tick);
@@ -151,9 +161,10 @@ public class RawTickRepositoryTests
         result.Should().BeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByTickerAsync_ReturnsTicksForTicker()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_ReturnsTicksForTicker)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -176,9 +187,10 @@ public class RawTickRepositoryTests
         result.All(t => t.Ticker == "BTCUSDT").Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByTickerAsync_WithFromDate_ReturnsTicksFromThatDate()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_WithFromDate_ReturnsTicksFromThatDate)} ===");
         // Arrange
         var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
@@ -202,9 +214,10 @@ public class RawTickRepositoryTests
         result.All(t => t.Timestamp >= now.AddDays(-1.5));
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByTickerAsync_WithToDate_ReturnsTicksUntilThatDate()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_WithToDate_ReturnsTicksUntilThatDate)} ===");
         // Arrange
         var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
@@ -228,9 +241,10 @@ public class RawTickRepositoryTests
         result.First().Timestamp.Should().Be(now.AddDays(-2));
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByTickerAsync_WithDateRange_ReturnsTicksInRange()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_WithDateRange_ReturnsTicksInRange)} ===");
         // Arrange
         var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
@@ -254,9 +268,10 @@ public class RawTickRepositoryTests
         result.First().Timestamp.Should().Be(now.AddDays(-1));
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByTickerAsync_ReturnsTicksOrderedByTimestamp()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_ReturnsTicksOrderedByTimestamp)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -279,9 +294,10 @@ public class RawTickRepositoryTests
         result.Last().Timestamp.Should().Be(DateTime.UtcNow);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByExchangeAsync_ReturnsTicksForExchange()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByExchangeAsync_ReturnsTicksForExchange)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -304,9 +320,10 @@ public class RawTickRepositoryTests
         result.All(t => t.Exchange == "Binance").Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetByExchangeAsync_WithDateRange_ReturnsTicksInRange()
     {
+        _output.WriteLine($"=== Running: {nameof(GetByExchangeAsync_WithDateRange_ReturnsTicksInRange)} ===");
         // Arrange
         var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
@@ -330,9 +347,10 @@ public class RawTickRepositoryTests
         result.First().Timestamp.Should().Be(now.AddDays(-1));
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ExistsAsync_WhenTickExists_ReturnsTrue()
     {
+        _output.WriteLine($"=== Running: {nameof(ExistsAsync_WhenTickExists_ReturnsTrue)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
         await _repository.AddAsync(tick);
@@ -345,9 +363,10 @@ public class RawTickRepositoryTests
         exists.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ExistsAsync_WhenTickDoesNotExist_ReturnsFalse()
     {
+        _output.WriteLine($"=== Running: {nameof(ExistsAsync_WhenTickDoesNotExist_ReturnsFalse)} ===");
         // Arrange
         var differentTimestamp = DateTime.UtcNow.AddSeconds(1);
 
@@ -358,9 +377,10 @@ public class RawTickRepositoryTests
         exists.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ExistsAsync_WithDifferentTicker_ReturnsFalse()
     {
+        _output.WriteLine($"=== Running: {nameof(ExistsAsync_WithDifferentTicker_ReturnsFalse)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
         await _repository.AddAsync(tick);
@@ -373,9 +393,10 @@ public class RawTickRepositoryTests
         exists.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ExistsAsync_WithDifferentExchange_ReturnsFalse()
     {
+        _output.WriteLine($"=== Running: {nameof(ExistsAsync_WithDifferentExchange_ReturnsFalse)} ===");
         // Arrange
         var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
         await _repository.AddAsync(tick);
@@ -388,9 +409,10 @@ public class RawTickRepositoryTests
         exists.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetCountAsync_ReturnsTotalCount()
     {
+        _output.WriteLine($"=== Running: {nameof(GetCountAsync_ReturnsTotalCount)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {
@@ -412,9 +434,10 @@ public class RawTickRepositoryTests
         count.Should().Be(3);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task GetCountAsync_WithDateRange_ReturnsCountInRange()
     {
+        _output.WriteLine($"=== Running: {nameof(GetCountAsync_WithDateRange_ReturnsCountInRange)} ===");
         // Arrange
         var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
@@ -437,9 +460,10 @@ public class RawTickRepositoryTests
         count.Should().Be(1);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task FindAsync_WithPredicate_ReturnsMatchingTicks()
     {
+        _output.WriteLine($"=== Running: {nameof(FindAsync_WithPredicate_ReturnsMatchingTicks)} ===");
         // Arrange
         var ticks = new List<RawTick>
         {

@@ -3,16 +3,19 @@ using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
+using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Application.Services;
 
 public class MonitoringServiceTests
 {
+    private readonly ITestOutputHelper _output;
     private readonly Mock<ILogger<MonitoringService>> _loggerMock;
     private readonly MonitoringService _service;
 
-    public MonitoringServiceTests()
+    public MonitoringServiceTests(ITestOutputHelper output)
     {
+        _output = output;
         _loggerMock = new Mock<ILogger<MonitoringService>>();
         _service = new MonitoringService(_loggerMock.Object);
     }
