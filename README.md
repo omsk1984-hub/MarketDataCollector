@@ -18,7 +18,7 @@
 ### 2. Обработка потока данных
 - Нормализация к единому формату (тикер, цена, объём, timestamp, биржа)
 - Двухуровневая дедупликация: в памяти (batch, `GroupBy`) + проверка в БД по уникальному ключу `(Ticker, Exchange, Timestamp)`
-- Асинхронная обработка через `Channel<T>` с батчевой записью (batch size по умолчанию 5)
+- Асинхронная обработка через `Channel<T>` с батчевой записью (batch size по умолчанию 100)
 - Bulk insert одним запросом (`AddRangeAsync` + `SaveChangesAsync`)
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
@@ -219,7 +219,7 @@ IWebSocketMessageReceiver (цикл приёма)
 IMarketDataProcessor.ProcessTickAsync()
     ↓ (запись в Channel<TickData>)
 MarketDataProcessor (фоновый batch loop)
-    ↓ (накопление батча, _batchSize = 5)
+    ↓ (накопление батча, _batchSize = 100)
 Двухуровневая дедупликация:
     1. GroupBy в памяти (Ticker, Exchange, Timestamp)
     2. Проверка в БД через ExistsAsync()
