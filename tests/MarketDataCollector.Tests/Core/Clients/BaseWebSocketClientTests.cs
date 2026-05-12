@@ -373,8 +373,10 @@ public class BaseWebSocketClientTests
     public async Task StartAsync_StartsBackgroundRecoveryLoop()
     {
         // Arrange
-        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
+        var isConnected = false;
+        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(() => isConnected);
         _connectionManagerMock.Setup(cm => cm.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .Callback(() => isConnected = true)
             .Returns(Task.CompletedTask);
 
         var client = new TestableWebSocketClient(
@@ -409,8 +411,11 @@ public class BaseWebSocketClientTests
         // Проверяем, что ConnectAsync был вызван внутри фонового цикла
         _connectionManagerMock.Verify(cm => cm.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
 
-        // Останавливаем
+        // Останавливаем фоновый цикл через отмену токена
         cts.Cancel();
+
+        // Ждём завершения фоновой задачи
+        await task;
     }
 
     [Fact(Timeout = 5000)]
@@ -418,7 +423,11 @@ public class BaseWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(StopAsync_StopsBackgroundRecoveryLoop)} ===");
         // Arrange
-        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
+        var isConnected = false;
+        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(() => isConnected);
+        _connectionManagerMock.Setup(cm => cm.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .Callback(() => isConnected = true)
+            .Returns(Task.CompletedTask);
 
         var client = new TestableWebSocketClient(
             _testUri,
@@ -434,6 +443,9 @@ public class BaseWebSocketClientTests
         
         // Запускаем фоновый цикл
         await client.StartAsync(cts.Token);
+
+        // Даём время фоновому циклу выполнить ConnectAsync и войти во внутренний цикл
+        await Task.Delay(200);
 
         // Act
         await client.StopAsync(cts.Token);
