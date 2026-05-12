@@ -21,7 +21,7 @@ public class ExponentialReconnectStrategyTests
         _loggerMock = new Mock<ILogger<ExponentialReconnectStrategy>>();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithValidOptions_SetsProperties()
     {
         // Arrange & Act
@@ -33,7 +33,7 @@ public class ExponentialReconnectStrategyTests
         strategy.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_FirstAttempt_ReturnsBaseDelay()
     {
         // Arrange
@@ -51,7 +51,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(2));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_SecondAttempt_ReturnsDoubleDelay()
     {
         // Arrange
@@ -69,7 +69,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(4));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_ThirdAttempt_ReturnsExponentialDelay()
     {
         // Arrange
@@ -87,7 +87,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(8));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_FourthAttempt_ReturnsExponentialDelay()
     {
         // Arrange
@@ -105,7 +105,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(16));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_ExceedsMaxDelay_ReturnsCappedDelay()
     {
         // Arrange
@@ -123,7 +123,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(10));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_WithLargeAttempt_ReturnsMaxDelay()
     {
         // Arrange
@@ -141,7 +141,7 @@ public class ExponentialReconnectStrategyTests
         delay.Should().Be(TimeSpan.FromSeconds(30));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_WithZeroAttempt_ThrowsArgumentOutOfRangeException()
     {
         // Arrange
@@ -153,7 +153,7 @@ public class ExponentialReconnectStrategyTests
             .WithParameterName("attempt");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetDelay_WithNegativeAttempt_ThrowsArgumentOutOfRangeException()
     {
         // Arrange
@@ -165,7 +165,7 @@ public class ExponentialReconnectStrategyTests
             .WithParameterName("attempt");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void ShouldRetry_AlwaysReturnsTrue()
     {
         // Arrange
@@ -182,7 +182,7 @@ public class ExponentialReconnectStrategyTests
         result3.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Reset_LogsDebugMessage()
     {
         // Arrange

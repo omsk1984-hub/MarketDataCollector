@@ -30,7 +30,7 @@ public class WebSocketMessageReceiverTests
         };
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithValidDependencies_SetsProperties()
     {   
         // Arrange & Act
@@ -340,7 +340,7 @@ public class WebSocketMessageReceiverTests
         task.Exception.Should().BeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StopReceiveLoop_LogsDebugMessage()
     {
         // Arrange

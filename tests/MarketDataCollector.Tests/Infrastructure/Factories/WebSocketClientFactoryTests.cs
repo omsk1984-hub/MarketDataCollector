@@ -56,7 +56,7 @@ public class WebSocketClientFactoryTests
         });
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithValidParameters_CreatesFactory()
     {
         // Arrange & Act
@@ -71,7 +71,7 @@ public class WebSocketClientFactoryTests
         factory.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullDataProcessor_ThrowsArgumentNullException()
     {
         // Arrange
@@ -86,7 +86,7 @@ public class WebSocketClientFactoryTests
             _loggerFactory));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullMonitoringService_ThrowsArgumentNullException()
     {
         // Arrange
@@ -101,7 +101,7 @@ public class WebSocketClientFactoryTests
             _loggerFactory));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullExchangeOptions_ThrowsArgumentNullException()
     {
         // Arrange
@@ -116,7 +116,7 @@ public class WebSocketClientFactoryTests
             _loggerFactory));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullWsOptions_ThrowsArgumentNullException()
     {
         // Arrange
@@ -131,7 +131,7 @@ public class WebSocketClientFactoryTests
             _loggerFactory));
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_WithValidParameters_CreatesClient()
     {
         // Arrange
@@ -153,7 +153,7 @@ public class WebSocketClientFactoryTests
         client.Should().BeOfType<BinanceWebSocketClient>();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithCorrectSymbol()
     {
         // Arrange
@@ -175,7 +175,7 @@ public class WebSocketClientFactoryTests
         binanceClient!.Symbol.Should().Be("BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithCorrectExchangeName()
     {
         // Arrange
@@ -197,7 +197,7 @@ public class WebSocketClientFactoryTests
         binanceClient!.ExchangeName.Should().Be("Binance");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithCorrectUri()
     {
         // Arrange
@@ -219,7 +219,7 @@ public class WebSocketClientFactoryTests
         binanceClient!.Name.Should().Contain("btcusdt@trade");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithSubscriptionManager()
     {
         // Arrange
@@ -241,7 +241,7 @@ public class WebSocketClientFactoryTests
         binanceClient!.IsConnected.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithMonitoringIntegration()
     {
         // Arrange
@@ -264,7 +264,7 @@ public class WebSocketClientFactoryTests
         client.Name.Should().Be("Binance-BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateAllClients_CreatesAllClients()
     {
         // Arrange
@@ -283,7 +283,7 @@ public class WebSocketClientFactoryTests
         clients.Should().HaveCountGreaterThan(0);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void CreateAllClients_CreatesBinanceClients()
     {
         // Arrange

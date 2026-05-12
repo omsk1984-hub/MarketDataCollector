@@ -20,7 +20,7 @@ public class MonitoringServiceTests
         _service = new MonitoringService(_loggerMock.Object);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_CreatesService()
     {
         // Arrange & Act
@@ -30,7 +30,7 @@ public class MonitoringServiceTests
         service.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StartMonitoring_StartsStatusTimer()
     {
         // Arrange
@@ -51,7 +51,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StopMonitoring_StopsStatusTimer()
     {
         // Arrange
@@ -72,7 +72,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_UpdatesStatusToConnected()
     {
         // Arrange
@@ -85,7 +85,7 @@ public class MonitoringServiceTests
         service.GetConnectionStatus("Binance").Should().Be(ConnectionStatus.Connected);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_UpdatesStatusToDisconnected()
     {
         // Arrange
@@ -98,7 +98,7 @@ public class MonitoringServiceTests
         service.GetConnectionStatus("Binance").Should().Be(ConnectionStatus.Disconnected);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_UpdatesStatusToError()
     {
         // Arrange
@@ -111,7 +111,7 @@ public class MonitoringServiceTests
         service.GetConnectionStatus("Binance").Should().Be(ConnectionStatus.Error);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_LogsConnectedEvent()
     {
         // Arrange
@@ -131,7 +131,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_LogsDisconnectedEvent()
     {
         // Arrange
@@ -151,7 +151,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_LogsErrorEvent()
     {
         // Arrange
@@ -171,7 +171,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void UpdateConnectionStatus_LogsErrorMessage()
     {
         // Arrange
@@ -191,7 +191,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IncrementTickCounter_IncrementsCounter()
     {
         // Arrange
@@ -204,7 +204,7 @@ public class MonitoringServiceTests
         service.GetTickCount("Binance").Should().Be(1);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IncrementTickCounter_IncrementsCounterMultipleTimes()
     {
         // Arrange
@@ -219,7 +219,7 @@ public class MonitoringServiceTests
         service.GetTickCount("Binance").Should().Be(3);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IncrementTickCounter_IncrementsTotalCount()
     {
         // Arrange
@@ -233,7 +233,7 @@ public class MonitoringServiceTests
         service.GetTotalTicksProcessed().Should().Be(2);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IncrementTickCounter_DifferentExchangesHaveSeparateCounters()
     {
         // Arrange
@@ -249,7 +249,7 @@ public class MonitoringServiceTests
         service.GetTickCount("Kraken").Should().Be(1);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetConnectionStatus_WhenNotSet_ReturnsDisconnected()
     {
         // Arrange
@@ -262,7 +262,7 @@ public class MonitoringServiceTests
         status.Should().Be(ConnectionStatus.Disconnected);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetTickCount_WhenNotSet_ReturnsZero()
     {
         // Arrange
@@ -275,7 +275,7 @@ public class MonitoringServiceTests
         count.Should().Be(0);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetTotalTicksProcessed_ReturnsZeroInitially()
     {
         // Arrange
@@ -288,7 +288,7 @@ public class MonitoringServiceTests
         count.Should().Be(0);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void ResetCounters_ResetsTickCounters()
     {
         // Arrange
@@ -306,7 +306,7 @@ public class MonitoringServiceTests
         service.GetTotalTicksProcessed().Should().Be(0);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void ResetCounters_LogsResetEvent()
     {
         // Arrange
@@ -326,7 +326,7 @@ public class MonitoringServiceTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StartMonitoring_CanBeCalledMultipleTimes()
     {
         // Arrange
@@ -341,7 +341,7 @@ public class MonitoringServiceTests
         service.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StopMonitoring_CanBeCalledMultipleTimes()
     {
         // Arrange

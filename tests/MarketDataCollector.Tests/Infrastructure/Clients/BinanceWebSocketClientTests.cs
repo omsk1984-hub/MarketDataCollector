@@ -40,7 +40,7 @@ public class BinanceWebSocketClientTests
         _testUri = new Uri("wss://stream.binance.com:9443/ws/btcusdt@trade");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullDataProcessor_ThrowsArgumentNullException()
     {
         // Arrange
@@ -64,7 +64,7 @@ public class BinanceWebSocketClientTests
             .WithParameterName("dataProcessor");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_SetsPropertiesCorrectly()
     {
         // Arrange & Act
@@ -85,7 +85,7 @@ public class BinanceWebSocketClientTests
         client.Name.Should().Be("Binance_BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void GetWebSocketUri_ReturnsConstructorUri()
     {
         // Arrange

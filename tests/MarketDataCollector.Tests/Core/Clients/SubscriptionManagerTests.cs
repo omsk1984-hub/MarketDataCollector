@@ -27,7 +27,7 @@ public class SubscriptionManagerTests
         };
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullConnectionManager_ThrowsArgumentNullException()
     {
         // Arrange
@@ -44,7 +44,7 @@ public class SubscriptionManagerTests
             .WithParameterName("connectionManager");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullOptions_ThrowsArgumentNullException()
     {
         // Arrange
@@ -61,7 +61,7 @@ public class SubscriptionManagerTests
             .WithParameterName("options");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
         // Arrange
@@ -77,7 +77,7 @@ public class SubscriptionManagerTests
             .WithParameterName("logger");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullSubscribeAction_ThrowsArgumentNullException()
     {
         // Arrange

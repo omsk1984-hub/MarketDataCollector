@@ -30,7 +30,7 @@
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage()
 {
     // Arrange
@@ -84,7 +84,7 @@ public async Task StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMess
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_ConnectionLost_BreaksLoop()
 {
     // Arrange
@@ -127,7 +127,7 @@ public async Task StartReceiveLoopAsync_ConnectionLost_BreaksLoop()
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage()
 {
     // Arrange
@@ -185,7 +185,7 @@ public async Task StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage()
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError()
 {
     // Arrange
@@ -236,7 +236,7 @@ public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError()
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError()
 {
     // Arrange
@@ -295,7 +295,7 @@ public async Task StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError()
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop()
 {
     // Arrange
@@ -344,7 +344,7 @@ public async Task StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop()
 
 **Пример кода:**
 ```csharp
-[Fact]
+[Fact(Timeout = 5000)]
 public async Task StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop()
 {
     // Arrange

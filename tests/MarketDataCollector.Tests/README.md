@@ -46,7 +46,7 @@ public class NewServiceTests
         // Assert
     }
 
-    [Fact]  // 🟢 синхронный — без таймаута
+    [Fact(Timeout = 5000)]  // 🟢 синхронный — без таймаута
     public void SomeSyncMethod_ShouldReturnCorrectResult()
     {
         // синхронные тесты не требуют таймаута
@@ -73,7 +73,7 @@ public class NewServiceTests
 - [ ] Конструктор принимает `ITestOutputHelper output` и сохраняет в поле
 - [ ] Каждый async-тест помечен `[Fact(Timeout = 5000)]` или `[Fact(Timeout = 10000)]`
 - [ ] Каждый async-тест начинается с `_output.WriteLine($"=== Running: {nameof(...)} ===");`
-- [ ] Синхронные тесты используют `[Fact]` без таймаута
+- [ ] Синхронные тесты используют `[Fact(Timeout = 5000)]` без таймаута
 - [ ] В `.csproj` добавлен `<Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />` (если ещё не добавлен)
 
 ### 5.6. Пример готового теста

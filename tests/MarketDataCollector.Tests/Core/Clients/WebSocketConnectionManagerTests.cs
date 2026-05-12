@@ -19,7 +19,7 @@ public class WebSocketConnectionManagerTests
         _webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullWebSocket_ThrowsArgumentNullException()
     {
         // Arrange
@@ -31,7 +31,7 @@ public class WebSocketConnectionManagerTests
             .WithParameterName("webSocket");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IsConnected_WhenClosed_ReturnsFalse()
     {
         // Arrange
@@ -44,7 +44,7 @@ public class WebSocketConnectionManagerTests
         result.Should().BeFalse();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IsConnected_WhenOpen_ReturnsTrue()
     {
         // Arrange
@@ -260,7 +260,7 @@ public class WebSocketConnectionManagerTests
         _webSocketMock.Verify(ws => ws.ReceiveAsync(buffer, cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void DisposeCurrentSocket_DisposesOldSocketAndCreatesNewOne()
     {
         // Arrange
@@ -275,7 +275,7 @@ public class WebSocketConnectionManagerTests
         manager.IsConnected.Should().BeFalse(); // Новый сокет должен быть в закрытом состоянии
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StateChanged_Event_CanSubscribe()
     {
         // Arrange

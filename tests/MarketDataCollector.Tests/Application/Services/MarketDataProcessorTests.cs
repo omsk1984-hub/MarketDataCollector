@@ -25,7 +25,7 @@ public class MarketDataProcessorTests
         _timeServiceMock = new Mock<ITimeService>();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithValidParameters_CreatesProcessor()
     {
         // Arrange & Act
@@ -40,7 +40,7 @@ public class MarketDataProcessorTests
         processor.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithZeroBatchSize_CreatesProcessor()
     {
         // Arrange & Act

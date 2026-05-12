@@ -26,7 +26,7 @@ public class DataStorageServiceTests
         _loggerMock = new Mock<ILogger<DataStorageService>>();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithValidParameters_CreatesService()
     {
         // Arrange & Act
@@ -38,7 +38,7 @@ public class DataStorageServiceTests
         service.Should().NotBeNull();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullRepository_ThrowsArgumentNullException()
     {
         // Arrange

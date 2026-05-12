@@ -64,7 +64,7 @@ public class BaseWebSocketClientTests
         _testUri = new Uri("wss://test.example.com/ws");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullConnectionManager_ThrowsArgumentNullException()
     {
         // Arrange
@@ -86,7 +86,7 @@ public class BaseWebSocketClientTests
             .WithParameterName("connectionManager");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullMessageReceiver_ThrowsArgumentNullException()
     {
         // Arrange
@@ -108,7 +108,7 @@ public class BaseWebSocketClientTests
             .WithParameterName("messageReceiver");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullReconnectStrategy_ThrowsArgumentNullException()
     {
         // Arrange
@@ -130,7 +130,7 @@ public class BaseWebSocketClientTests
             .WithParameterName("reconnectStrategy");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullOptions_ThrowsArgumentNullException()
     {
         // Arrange
@@ -153,7 +153,7 @@ public class BaseWebSocketClientTests
             .WithParameterName("options");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
         // Arrange
@@ -175,7 +175,7 @@ public class BaseWebSocketClientTests
             .WithParameterName("logger");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Constructor_SetsPropertiesCorrectly()
     {
         // Arrange & Act
@@ -195,7 +195,7 @@ public class BaseWebSocketClientTests
         client.Name.Should().Be("Binance_BTCUSDT");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void IsConnected_ReturnsConnectionManagerIsConnected()
     {
         // Arrange
@@ -218,11 +218,12 @@ public class BaseWebSocketClientTests
         result.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void SetSubscriptionManager_SetsManagerCorrectly()
     {
         // Arrange
         var subscriptionManagerMock = new Mock<ISubscriptionManager>();
+        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
         
         var client = new TestableWebSocketClient(
             _testUri,
@@ -236,13 +237,15 @@ public class BaseWebSocketClientTests
 
         // Act
         client.SetSubscriptionManager(subscriptionManagerMock.Object);
+        
+        // Выполняем ConnectAsync, чтобы проверить, что subscriptionManager реально используется
+        client.ConnectAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         // Assert
-        // Проверяем, что менеджер установлен (через проверку, что нет исключения)
-        client.Should().NotBeNull();
+        subscriptionManagerMock.Verify(sm => sm.SubscribeWithRetryAsync("BTCUSDT", CancellationToken.None), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void SetSubscriptionManager_WithNull_ThrowsArgumentNullException()
     {
         // Arrange
@@ -325,6 +328,15 @@ public class BaseWebSocketClientTests
             It.IsAny<Action<string>>(),
             It.IsAny<Action<Exception>>(),
             It.IsAny<CancellationToken>()), Times.Once);
+        // Проверяем, что OnConnected() был вызван
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Подключено")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [Fact(Timeout = 5000)]
@@ -357,7 +369,7 @@ public class BaseWebSocketClientTests
         subscriptionManagerMock.Verify(sm => sm.SubscribeWithRetryAsync("BTCUSDT", cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void StartAsync_StartsBackgroundRecoveryLoop()
     {
         // Arrange
@@ -406,7 +418,7 @@ public class BaseWebSocketClientTests
         using var cts = new CancellationTokenSource();
         
         // Запускаем фоновый цикл
-        client.StartAsync(cts.Token);
+        await client.StartAsync(cts.Token);
         await Task.Delay(100);
 
         // Act
@@ -448,6 +460,15 @@ public class BaseWebSocketClientTests
         // Assert
         _connectionManagerMock.Verify(cm => cm.DisconnectAsync(cancellationToken), Times.Once);
         _messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        // Проверяем, что OnDisconnected() был вызван
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Отключено")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [Fact(Timeout = 5000)]
@@ -476,8 +497,8 @@ public class BaseWebSocketClientTests
         _connectionManagerMock.Verify(cm => cm.DisconnectAsync(cancellationToken), Times.Never);
     }
 
-    [Fact]
-    public void SendAsync_DelegatesToConnectionManager()
+    [Fact(Timeout = 5000)]
+    public async Task SendAsync_DelegatesToConnectionManager()
     {
         // Arrange
         _connectionManagerMock.Setup(cm => cm.SendAsync(
@@ -498,13 +519,13 @@ public class BaseWebSocketClientTests
         var cancellationToken = CancellationToken.None;
 
         // Act
-        client.SendAsync("test message", cancellationToken);
+        await client.SendAsync("test message", cancellationToken);
 
         // Assert
         _connectionManagerMock.Verify(cm => cm.SendAsync("test message", cancellationToken), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void OnMessageReceived_RaisesMessageReceivedEvent()
     {
         // Arrange
@@ -535,7 +556,7 @@ public class BaseWebSocketClientTests
         capturedMessage.Should().Be("test message");
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void OnConnected_RaisesConnectedEvent()
     {
         // Arrange
@@ -571,7 +592,7 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void OnDisconnected_RaisesDisconnectedEvent()
     {
         // Arrange
@@ -607,7 +628,7 @@ public class BaseWebSocketClientTests
             Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void OnErrorOccurred_RaisesErrorOccurredEvent()
     {
         // Arrange
@@ -653,43 +674,62 @@ public class BaseWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(DisposeAsync_DisposesResources)} ===");
         // Arrange
+        var connectionManagerMock = new Mock<IWebSocketConnectionManager>();
+        var messageReceiverMock = new Mock<IWebSocketMessageReceiver>();
+        var reconnectStrategyMock = new Mock<IReconnectStrategy>();
+        var loggerMock = new Mock<ILogger<TestableWebSocketClient>>();
+        
+        // Настраиваем connectionManager как IDisposable для проверки вызова Dispose
+        var disposableConnectionManager = connectionManagerMock.As<IDisposable>();
+        
         var client = new TestableWebSocketClient(
             _testUri,
             "Binance",
             "BTCUSDT",
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
+            connectionManagerMock.Object,
+            messageReceiverMock.Object,
+            reconnectStrategyMock.Object,
             Options.Create(_defaultOptions),
-            _loggerMock.Object);
+            loggerMock.Object);
 
         // Act
         await client.DisposeAsync();
 
         // Assert
-        _messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
-        _connectionManagerMock.VerifyAdd(cm => cm.StateChanged += It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
-        _connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
+        messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        connectionManagerMock.VerifyAdd(cm => cm.StateChanged += It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
+        connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
+        disposableConnectionManager.Verify(d => d.Dispose(), Times.Once);
     }
 
-    [Fact]
+    [Fact(Timeout = 5000)]
     public void Dispose_DisposesResources()
     {
         // Arrange
+        var connectionManagerMock = new Mock<IWebSocketConnectionManager>();
+        var messageReceiverMock = new Mock<IWebSocketMessageReceiver>();
+        var reconnectStrategyMock = new Mock<IReconnectStrategy>();
+        var loggerMock = new Mock<ILogger<TestableWebSocketClient>>();
+        
+        // Настраиваем connectionManager как IDisposable для проверки вызова Dispose
+        var disposableConnectionManager = connectionManagerMock.As<IDisposable>();
+        
         var client = new TestableWebSocketClient(
             _testUri,
             "Binance",
             "BTCUSDT",
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
+            connectionManagerMock.Object,
+            messageReceiverMock.Object,
+            reconnectStrategyMock.Object,
             Options.Create(_defaultOptions),
-            _loggerMock.Object);
+            loggerMock.Object);
 
         // Act
         client.Dispose();
 
         // Assert
-        _messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
+        disposableConnectionManager.Verify(d => d.Dispose(), Times.Once);
     }
 }
