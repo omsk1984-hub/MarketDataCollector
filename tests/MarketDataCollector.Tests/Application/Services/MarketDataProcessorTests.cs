@@ -4,6 +4,7 @@ using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit.Abstractions;
@@ -147,8 +148,8 @@ public class MarketDataProcessorTests
                 LogLevel.Debug,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains(ticker) &&
-                                                o.ToString()!.Contains(price.ToString()) &&
-                                                o.ToString()!.Contains(volume.ToString()) &&
+                                                o.ToString()!.Contains(price.ToString(CultureInfo.InvariantCulture)) &&
+                                                o.ToString()!.Contains(volume.ToString(CultureInfo.InvariantCulture)) &&
                                                 o.ToString()!.Contains(exchange)),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
@@ -524,7 +525,7 @@ public class MarketDataProcessorTests
         for (int i = 0; i < 100; i++)
         {
             await processor.ProcessTickAsync("BTCUSDT", 1000.50m + i, 0.5m,
-                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc), "Binance");
+                new DateTime(2024, 1, 1, 10, 0, i % 60, DateTimeKind.Utc), "Binance");
         }
 
         // Ждём обработки через StopProcessingAsync

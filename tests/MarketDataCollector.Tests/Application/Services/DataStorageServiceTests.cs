@@ -6,6 +6,7 @@ using MarketDataCollector.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -118,7 +119,7 @@ public class DataStorageServiceTests
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains(tick.Id.ToString()) &&
                                                 o.ToString()!.Contains(tick.Ticker) &&
-                                                o.ToString()!.Contains(tick.Price.ToString())),
+                                                o.ToString()!.Contains(tick.Price.ToString(CultureInfo.InvariantCulture))),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -471,11 +472,12 @@ public class DataStorageServiceTests
             _repositoryMock.Object,
             _loggerMock.Object);
 
-        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow, It.IsAny<CancellationToken>()))
+        var now = DateTime.UtcNow;
+        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Act
-        var exists = await service.TickExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow);
+        var exists = await service.TickExistsAsync("BTCUSDT", "Binance", now);
 
         // Assert
         exists.Should().BeTrue();
@@ -490,11 +492,12 @@ public class DataStorageServiceTests
             _repositoryMock.Object,
             _loggerMock.Object);
 
-        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow, It.IsAny<CancellationToken>()))
+        var now = DateTime.UtcNow;
+        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         // Act
-        var exists = await service.TickExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow);
+        var exists = await service.TickExistsAsync("BTCUSDT", "Binance", now);
 
         // Assert
         exists.Should().BeFalse();
@@ -509,12 +512,13 @@ public class DataStorageServiceTests
             _repositoryMock.Object,
             _loggerMock.Object);
 
-        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow, It.IsAny<CancellationToken>()))
+        var now = DateTime.UtcNow;
+        _repositoryMock.Setup(x => x.ExistsAsync("BTCUSDT", "Binance", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Database error"));
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.TickExistsAsync("BTCUSDT", "Binance", DateTime.UtcNow));
+            () => service.TickExistsAsync("BTCUSDT", "Binance", now));
 
         exception.Message.Should().Be("Database error");
         _loggerMock.Verify(

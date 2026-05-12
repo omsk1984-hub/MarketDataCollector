@@ -282,6 +282,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     private void StopReceiveLoop()
     {
+        _messageReceiver.StopReceiveLoop();
         _receiveLoopCts?.Cancel();
         _receiveLoopCts?.Dispose();
         _receiveLoopCts = null;

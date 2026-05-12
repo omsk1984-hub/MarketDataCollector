@@ -317,7 +317,9 @@ public class WebSocketConnectionManagerTests
         cts.Cancel();
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+        // SemaphoreSlim.WaitAsync с предварительно отменённым токеном бросает TaskCanceledException,
+        // который наследует OperationCanceledException — используем ThrowsAnyAsync
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             manager.ConnectAsync(uri, cts.Token));
     }
 
@@ -341,7 +343,9 @@ public class WebSocketConnectionManagerTests
 
         // Assert - все задачи должны завершиться без deadlock
         var completedTask = await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(5000));
-        completedTask.Should().BeSameAs(Task.WhenAll(tasks), "ConnectAsync не должен вызывать deadlock при конкурентных вызовах");
+        completedTask.Should().NotBeSameAs(Task.Delay(5000), "ConnectAsync не должен вызывать deadlock при конкурентных вызовах");
+        // Проверяем, что все задачи завершились успешно
+        tasks.All(t => t.IsCompletedSuccessfully).Should().BeTrue();
     }
 }
 

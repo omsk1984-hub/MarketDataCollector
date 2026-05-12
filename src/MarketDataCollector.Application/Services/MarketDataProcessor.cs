@@ -72,16 +72,16 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Запускаем обработку напрямую без избыточного Task.Run
+            // Запускаем обработку в фоне, не ожидая её завершения
             _processingTask = ProcessBatchesAsync(cancellationToken);
             _logger.LogInformation("Обработчик рыночных данных запущен batchSize={_batchSize}", _batchSize);
             
-            return _processingTask;
+            return Task.CompletedTask;
         }
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
-            _channel.Writer.Complete();
+            _channel.Writer.TryComplete();
             
             if (_processingTask != null)
             {

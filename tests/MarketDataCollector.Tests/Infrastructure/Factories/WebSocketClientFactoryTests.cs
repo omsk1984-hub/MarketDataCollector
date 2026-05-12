@@ -37,7 +37,7 @@ public class WebSocketClientFactoryTests
             {
                 new ExchangeConfig
                 {
-                    ExchangeName = "Binance",
+                    ExchangeName = "binance",
                     WebSocketUrl = "wss://stream.binance.com:9443/ws/{symbol}@trade",
                     Symbol = "BTCUSDT"
                 }
@@ -46,7 +46,7 @@ public class WebSocketClientFactoryTests
             {
                 new ReaderConfig
                 {
-                    ExchangeName = "Binance",
+                    ExchangeName = "binance",
                     Symbol = "BTCUSDT"
                 }
             }

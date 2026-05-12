@@ -235,26 +235,6 @@ public class BinanceWebSocketClientTests
         var errorOccurred = false;
         Exception? capturedException = null;
         
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-        
-        client.ErrorOccurred += (sender, ex) =>
-        {
-            errorOccurred = true;
-            capturedException = ex;
-        };
-
-        var invalidJson = "not valid json";
-
-        // Act
         var testableClient = new TestableBinanceWebSocketClient(
             _testUri,
             "Binance",
@@ -265,6 +245,16 @@ public class BinanceWebSocketClientTests
             _reconnectStrategyMock.Object,
             Options.Create(_defaultOptions),
             _loggerMock.Object);
+        
+        testableClient.ErrorOccurred += (sender, ex) =>
+        {
+            errorOccurred = true;
+            capturedException = ex;
+        };
+
+        var invalidJson = "not valid json";
+
+        // Act
         await testableClient.TestProcessMessageAsync(invalidJson);
 
         // Assert

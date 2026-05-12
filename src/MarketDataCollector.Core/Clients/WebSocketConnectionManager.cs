@@ -37,7 +37,14 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     /// <inheritdoc />
     public async Task ConnectAsync(Uri uri, CancellationToken cancellationToken)
     {
-        await _connectLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _connectLock.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         try
         {
             if (IsConnected)

@@ -104,12 +104,11 @@ public class WebSocketMessageReceiverTests
         var onMessageReceived = new Action<string>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
-        // Используем предварительно отменённый токен для предотвращения зависания
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        // Используем неотменённый токен — цикл выйдет по проверке IsConnected
+        // а не по признаку отмены, что позволяет проверить логику обработки разрыва соединения
 
         // Act
-        await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
+        await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, CancellationToken.None);
         
         // Assert
         _loggerMock.Verify(

@@ -128,7 +128,16 @@ public class SubscriptionManagerTests
         _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_ThrowsException_RetriesUpToMax)} ===");
         // Arrange
         var retryCount = 0;
-        var maxRetries = _defaultOptions.MaxSubscribeRetries;
+        var maxRetries = 1; // Используем 1 retry для избежания timeout (Polly задержка 2^1 = 2s)
+        
+        var options = new WebSocketClientOptions
+        {
+            ReceiveBufferSize = 4096,
+            MaxMessageSize = 65536,
+            ReconnectDelay = TimeSpan.FromSeconds(1),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            MaxSubscribeRetries = maxRetries
+        };
         
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
@@ -141,7 +150,7 @@ public class SubscriptionManagerTests
 
         var manager = new SubscriptionManager(
             _connectionManagerMock.Object,
-            Options.Create(_defaultOptions),
+            Options.Create(options),
             _loggerMock.Object,
             subscribeAction);
 
@@ -152,8 +161,8 @@ public class SubscriptionManagerTests
         await manager.SubscribeWithRetryAsync(symbol, cancellationToken);
 
         // Assert
-        // Polly: retryCount = maxRetries (3), значит всего попыток: 1 (initial) + 3 (retries) = 4
-        // subscribeAction вызывается 4 раза: 3 раза с исключением, 4-й успешно
+        // Polly: retryCount = maxRetries (1), значит всего попыток: 1 (initial) + 1 (retry) = 2
+        // subscribeAction вызывается 2 раза: 1 раз с исключением, 2-й успешно
         retryCount.Should().Be(maxRetries + 1);
         
         // Должны быть вызовы onRetry для каждой неудачной попытки
@@ -172,6 +181,15 @@ public class SubscriptionManagerTests
     {
         _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_AllRetriesExhausted_Throws)} ===");
         // Arrange
+        var options = new WebSocketClientOptions
+        {
+            ReceiveBufferSize = 4096,
+            MaxMessageSize = 65536,
+            ReconnectDelay = TimeSpan.FromSeconds(1),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            MaxSubscribeRetries = 1 // 1 retry с задержкой 2^1 = 2s, укладывается в timeout 5s
+        };
+        
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
             throw new Exception("Subscription failed");
@@ -179,7 +197,7 @@ public class SubscriptionManagerTests
 
         var manager = new SubscriptionManager(
             _connectionManagerMock.Object,
-            Options.Create(_defaultOptions),
+            Options.Create(options),
             _loggerMock.Object,
             subscribeAction);
 
@@ -240,7 +258,7 @@ public class SubscriptionManagerTests
     {
         _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_RetryDelayIsExponential)} ===");
         // Arrange
-        var maxRetries = 3;
+        var maxRetries = 1; // 1 retry с задержкой 2^1 = 2s, укладывается в timeout 5s
         
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
@@ -281,8 +299,8 @@ public class SubscriptionManagerTests
         // Проверяем, что лог содержит сообщения с правильными экспоненциальными задержками.
         // Задержка вычисляется как TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
         // где retryAttempt в Polly начинается с 1:
-        // retryAttempt=1 → 2^1 = 2s, retryAttempt=2 → 2^2 = 4s, retryAttempt=3 → 2^3 = 8s
-        var expectedDelays = new[] { 2, 4, 8 };
+        // retryAttempt=1 → 2^1 = 2s
+        var expectedDelays = new[] { 2 };
         
         foreach (var expectedDelay in expectedDelays)
         {

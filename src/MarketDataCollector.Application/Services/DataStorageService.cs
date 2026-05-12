@@ -16,8 +16,8 @@ namespace MarketDataCollector.Application.Services
             IRawTickRepository rawTickRepository,
             ILogger<DataStorageService> logger)
         {
-            _rawTickRepository = rawTickRepository;
-            _logger = logger;
+            _rawTickRepository = rawTickRepository ?? throw new ArgumentNullException(nameof(rawTickRepository));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public async Task StoreRawTickAsync(RawTick rawTick)
