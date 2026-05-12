@@ -36,6 +36,7 @@ builder.Services.AddScoped<IMarketDataProcessor>(sp =>
     );
 });
 builder.Services.AddScoped<IRawTickRepository, RawTickRepository>();
+builder.Services.AddScoped<IConnectionLogRepository, ConnectionLogRepository>();
 builder.Services.AddSingleton<ITimeService, SystemTimeService>();
 
 // Monitoring service — singleton, т.к. хранит состояние всех клиентов

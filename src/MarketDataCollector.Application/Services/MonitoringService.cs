@@ -1,22 +1,33 @@
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Domain.Entities;
+using MarketDataCollector.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MarketDataCollector.Application.Services
 {
     public class MonitoringService : Core.Interfaces.IMonitoringService
     {
         private readonly ILogger<MonitoringService> _logger;
+        private readonly ITimeService _timeService;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ConcurrentDictionary<string, Core.Interfaces.ConnectionStatus> _connectionStatuses;
         private readonly ConcurrentDictionary<string, int> _tickCounters;
         private Timer _statusTimer = null!;
         private int _totalTicksProcessed;
 
-        public MonitoringService(ILogger<MonitoringService> logger)
+        public MonitoringService(
+            ILogger<MonitoringService> logger,
+            ITimeService timeService,
+            IServiceScopeFactory scopeFactory)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
+            _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _connectionStatuses = new ConcurrentDictionary<string, Core.Interfaces.ConnectionStatus>();
             _tickCounters = new ConcurrentDictionary<string, int>();
             _totalTicksProcessed = 0;
@@ -54,6 +65,25 @@ namespace MarketDataCollector.Application.Services
                     _logger.LogError(logMessage);
                     break;
             }
+
+            // Сохраняем событие в БД (fire-and-forget, чтобы не блокировать event-handler)
+            var eventType = status switch
+            {
+                Core.Interfaces.ConnectionStatus.Connected => "Connected",
+                Core.Interfaces.ConnectionStatus.Disconnected => "Disconnected",
+                Core.Interfaces.ConnectionStatus.Error => "Error",
+                _ => status.ToString()
+            };
+
+            var dbMessage = status switch
+            {
+                Core.Interfaces.ConnectionStatus.Connected => $"Connected to {exchange}",
+                Core.Interfaces.ConnectionStatus.Disconnected => $"Disconnected from {exchange}",
+                Core.Interfaces.ConnectionStatus.Error => message ?? $"Error on {exchange}",
+                _ => $"{status} on {exchange}"
+            };
+
+            _ = SaveConnectionLogAsync(exchange, eventType, dbMessage);
         }
 
         public void IncrementTickCounter(string exchange)
@@ -103,6 +133,28 @@ namespace MarketDataCollector.Application.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error logging monitoring status");
+            }
+        }
+        private async Task SaveConnectionLogAsync(string exchange, string eventType, string message)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var repo = scope.ServiceProvider.GetService(typeof(IConnectionLogRepository)) as IConnectionLogRepository;
+
+                if (repo == null)
+                {
+                    _logger.LogError("IConnectionLogRepository not registered in DI container");
+                    return;
+                }
+
+                var log = new ConnectionLog(exchange, eventType, message, _timeService);
+                await repo.AddAsync(log);
+                await repo.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save connection log to database");
             }
         }
     }
