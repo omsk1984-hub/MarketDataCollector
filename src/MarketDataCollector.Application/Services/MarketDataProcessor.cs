@@ -17,6 +17,7 @@ namespace MarketDataCollector.Application.Services
         private readonly ILogger<MarketDataProcessor> _logger;
         private readonly ITimeService _timeService;
         private readonly Channel<TickData> _channel;
+        public Channel<TickData> Channel => _channel;
         private readonly int _batchSize;
 
         private Task _processingTask = null!;
@@ -24,7 +25,7 @@ namespace MarketDataCollector.Application.Services
 
         public event EventHandler<Exception>? OnError;
 
-        private readonly record struct TickData(
+        public readonly record struct TickData(
             string Ticker,
             decimal Price,
             decimal Volume,
@@ -45,7 +46,7 @@ namespace MarketDataCollector.Application.Services
             _batchSize = batchSize;
             _processedCount = 0;
 
-            _channel = Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
+            _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,

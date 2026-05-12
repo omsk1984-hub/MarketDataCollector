@@ -19,6 +19,7 @@ public class WebSocketClientFactoryTests
     private readonly Mock<IOptions<ExchangeOptions>> _exchangeOptionsMock;
     private readonly Mock<IOptions<WebSocketClientOptions>> _wsOptionsMock;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly WebSocketClientFactory _factory;
 
     public WebSocketClientFactoryTests(ITestOutputHelper output)
     {
@@ -41,7 +42,14 @@ public class WebSocketClientFactoryTests
                     Symbol = "BTCUSDT"
                 }
             },
-            Readers = new List<ReaderConfig>()
+            Readers = new List<ReaderConfig>
+            {
+                new ReaderConfig
+                {
+                    ExchangeName = "Binance",
+                    Symbol = "BTCUSDT"
+                }
+            }
         });
 
         _wsOptionsMock.Setup(x => x.Value).Returns(new WebSocketClientOptions
@@ -54,6 +62,13 @@ public class WebSocketClientFactoryTests
             MaxMessageSize = 1_048_576,
             DisposeTimeout = TimeSpan.FromSeconds(5)
         });
+
+        _factory = new WebSocketClientFactory(
+            _dataProcessorMock.Object,
+            _monitoringServiceMock.Object,
+            _exchangeOptionsMock.Object,
+            _wsOptionsMock.Object,
+            _loggerFactory);
     }
 
     [Fact(Timeout = 5000)]
@@ -134,16 +149,8 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void CreateBinanceClient_WithValidParameters_CreatesClient()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var client = factory.CreateBinanceClient(
+        // Arrange & Act
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
@@ -156,16 +163,8 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithCorrectSymbol()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var client = factory.CreateBinanceClient(
+        // Arrange & Act
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
@@ -178,16 +177,8 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithCorrectExchangeName()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var client = factory.CreateBinanceClient(
+        // Arrange & Act
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
@@ -198,61 +189,41 @@ public class WebSocketClientFactoryTests
     }
 
     [Fact(Timeout = 5000)]
-    public void CreateBinanceClient_CreatesClientWithCorrectUri()
+    public void CreateBinanceClient_CreatesClientWithCorrectName()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var client = factory.CreateBinanceClient(
+        // Arrange & Act
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
 
         // Assert
         var binanceClient = client as BinanceWebSocketClient;
-        binanceClient!.Name.Should().Contain("btcusdt@trade");
+        binanceClient!.Name.Should().Be("Binance_BTCUSDT");
     }
 
     [Fact(Timeout = 5000)]
-    public void CreateBinanceClient_CreatesClientWithSubscriptionManager()
+    public void CreateBinanceClient_CreatesClientWithDefaultState()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var client = factory.CreateBinanceClient(
+        // Arrange & Act
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
 
         // Assert
         var binanceClient = client as BinanceWebSocketClient;
+        binanceClient.Should().NotBeNull();
         binanceClient!.IsConnected.Should().BeFalse();
+        binanceClient.Symbol.Should().Be("BTCUSDT");
+        binanceClient.ExchangeName.Should().Be("Binance");
     }
 
     [Fact(Timeout = 5000)]
     public void CreateBinanceClient_CreatesClientWithMonitoringIntegration()
     {
         // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        var client = factory.CreateBinanceClient(
+        var client = _factory.CreateBinanceClient(
             "wss://stream.binance.com:9443/ws/{symbol}@trade",
             "BTCUSDT",
             "Binance");
@@ -261,43 +232,45 @@ public class WebSocketClientFactoryTests
         client.Should().NotBeNull();
         client.ExchangeName.Should().Be("Binance");
         client.Symbol.Should().Be("BTCUSDT");
-        client.Name.Should().Be("Binance-BTCUSDT");
+        client.Name.Should().Be("Binance_BTCUSDT");
+
+        var binanceClient = client as BinanceWebSocketClient;
+        binanceClient.Should().NotBeNull();
+
+        // Act - Simulate events to verify monitoring integration
+        binanceClient!.OnConnected();
+        _monitoringServiceMock.Verify(m => m.UpdateConnectionStatus("Binance", MarketDataCollector.Core.Interfaces.ConnectionStatus.Connected, It.IsAny<string>()), Times.AtLeastOnce);
+
+        binanceClient.OnDisconnected();
+        _monitoringServiceMock.Verify(m => m.UpdateConnectionStatus("Binance", MarketDataCollector.Core.Interfaces.ConnectionStatus.Disconnected, It.IsAny<string>()), Times.AtLeastOnce);
+
+        var testEx = new Exception("test error");
+        binanceClient.OnErrorOccurred(testEx);
+        _monitoringServiceMock.Verify(m => m.UpdateConnectionStatus("Binance", MarketDataCollector.Core.Interfaces.ConnectionStatus.Error, It.IsAny<string>()), Times.AtLeastOnce);
+
+        binanceClient.OnMessageReceived("test message");
+        _monitoringServiceMock.Verify(m => m.IncrementTickCounter("Binance"), Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 5000)]
     public void CreateAllClients_CreatesAllClients()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var clients = factory.CreateAllClients();
+        // Arrange & Act
+        var clients = _factory.CreateAllClients();
 
         // Assert
         clients.Should().NotBeNull();
-        clients.Should().HaveCountGreaterThan(0);
+        clients.Should().HaveCount(1);
     }
 
     [Fact(Timeout = 5000)]
     public void CreateAllClients_CreatesBinanceClients()
     {
-        // Arrange
-        var factory = new WebSocketClientFactory(
-            _dataProcessorMock.Object,
-            _monitoringServiceMock.Object,
-            _exchangeOptionsMock.Object,
-            _wsOptionsMock.Object,
-            _loggerFactory);
-
-        // Act
-        var clients = factory.CreateAllClients();
+        // Arrange & Act
+        var clients = _factory.CreateAllClients();
 
         // Assert
+        clients.Should().NotBeEmpty();
         clients.All(c => c is BinanceWebSocketClient).Should().BeTrue();
     }
 }

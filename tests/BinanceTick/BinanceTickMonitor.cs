@@ -1,6 +1,7 @@
 using System;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 //cd tests\BinanceTick
@@ -76,6 +77,14 @@ namespace BinanceTickMonitor
                     }
 
                     var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+                    // Пропускаем ping-сообщения
+                    if (message.Contains("\"e\":\"ping\"") || message.Contains("ping"))
+                    {
+                        Console.WriteLine("  [Ping получен]");
+                        continue;
+                    }
+
                     _tickCount++;
 
                     // Парсим основные данные из JSON
@@ -89,7 +98,8 @@ namespace BinanceTickMonitor
                         ? DateTimeOffset.FromUnixTimeMilliseconds(t).ToLocalTime().ToString("HH:mm:ss.fff")
                         : "N/A";
 
-                    Console.WriteLine($"[{_tickCount:D3}] {time} | {symbol} | Цена: {price} | Объем: {quantity} | Продавец инициатор: {isBuyerMaker}");
+                    var isBuyer = isBuyerMaker == "true";
+                    Console.WriteLine($"[{_tickCount:D3}] {time} | {symbol} | Цена: {price} | Объем: {quantity} | Продавец инициатор: {(isBuyer ? "Да" : "Нет")} | Время трейда (ms): {tradeTime}");
                 }
                 catch (OperationCanceledException) when (readCts.IsCancellationRequested)
                 {
@@ -100,15 +110,34 @@ namespace BinanceTickMonitor
 
         private static string ExtractJsonValue(string json, string key)
         {
-            var search = $"\"{key}\":\"";
-            var start = json.IndexOf(search);
-            if (start < 0) return "N/A";
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
-            start += search.Length;
-            var end = json.IndexOf("\"", start);
-            if (end < 0) return "N/A";
+                if (root.TryGetProperty(key, out var value))
+                {
+                    switch (value.ValueKind)
+                    {
+                        case JsonValueKind.String:
+                            return value.GetString() ?? "N/A";
+                        case JsonValueKind.Number:
+                            return value.GetRawText();
+                        case JsonValueKind.True:
+                            return "true";
+                        case JsonValueKind.False:
+                            return "false";
+                        default:
+                            return value.GetRawText();
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"  [Ошибка парсинга JSON для ключа '{key}']: {ex.Message}");
+            }
 
-            return json[start..end];
+            return "N/A";
         }
     }
 }

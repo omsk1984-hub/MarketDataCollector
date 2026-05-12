@@ -88,19 +88,7 @@ public class BinanceWebSocketClientTests
     [Fact(Timeout = 5000)]
     public void GetWebSocketUri_ReturnsConstructorUri()
     {
-        // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
-        // Act
+        // Arrange & Act
         var testableClient = new TestableBinanceWebSocketClient(
             _testUri,
             "Binance",
@@ -122,17 +110,6 @@ public class BinanceWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(SubscribeToTickerAsync_SendsCorrectJsonMessage)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var symbol = "BTCUSDT";
         var cancellationToken = CancellationToken.None;
 
@@ -160,17 +137,6 @@ public class BinanceWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(SubscribeToTickerAsync_SendsLowercaseSymbol)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var symbol = "ETHUSDT";
         var cancellationToken = CancellationToken.None;
 
@@ -194,73 +160,10 @@ public class BinanceWebSocketClientTests
     }
 
     [Fact(Timeout = 5000)]
-    public async Task ProcessMessageAsync_ValidTradeMessage_CallsDataProcessor()
-    {
-        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_ValidTradeMessage_CallsDataProcessor)} ===");
-        // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
-        var jsonMessage = @"{
-            ""e"": ""trade"",
-            ""E"": 1234567890,
-            ""s"": ""BTCUSDT"",
-            ""t"": 12345,
-            ""p"": ""1000.50"",
-            ""q"": ""0.5"",
-            ""T"": 1609459200000
-        }";
-
-        var expectedPrice = decimal.Parse("1000.50", CultureInfo.InvariantCulture);
-        var expectedVolume = decimal.Parse("0.5", CultureInfo.InvariantCulture);
-        var expectedTimestamp = DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime;
-
-        // Act
-        var testableClient = new TestableBinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-        await testableClient.TestProcessMessageAsync(jsonMessage);
-
-        // Assert
-        _dataProcessorMock.Verify(dp => dp.ProcessTickAsync(
-            "BTCUSDT",
-            expectedPrice,
-            expectedVolume,
-            expectedTimestamp,
-            "Binance"), Times.Once);
-    }
-
-    [Fact(Timeout = 5000)]
     public async Task ProcessMessageAsync_NonTradeMessage_DoesNothing()
     {
         _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_NonTradeMessage_DoesNothing)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var jsonMessage = @"{
             ""e"": ""24hrTicker"",
             ""s"": ""BTCUSDT""
@@ -293,17 +196,6 @@ public class BinanceWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_MissingTicker_DoesNotCallDataProcessor)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var jsonMessage = @"{
             ""e"": ""trade"",
             ""E"": 1234567890,
@@ -378,7 +270,7 @@ public class BinanceWebSocketClientTests
         // Assert
         errorOccurred.Should().BeTrue();
         capturedException.Should().NotBeNull();
-        capturedException.Should().BeOfType<Exception>();
+        capturedException.Should().BeOfType<Newtonsoft.Json.JsonReaderException>();
     }
 
     [Fact(Timeout = 5000)]
@@ -386,17 +278,6 @@ public class BinanceWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_MissingFields_UsesDefaultValues)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var jsonMessage = @"{
             ""e"": ""trade"",
             ""E"": 1234567890,
@@ -429,34 +310,26 @@ public class BinanceWebSocketClientTests
             "Binance"), Times.Once);
     }
 
-    [Fact(Timeout = 5000)]
-    public async Task ProcessMessageAsync_WithAllFields_CallsDataProcessorWithCorrectValues()
+    [Theory(Timeout = 5000)]
+    [InlineData("BTCUSDT", "1000.50", "0.5", "12345")]
+    [InlineData("ETHUSDT", "2500.75", "1.25", "67890")]
+    public async Task ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues(
+        string symbol, string priceStr, string volumeStr, string tradeId)
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_WithAllFields_CallsDataProcessorWithCorrectValues)} ===");
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues)} ===");
         // Arrange
-        var client = new BinanceWebSocketClient(
-            _testUri,
-            "Binance",
-            "BTCUSDT",
-            _dataProcessorMock.Object,
-            _connectionManagerMock.Object,
-            _messageReceiverMock.Object,
-            _reconnectStrategyMock.Object,
-            Options.Create(_defaultOptions),
-            _loggerMock.Object);
-
         var jsonMessage = @"{
             ""e"": ""trade"",
             ""E"": 1609459200000,
-            ""s"": ""ETHUSDT"",
-            ""t"": 67890,
-            ""p"": ""2500.75"",
-            ""q"": ""1.25"",
+            ""s"": """ + symbol + @""",
+            ""t"": " + tradeId + @",
+            ""p"": """ + priceStr + @""",
+            ""q"": """ + volumeStr + @""",
             ""T"": 1609459200000
         }";
 
-        var expectedPrice = decimal.Parse("2500.75", CultureInfo.InvariantCulture);
-        var expectedVolume = decimal.Parse("1.25", CultureInfo.InvariantCulture);
+        var expectedPrice = decimal.Parse(priceStr, CultureInfo.InvariantCulture);
+        var expectedVolume = decimal.Parse(volumeStr, CultureInfo.InvariantCulture);
         var expectedTimestamp = DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime;
 
         // Act
@@ -474,7 +347,7 @@ public class BinanceWebSocketClientTests
 
         // Assert
         _dataProcessorMock.Verify(dp => dp.ProcessTickAsync(
-            "ETHUSDT",
+            symbol,
             expectedPrice,
             expectedVolume,
             expectedTimestamp,

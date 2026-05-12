@@ -43,7 +43,7 @@ namespace MarketDataCollector.Application.Services
                 await _rawTickRepository.AddRangeAsync(rawTicks);
                 await _rawTickRepository.SaveChangesAsync();
                 
-                _logger.LogDebug("Batch of {Count} raw ticks stored", rawTicks);
+                _logger.LogDebug("Batch of {Count} raw ticks stored", rawTicks.Count());
             }
             catch (Exception ex)
             {

@@ -211,7 +211,7 @@ public class RawTickRepositoryTests
 
         // Assert
         result.Should().HaveCount(2);
-        result.All(t => t.Timestamp >= now.AddDays(-1.5));
+        result.All(t => t.Timestamp >= now.AddDays(-1.5)).Should().BeTrue();
     }
 
     [Fact(Timeout = 10000)]
@@ -273,11 +273,12 @@ public class RawTickRepositoryTests
     {
         _output.WriteLine($"=== Running: {nameof(GetByTickerAsync_ReturnsTicksOrderedByTimestamp)} ===");
         // Arrange
+        var now = DateTime.UtcNow;
         var ticks = new List<RawTick>
         {
-            new RawTick("BTCUSDT", 1002.00m, 0.2m, DateTime.UtcNow, "Binance", new SystemTimeService()),
-            new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow.AddDays(-2), "Binance", new SystemTimeService()),
-            new RawTick("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow.AddDays(-1), "Binance", new SystemTimeService())
+            new RawTick("BTCUSDT", 1002.00m, 0.2m, now, "Binance", new SystemTimeService()),
+            new RawTick("BTCUSDT", 1000.50m, 0.5m, now.AddDays(-2), "Binance", new SystemTimeService()),
+            new RawTick("BTCUSDT", 1001.00m, 0.3m, now.AddDays(-1), "Binance", new SystemTimeService())
         };
 
         foreach (var tick in ticks)
@@ -290,8 +291,8 @@ public class RawTickRepositoryTests
         var result = await _repository.GetByTickerAsync("BTCUSDT");
 
         // Assert
-        result.First().Timestamp.Should().Be(DateTime.UtcNow.AddDays(-2));
-        result.Last().Timestamp.Should().Be(DateTime.UtcNow);
+        result.First().Timestamp.Should().Be(now.AddDays(-2));
+        result.Last().Timestamp.Should().Be(now);
     }
 
     [Fact(Timeout = 10000)]
@@ -368,6 +369,10 @@ public class RawTickRepositoryTests
     {
         _output.WriteLine($"=== Running: {nameof(ExistsAsync_WhenTickDoesNotExist_ReturnsFalse)} ===");
         // Arrange
+        var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService());
+        await _repository.AddAsync(tick);
+        await _repository.SaveChangesAsync();
+
         var differentTimestamp = DateTime.UtcNow.AddSeconds(1);
 
         // Act

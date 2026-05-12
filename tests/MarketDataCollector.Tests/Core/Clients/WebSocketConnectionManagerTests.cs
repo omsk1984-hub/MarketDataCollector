@@ -65,20 +65,14 @@ public class WebSocketConnectionManagerTests
         // Arrange
         var newWebSocketMock = new Mock<IClientWebSocket>();
         newWebSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
-        
-        var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
+
+        var manager = new TestableWebSocketConnectionManager(
+            _loggerMock.Object, _webSocketMock.Object, () => newWebSocketMock.Object);
         var uri = new Uri("wss://example.com/ws");
         var cancellationToken = CancellationToken.None;
 
         // Act
-        newWebSocketMock.Setup(ws => ws.ConnectAsync(uri, cancellationToken))
-            .Returns(Task.CompletedTask);
-        
-        // Создадим новый менеджер с мокированным сокетом, который вернет новый сокет при ConnectAsync
-        var factoryCalled = false;
-        var testManager = new TestableWebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object, () => newWebSocketMock.Object);
-        
-        await testManager.ConnectAsync(uri, cancellationToken);
+        await manager.ConnectAsync(uri, cancellationToken);
 
         // Assert
         newWebSocketMock.Verify(ws => ws.ConnectAsync(uri, cancellationToken), Times.Once);
@@ -264,31 +258,90 @@ public class WebSocketConnectionManagerTests
     public void DisposeCurrentSocket_DisposesOldSocketAndCreatesNewOne()
     {
         // Arrange
-        var manager = new WebSocketConnectionManager(_loggerMock.Object, _webSocketMock.Object);
-        var oldSocket = _webSocketMock.Object;
+        var newSocketMock = new Mock<IClientWebSocket>();
+        newSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
+        var factoryCalled = false;
+        var manager = new TestableWebSocketConnectionManager(
+            _loggerMock.Object, _webSocketMock.Object, () =>
+            {
+                factoryCalled = true;
+                return newSocketMock.Object;
+            });
 
         // Act
         manager.DisposeCurrentSocket();
 
         // Assert
         _webSocketMock.Verify(ws => ws.Dispose(), Times.Once);
-        manager.IsConnected.Should().BeFalse(); // Новый сокет должен быть в закрытом состоянии
+        factoryCalled.Should().BeTrue();
+        manager.IsConnected.Should().BeFalse();
     }
 
     [Fact(Timeout = 5000)]
-    public void StateChanged_Event_CanSubscribe()
+    public void StateChanged_Event_FiresOnConnect()
     {
         // Arrange
-        var loggerMock = new Mock<ILogger<WebSocketConnectionManager>>();
-        var webSocketMock = new Mock<IClientWebSocket>();
-        webSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
-        var manager = new WebSocketConnectionManager(loggerMock.Object, webSocketMock.Object);
-        
+        var newSocketMock = new Mock<IClientWebSocket>();
+        newSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
+        newSocketMock.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var manager = new TestableWebSocketConnectionManager(
+            _loggerMock.Object, _webSocketMock.Object, () => newSocketMock.Object);
+        var uri = new Uri("wss://example.com/ws");
+
+        WebSocketState? receivedState = null;
+        manager.StateChanged += (sender, state) => receivedState = state;
+
+        // Act
+        manager.ConnectAsync(uri, CancellationToken.None).GetAwaiter().GetResult();
+
+        // Assert
+        receivedState.Should().Be(WebSocketState.Open);
+    }
+
+    [Fact(Timeout = 5000)]
+    public async Task ConnectAsync_WhenCancelled_ThrowsOperationCanceledException()
+    {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_WhenCancelled_ThrowsOperationCanceledException)} ===");
+        // Arrange
+        var newSocketMock = new Mock<IClientWebSocket>();
+        newSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Closed);
+        newSocketMock.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        var manager = new TestableWebSocketConnectionManager(
+            _loggerMock.Object, _webSocketMock.Object, () => newSocketMock.Object);
+        var uri = new Uri("wss://example.com/ws");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
         // Act & Assert
-        // Проверяем, что к событию можно подписаться
-        bool eventFired = false;
-        manager.StateChanged += (sender, state) => eventFired = true;
-        eventFired.Should().BeFalse();
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            manager.ConnectAsync(uri, cts.Token));
+    }
+
+    [Fact(Timeout = 5000)]
+    public async Task ConnectAsync_ThreadSafety_ConcurrentCallsDoNotDeadlock()
+    {
+        _output.WriteLine($"=== Running: {nameof(ConnectAsync_ThreadSafety_ConcurrentCallsDoNotDeadlock)} ===");
+        // Arrange
+        var newSocketMock = new Mock<IClientWebSocket>();
+        newSocketMock.SetupGet(ws => ws.State).Returns(WebSocketState.Open);
+        newSocketMock.Setup(ws => ws.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var manager = new TestableWebSocketConnectionManager(
+            _loggerMock.Object, _webSocketMock.Object, () => newSocketMock.Object);
+        var uri = new Uri("wss://example.com/ws");
+
+        // Act - запускаем 3 параллельных ConnectAsync
+        var tasks = Enumerable.Range(0, 3).Select(_ =>
+            manager.ConnectAsync(uri, CancellationToken.None)).ToArray();
+
+        // Assert - все задачи должны завершиться без deadlock
+        var completedTask = await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(5000));
+        completedTask.Should().BeSameAs(Task.WhenAll(tasks), "ConnectAsync не должен вызывать deadlock при конкурентных вызовах");
     }
 }
 
@@ -306,8 +359,8 @@ public class TestableWebSocketConnectionManager : WebSocketConnectionManager
         _socketFactory = socketFactory;
     }
 
-    public new async Task ConnectAsync(Uri uri, CancellationToken cancellationToken)
+    protected override IClientWebSocket CreateWebSocket()
     {
-        await _socketFactory().ConnectAsync(uri, cancellationToken);
+        return _socketFactory();
     }
 }

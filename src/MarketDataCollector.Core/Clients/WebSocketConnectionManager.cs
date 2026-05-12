@@ -47,7 +47,7 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
             }
 
             // Создаём новый ClientWebSocket для каждой попытки
-            var ws = new ClientWebSocketWrapper();
+            var ws = CreateWebSocket();
             await ws.ConnectAsync(uri, cancellationToken);
 
             // Атомарно заменяем старый сокет, старый диспозим
@@ -111,8 +111,13 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     /// </summary>
     public void DisposeCurrentSocket()
     {
-        var ws = Interlocked.Exchange(ref _webSocket, new ClientWebSocketWrapper());
+        var ws = Interlocked.Exchange(ref _webSocket, CreateWebSocket());
         try { ws.Dispose(); } catch { /* игнорируем */ }
+    }
+
+    protected virtual IClientWebSocket CreateWebSocket()
+    {
+        return new ClientWebSocketWrapper();
     }
 
     private void OnStateChanged(WebSocketState state)

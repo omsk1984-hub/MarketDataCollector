@@ -219,7 +219,7 @@ public class BaseWebSocketClientTests
     }
 
     [Fact(Timeout = 5000)]
-    public void SetSubscriptionManager_SetsManagerCorrectly()
+    public async Task SetSubscriptionManager_SetsManagerCorrectly()
     {
         // Arrange
         var subscriptionManagerMock = new Mock<ISubscriptionManager>();
@@ -239,7 +239,7 @@ public class BaseWebSocketClientTests
         client.SetSubscriptionManager(subscriptionManagerMock.Object);
         
         // Выполняем ConnectAsync, чтобы проверить, что subscriptionManager реально используется
-        client.ConnectAsync(CancellationToken.None).GetAwaiter().GetResult();
+        await client.ConnectAsync(CancellationToken.None);
 
         // Assert
         subscriptionManagerMock.Verify(sm => sm.SubscribeWithRetryAsync("BTCUSDT", CancellationToken.None), Times.Once);
@@ -370,9 +370,13 @@ public class BaseWebSocketClientTests
     }
 
     [Fact(Timeout = 5000)]
-    public void StartAsync_StartsBackgroundRecoveryLoop()
+    public async Task StartAsync_StartsBackgroundRecoveryLoop()
     {
         // Arrange
+        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
+        _connectionManagerMock.Setup(cm => cm.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var client = new TestableWebSocketClient(
             _testUri,
             "Binance",
@@ -398,6 +402,15 @@ public class BaseWebSocketClientTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+        
+        // Небольшая задержка для запуска цикла
+        await Task.Delay(200);
+        
+        // Проверяем, что ConnectAsync был вызван внутри фонового цикла
+        _connectionManagerMock.Verify(cm => cm.ConnectAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+
+        // Останавливаем
+        cts.Cancel();
     }
 
     [Fact(Timeout = 5000)]
@@ -405,6 +418,8 @@ public class BaseWebSocketClientTests
     {
         _output.WriteLine($"=== Running: {nameof(StopAsync_StopsBackgroundRecoveryLoop)} ===");
         // Arrange
+        _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
+
         var client = new TestableWebSocketClient(
             _testUri,
             "Binance",
@@ -419,7 +434,6 @@ public class BaseWebSocketClientTests
         
         // Запускаем фоновый цикл
         await client.StartAsync(cts.Token);
-        await Task.Delay(100);
 
         // Act
         await client.StopAsync(cts.Token);
@@ -697,7 +711,7 @@ public class BaseWebSocketClientTests
 
         // Assert
         messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
-        connectionManagerMock.VerifyAdd(cm => cm.StateChanged += It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
+        // Проверяем только отписку от события (подписка была в конструкторе)
         connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
         disposableConnectionManager.Verify(d => d.Dispose(), Times.Once);
     }

@@ -76,8 +76,16 @@ public class MarketDataProcessorTests
         // Act
         await processor.ProcessTickAsync(ticker, price, volume, timestamp, exchange);
 
-        // Assert
-        processor.Should().NotBeNull();
+        // Assert - проверяем, что тик попал в канал
+        var reader = processor.Channel.Reader;
+        var readTask = reader.ReadAsync().AsTask();
+        var completed = await Task.WhenAny(readTask, Task.Delay(1000));
+        completed.Should().Be(readTask, "Тик должен быть доступен для чтения из канала");
+        var tick = await readTask;
+        tick.Ticker.Should().Be(ticker);
+        tick.Price.Should().Be(price);
+        tick.Volume.Should().Be(volume);
+        tick.Exchange.Should().Be(exchange);
     }
 
     [Fact(Timeout = 10000)]
@@ -219,7 +227,6 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
         
         await processor.StartProcessingAsync(cts.Token);
-        await Task.Delay(50);
 
         // Act
         await processor.StopProcessingAsync(cts.Token);
@@ -250,7 +257,6 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
         
         await processor.StartProcessingAsync(cts.Token);
-        await Task.Delay(50);
         await processor.StopProcessingAsync(cts.Token);
 
         // Act
@@ -303,8 +309,14 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("ETHUSDT", 2500.75m, 1.0m, DateTime.UtcNow, "Binance");
 
-        // Assert
-        processor.Should().NotBeNull();
+        // Assert - проверяем через канал
+        var reader = processor.Channel.Reader;
+        var count = 0;
+        while (reader.TryRead(out _))
+        {
+            count++;
+        }
+        count.Should().Be(3);
     }
 
     [Fact(Timeout = 10000)]
@@ -329,8 +341,7 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
 
-        // Wait for processing
-        await Task.Delay(200);
+        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
@@ -350,6 +361,9 @@ public class MarketDataProcessorTests
             batchSize: 2,
             channelCapacity: 100);
 
+        var timestamp1 = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        var timestamp2 = new DateTime(2024, 1, 1, 10, 0, 1, DateTimeKind.Utc);
+
         // Первый тик не существует, второй - существует (дубликат)
         _repositoryMock.SetupSequence(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false)  // Первый тик не существует
@@ -358,12 +372,11 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
 
-        // Act
-        await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
-        await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance"); // Дубликат
+        // Act - используем разные timestamp, чтобы они не считались дубликатами в памяти
+        await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, timestamp1, "Binance");
+        await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, timestamp2, "Binance");
 
-        // Wait for processing
-        await Task.Delay(200);
+        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
@@ -392,8 +405,7 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
 
-        // Wait for processing
-        await Task.Delay(200);
+        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
@@ -439,8 +451,8 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
 
-        // Wait for processing
-        await Task.Delay(200);
+        // Ждём обработки через StopProcessingAsync
+        await processor.StopProcessingAsync(cts.Token);
 
         // Assert
         errorOccurred.Should().BeTrue();
@@ -476,8 +488,7 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
 
-        // Wait for processing
-        await Task.Delay(200);
+        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
@@ -501,7 +512,7 @@ public class MarketDataProcessorTests
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 1,
-            channelCapacity: 100);
+            channelCapacity: 200);
 
         _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -509,14 +520,14 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
 
-        // Act - добавляем 100 тиков
+        // Act - добавляем 100 тиков с разными timestamp
         for (int i = 0; i < 100; i++)
         {
-            await processor.ProcessTickAsync("BTCUSDT", 1000.50m + i, 0.5m, DateTime.UtcNow, "Binance");
+            await processor.ProcessTickAsync("BTCUSDT", 1000.50m + i, 0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc), "Binance");
         }
 
-        // Wait for processing
-        await Task.Delay(500);
+        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert

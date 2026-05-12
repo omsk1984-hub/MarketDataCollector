@@ -197,9 +197,11 @@ public class SubscriptionManagerTests
     {
         _output.WriteLine($"=== Running: {nameof(SubscribeWithRetryAsync_CancellationToken_CancelsOperation)} ===");
         // Arrange
+        var actionCalled = false;
+        
         var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
         {
-            // Этот код не должен выполниться, т.к. Polly увидит отменённый токен ДО вызова
+            actionCalled = true; // Этот код не должен выполниться
             await Task.Delay(100, ct);
         });
 
@@ -219,7 +221,10 @@ public class SubscriptionManagerTests
         var act = async () => await manager.SubscribeWithRetryAsync(symbol, cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
         
-        // Убеждаемся, что subscribeAction НЕ вызывался — отмена произошла до него
+        // Прямая проверка, что subscribeAction НЕ вызывался
+        actionCalled.Should().BeFalse();
+        
+        // Косвенная проверка через логи
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Warning,
@@ -273,7 +278,9 @@ public class SubscriptionManagerTests
         }
         
         // Assert
-        // Проверяем, что лог содержит сообщения с правильными экспоненциальными задержками:
+        // Проверяем, что лог содержит сообщения с правильными экспоненциальными задержками.
+        // Задержка вычисляется как TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+        // где retryAttempt в Polly начинается с 1:
         // retryAttempt=1 → 2^1 = 2s, retryAttempt=2 → 2^2 = 4s, retryAttempt=3 → 2^3 = 8s
         var expectedDelays = new[] { 2, 4, 8 };
         
@@ -317,5 +324,17 @@ public class SubscriptionManagerTests
 
         // Assert
         capturedSymbol.Should().Be(symbol);
+    }
+
+    private void VerifyLogContains(LogLevel level, string containsText, Func<Times> times)
+    {
+        _loggerMock.Verify(
+            x => x.Log(
+                level,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains(containsText)),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            times);
     }
 }

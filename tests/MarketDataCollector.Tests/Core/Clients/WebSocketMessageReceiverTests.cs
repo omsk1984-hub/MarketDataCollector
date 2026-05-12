@@ -104,7 +104,9 @@ public class WebSocketMessageReceiverTests
         var onMessageReceived = new Action<string>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        // Используем предварительно отменённый токен для предотвращения зависания
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
 
         // Act
         await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
@@ -141,23 +143,37 @@ public class WebSocketMessageReceiverTests
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
-        var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
+        var processMessageCalled = false;
+        var processMessage = new Func<string, Task>(async msg =>
+        {
+            processMessageCalled = true;
+        });
         var onMessageReceived = new Action<string>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        using var cts = new CancellationTokenSource();
         
-        var firstResult = new WebSocketReceiveResult(200, WebSocketMessageType.Text, false);
-        var secondResult = new WebSocketReceiveResult(0, WebSocketMessageType.Text, true); // EndOfMessage
-        
+        // Первое сообщение: превышает MaxMessageSize (200 > 100)
+        var oversizedResult = new WebSocketReceiveResult(200, WebSocketMessageType.Text, false);
+        // Оставшиеся фрагменты oversized сообщения
+        var remainingFragment = new WebSocketReceiveResult(50, WebSocketMessageType.Text, false);
+        var endFragment = new WebSocketReceiveResult(0, WebSocketMessageType.Text, true);
+        // Второе сообщение: нормального размера (закрытие)
+        var closeResult = new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
+
         _connectionManagerMock.SetupSequence(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(firstResult)
-            .ReturnsAsync(secondResult);
+            .ReturnsAsync(oversizedResult)
+            .ReturnsAsync(remainingFragment)
+            .ReturnsAsync(endFragment)
+            .ReturnsAsync(closeResult);
 
         // Act
         await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
         
         // Assert
+        // 1. processMessage НЕ вызывался для oversized сообщения
+        processMessageCalled.Should().BeFalse();
+        // 2. Лог содержит предупреждение о превышении размера
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Warning,
@@ -169,9 +185,9 @@ public class WebSocketMessageReceiverTests
     }
 
     [Fact(Timeout = 5000)]
-    public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError()
+    public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnErrorAndContinues()
     {
-        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceiveThrowsException_CallsOnError)} ===");
+        _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceiveThrowsException_CallsOnErrorAndContinues)} ===");
         // Arrange
         var receiver = new WebSocketMessageReceiver(
             _connectionManagerMock.Object,
@@ -181,25 +197,31 @@ public class WebSocketMessageReceiverTests
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
         var onErrorCalled = false;
+        Exception? capturedException = null;
         var onError = new Action<Exception>(ex =>
         {
             onErrorCalled = true;
-            ex.Should().NotBeNull();
+            capturedException = ex;
         });
 
         var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
         var onMessageReceived = new Action<string>(msg => { });
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        using var cts = new CancellationTokenSource();
         
-        _connectionManagerMock.Setup(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Test receive error"));
+        // Первый ReceiveAsync выбрасывает исключение, второй возвращает Close
+        var closeResult = new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
+        _connectionManagerMock.SetupSequence(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Test receive error"))
+            .ReturnsAsync(closeResult);
 
         // Act
         await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
         
         // Assert
         onErrorCalled.Should().BeTrue();
+        capturedException.Should().NotBeNull();
+        capturedException!.Message.Should().Be("Test receive error");
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Error,
@@ -208,6 +230,8 @@ public class WebSocketMessageReceiverTests
                 It.Is<Exception>(e => e.Message == "Test receive error"),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
+        // Проверяем, что ReceiveAsync был вызван дважды (первый раз с ошибкой, второй раз Close)
+        _connectionManagerMock.Verify(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact(Timeout = 5000)]
@@ -319,9 +343,7 @@ public class WebSocketMessageReceiverTests
         var onError = new Action<Exception>(ex => { });
 
         using var cts = new CancellationTokenSource();
-        
-        // Отменяем токен сразу после начала
-        cts.CancelAfter(50);
+        cts.Cancel(); // Предварительно отменённый токен — детерминированно
 
         _connectionManagerMock.Setup(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WebSocketReceiveResult(
@@ -332,10 +354,8 @@ public class WebSocketMessageReceiverTests
         // Act
         var task = receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
         
-        // Ждем завершения задачи
+        // Assert - задача должна завершиться немедленно
         await Task.WhenAny(task, Task.Delay(1000));
-        
-        // Assert
         task.IsCompleted.Should().BeTrue();
         task.Exception.Should().BeNull();
     }

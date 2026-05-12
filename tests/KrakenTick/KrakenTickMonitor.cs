@@ -1,6 +1,7 @@
 using System;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 //cd tests\KrakenTick
@@ -83,29 +84,27 @@ namespace KrakenTickMonitor
 
                     var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
 
-                    // Пропускаем системные сообщения (heartbeat, status, subscriptionStatus)
-                    if (message.Contains("\"channel\":\"trade\"") && message.Contains("\"data\""))
+                    // Пропускаем heartbeat-сообщения
+                    if (message.Contains("\"event\":\"heartbeat\"") || message.Contains("heartbeat"))
+                    {
+                        Console.WriteLine("  [Heartbeat]");
+                        continue;
+                    }
+
+                    // Проверяем, является ли сообщение trade-данными
+                    if (IsTradeMessage(message))
                     {
                         _tickCount++;
 
                         // Парсим данные из массива data
-                        var symbol = ExtractJsonValue(message, "symbol");
-                        var price = ExtractJsonValue(message, "price");
-                        var quantity = ExtractJsonValue(message, "qty");
-                        var side = ExtractJsonValue(message, "side");
-                        var tradeId = ExtractJsonValue(message, "trade_id");
-                        var timestamp = ExtractJsonValue(message, "timestamp");
+                        var (symbol, price, quantity, side, tradeId, timestamp) = ParseFirstTickData(message);
 
                         Console.WriteLine($"[{_tickCount:D3}] {timestamp} | {symbol} | Цена: {price} | Объем: {quantity} | Сторона: {side} | ID: {tradeId}");
                     }
                     else
                     {
                         // Выводим системные сообщения для отладки
-                        var channel = ExtractJsonValue(message, "channel");
-                        if (!string.IsNullOrEmpty(channel) && channel != "N/A")
-                        {
-                            Console.WriteLine($"  [Системное] channel: {channel}");
-                        }
+                        Console.WriteLine($"  [Системное сообщение] {message}");
                     }
                 }
                 catch (OperationCanceledException) when (readCts.IsCancellationRequested)
@@ -115,27 +114,73 @@ namespace KrakenTickMonitor
             }
         }
 
-        private static string ExtractJsonValue(string json, string key)
+        private static bool IsTradeMessage(string json)
         {
-            var search = $"\"{key}\":\"";
-            var start = json.IndexOf(search);
-            if (start < 0)
+            try
             {
-                // Пробуем найти числовое значение
-                search = $"\"{key}\":";
-                start = json.IndexOf(search);
-                if (start < 0) return "N/A";
-                start += search.Length;
-                var end = json.IndexOfAny(new[] { ',', '}', ']' }, start);
-                if (end < 0) return "N/A";
-                return json[start..end].Trim();
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                // Проверяем channel == "trade"
+                if (!root.TryGetProperty("channel", out var channel) || channel.GetString() != "trade")
+                    return false;
+
+                // Проверяем наличие data с типом array
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                    return false;
+
+                return data.GetArrayLength() > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static (string Symbol, string Price, string Quantity, string Side, string TradeId, string Timestamp) ParseFirstTickData(string json)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                // Получаем массив data
+                if (root.TryGetProperty("data", out var dataArray) && dataArray.ValueKind == JsonValueKind.Array && dataArray.GetArrayLength() > 0)
+                {
+                    var firstTick = dataArray[0];
+
+                    var symbol = GetStringOrRaw(firstTick, "symbol");
+                    var price = GetStringOrRaw(firstTick, "price");
+                    var quantity = GetStringOrRaw(firstTick, "qty");
+                    var side = GetStringOrRaw(firstTick, "side");
+                    var tradeId = GetStringOrRaw(firstTick, "trade_id");
+                    var timestamp = GetStringOrRaw(firstTick, "timestamp");
+
+                    return (symbol, price, quantity, side, tradeId, timestamp);
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"  [Ошибка парсинга JSON]: {ex.Message}");
             }
 
-            start += search.Length;
-            var endQuote = json.IndexOf("\"", start);
-            if (endQuote < 0) return "N/A";
+            return ("N/A", "N/A", "N/A", "N/A", "N/A", "N/A");
+        }
 
-            return json[start..endQuote];
+        private static string GetStringOrRaw(JsonElement element, string key)
+        {
+            if (element.TryGetProperty(key, out var value))
+            {
+                return value.ValueKind switch
+                {
+                    JsonValueKind.String => value.GetString() ?? "N/A",
+                    JsonValueKind.Number => value.GetRawText(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => value.GetRawText()
+                };
+            }
+            return "N/A";
         }
     }
 }

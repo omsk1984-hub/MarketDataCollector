@@ -152,6 +152,8 @@ public class DataStorageServiceTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+        // Проверяем, что SaveChangesAsync НЕ вызывался после ошибки
+        _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact(Timeout = 10000)]
@@ -201,7 +203,8 @@ public class DataStorageServiceTests
             x => x.Log(
                 LogLevel.Debug,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Batch of")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Batch of") &&
+                                                o.ToString()!.Contains("2")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -237,6 +240,23 @@ public class DataStorageServiceTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task StoreRawTicksBatchAsync_WithEmptyCollection_DoesNothing()
+    {
+        _output.WriteLine($"=== Running: {nameof(StoreRawTicksBatchAsync_WithEmptyCollection_DoesNothing)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        // Act
+        await service.StoreRawTicksBatchAsync(new List<RawTick>());
+
+        // Assert
+        _repositoryMock.Verify(x => x.AddRangeAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact(Timeout = 10000)]
@@ -502,6 +522,136 @@ public class DataStorageServiceTests
                 LogLevel.Error,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Error checking if tick exists")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task GetUnnormalizedTicksAsync_CallsRepositoryWithCorrectLimit()
+    {
+        _output.WriteLine($"=== Running: {nameof(GetUnnormalizedTicksAsync_CallsRepositoryWithCorrectLimit)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        var expectedTicks = new List<RawTick>
+        {
+            new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance", new SystemTimeService()),
+            new RawTick("ETHUSDT", 2500.75m, 1.0m, DateTime.UtcNow.AddMinutes(-1), "Binance", new SystemTimeService())
+        };
+
+        _repositoryMock.Setup(x => x.GetUnnormalizedAsync(1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedTicks);
+
+        // Act
+        var result = await service.GetUnnormalizedTicksAsync(limit: 1000);
+
+        // Assert
+        result.Should().HaveCount(2);
+        _repositoryMock.Verify(x => x.GetUnnormalizedAsync(1000, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task GetUnnormalizedTicksAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
+    {
+        _output.WriteLine($"=== Running: {nameof(GetUnnormalizedTicksAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        _repositoryMock.Setup(x => x.GetUnnormalizedAsync(1000, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GetUnnormalizedTicksAsync());
+
+        exception.Message.Should().Be("Database error");
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Error retrieving unnormalized ticks")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task MarkAsNormalizedAsync_WhenTickExists_MarksAsNormalized()
+    {
+        _output.WriteLine($"=== Running: {nameof(MarkAsNormalizedAsync_WhenTickExists_MarksAsNormalized)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        var tickId = Guid.NewGuid();
+        var tick = new RawTick("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance",
+            new SystemTimeService());
+
+        _repositoryMock.Setup(x => x.GetByIdAsync(tickId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tick);
+
+        // Act
+        await service.MarkAsNormalizedAsync(tickId);
+
+        // Assert
+        _repositoryMock.Verify(x => x.GetByIdAsync(tickId, It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(x => x.Update(tick), Times.Once);
+        _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task MarkAsNormalizedAsync_WhenTickNotFound_DoesNothing()
+    {
+        _output.WriteLine($"=== Running: {nameof(MarkAsNormalizedAsync_WhenTickNotFound_DoesNothing)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        var tickId = Guid.NewGuid();
+
+        _repositoryMock.Setup(x => x.GetByIdAsync(tickId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((RawTick?)null);
+
+        // Act
+        await service.MarkAsNormalizedAsync(tickId);
+
+        // Assert
+        _repositoryMock.Verify(x => x.GetByIdAsync(tickId, It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(x => x.Update(It.IsAny<RawTick>()), Times.Never);
+        _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task MarkAsNormalizedAsync_WhenRepositoryThrows_LogsErrorAndRethrows()
+    {
+        _output.WriteLine($"=== Running: {nameof(MarkAsNormalizedAsync_WhenRepositoryThrows_LogsErrorAndRethrows)} ===");
+        // Arrange
+        var service = new DataStorageService(
+            _repositoryMock.Object,
+            _loggerMock.Object);
+
+        var tickId = Guid.NewGuid();
+
+        _repositoryMock.Setup(x => x.GetByIdAsync(tickId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.MarkAsNormalizedAsync(tickId));
+
+        exception.Message.Should().Be("Database error");
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Error marking tick as normalized")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
