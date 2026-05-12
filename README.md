@@ -4,44 +4,48 @@
 
 ## Описание
 
-Система предназначена для непрерывного сбора тиковых данных (сделок) с криптобирж через WebSocket соединения, нормализации данных, удаления дубликатов и сохранения в базу данных PostgreSQL. Поддерживает параллельную работу с несколькими источниками данных и символами.
+Система предназначена для непрерывного сбора тиковых данных (сделок) с криптобирж через WebSocket соединения, нормализации данных, удаления дубликатов и сохранения в базу данных PostgreSQL. Поддерживает параллельную работу с несколькими источниками данных и символами. Архитектура построена на принципах SOLID с чистыми зависимостями и делегированием ответственности специализированным компонентам.
 
 ## Функционал
 
 ### 1. Сбор данных
 - WebSocket клиенты для подключения к биржам (Binance — реализована, остальные — через расширение)
 - Поддержка нескольких одновременных подключений (разные символы)
-- Автоматическое переподключение при обрывах соединения (Polly retry с экспоненциальным backoff)
-- Фоновый health-check каждые 30 секунд с перезапуском отключённых клиентов
+- Автоматическое переподключение при обрывах соединения (экспоненциальный backoff через `IReconnectStrategy`)
+- Фоновый health-check каждые 10 секунд с перезапуском отключённых клиентов
+- Делегированная архитектура: `IWebSocketConnectionManager` (управление соединением), `IWebSocketMessageReceiver` (цикл приёма сообщений), `ISubscriptionManager` (подписка), `IReconnectStrategy` (переподключение)
 
 ### 2. Обработка потока данных
 - Нормализация к единому формату (тикер, цена, объём, timestamp, биржа)
-- Удаление дубликатов: в памяти (batch) + проверка в БД по уникальному ключу (тикер + биржа + timestamp)
-- Асинхронная обработка через `Channel<T>` с батчевой записью (batch size по умолчанию 100)
+- Двухуровневая дедупликация: в памяти (batch, `GroupBy`) + проверка в БД по уникальному ключу `(Ticker, Exchange, Timestamp)`
+- Асинхронная обработка через `Channel<T>` с батчевой записью (batch size по умолчанию 5)
+- Bulk insert одним запросом (`AddRangeAsync` + `SaveChangesAsync`)
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
 ### 3. Хранение в БД
 - Сохранение сырых тиков в PostgreSQL через Entity Framework Core
 - Уникальный индекс `(Ticker, Exchange, Timestamp)` для защиты от дубликатов
-- Поддержка сущности агрегированных данных (модель определена, запись — через расширение)
-- Логирование подключений (сущность `ConnectionLog`)
+- Поддержка сущности агрегированных данных (модель и таблица определены, запись — через расширение)
+- Логирование подключений (сущность `ConnectionLog`) — fire-and-forget запись через `MonitoringService`
 
 ### 4. Мониторинг
 - Логирование основных событий (подключение/отключение источника, ошибки)
-- Счётчик обработанных тиков по каждой бирже
-- Периодический health-check статуса в лог (каждые 30 сек)
-- События `OnError` для критических ошибок
+- Счётчик обработанных тиков по каждой бирже (через `MonitoringService`)
+- Периодический health-check статуса в лог (каждые 10 секунд)
+- Периодический статус мониторинга в лог (каждые 30 секунд) через `MonitoringService`
+- События `OnError` для критических ошибок процессора
 
 ## Технологический стек
 
 - **.NET 8** — основная платформа
 - **Entity Framework Core 8** — ORM для работы с БД
 - **PostgreSQL 16** — база данных
-- **Docker / Docker Compose** — контейнеризация БД и pgAdmin
-- **Polly 8** — политики повторных попыток (retry с exponential backoff)
+- **Docker / Docker Compose** — контейнеризация БД
+- **Polly 8** — политики повторных попыток (референс в проекте; фактическая стратегия — собственная реализация `ExponentialReconnectStrategy`)
 - **Newtonsoft.Json** — парсинг JSON сообщений бирж
 - **Npgsql** — драйвер PostgreSQL для .NET
-- **WebSocket (System.Net.WebSockets)** — протокол для реального времени
+- **WebSocket (`System.Net.WebSockets`)** — протокол для реального времени
+- **xUnit + Moq + FluentAssertions** — модульное тестирование
 
 ## Структура проекта
 
@@ -49,112 +53,196 @@
 MarketDataCollector/
 ├── src/
 │   ├── MarketDataCollector.Core/              # Интерфейсы, базовые классы, конфигурация
-│   │   ├── Clients/BaseWebSocketClient.cs     # Базовый WebSocket клиент с retry и автовосстановлением
-│   │   ├── Configuration/ExchangeConfig.cs    # Модели конфигурации бирж
+│   │   ├── Clients/
+│   │   │   ├── BaseWebSocketClient.cs         # Базовый координатор WebSocket-клиента
+│   │   │   ├── WebSocketConnectionManager.cs  # Управление соединением
+│   │   │   ├── WebSocketMessageReceiver.cs    # Цикл приёма сообщений
+│   │   │   ├── ExponentialReconnectStrategy.cs# Стратегия экспоненциального переподключения
+│   │   │   ├── SubscriptionManager.cs         # Менеджер подписки с retry
+│   │   │   └── ClientWebSocketWrapper.cs      # Обёртка над ClientWebSocket
+│   │   ├── Configuration/
+│   │   │   ├── ExchangeConfig.cs              # Модели конфигурации бирж (ExchangeOptions)
+│   │   │   ├── WebSocketClientOptions.cs      # Параметры WebSocket-клиента
+│   │   │   └── MarketDataProcessorOptions.cs  # Параметры процессора
 │   │   └── Interfaces/                        # Все интерфейсы системы
+│   │       ├── IExchangeWebSocketClient.cs    # WebSocket клиент биржи
+│   │       ├── IWebSocketClient.cs            # Базовый WebSocket клиент
+│   │       ├── IClientWebSocket.cs            # Абстракция ClientWebSocket
+│   │       ├── IWebSocketConnectionManager.cs # Менеджер соединения
+│   │       ├── IWebSocketMessageReceiver.cs   # Приёмник сообщений
+│   │       ├── IReconnectStrategy.cs          # Стратегия переподключения
+│   │       ├── ISubscriptionManager.cs        # Менеджер подписки
+│   │       ├── IWebSocketClientFactory.cs     # Фабрика клиентов
+│   │       ├── IMarketDataProcessor.cs        # Процессор рыночных данных
+│   │       ├── IMonitoringService.cs          # Сервис мониторинга
+│   │       ├── IRawTickRepository.cs          # Репозиторий тиков
+│   │       ├── IConnectionLogRepository.cs    # Репозиторий логов подключений
+│   │       └── IRepository.cs                 # Базовый репозиторий
 │   ├── MarketDataCollector.Domain/            # Сущности домена, доменные интерфейсы
-│   │   ├── Entities/RawTick.cs                # Сырой тик
-│   │   ├── Entities/AggregatedData.cs         # Агрегированные данные (свечи)
-│   │   ├── Entities/ConnectionLog.cs          # Лог подключений
-│   │   └── Interfaces/ITimeService.ts         # Абстракция времени
+│   │   ├── Entities/
+│   │   │   ├── RawTick.cs                     # Сырой тик
+│   │   │   ├── AggregatedData.cs              # Агрегированные данные (свечи)
+│   │   │   └── ConnectionLog.cs               # Лог подключений
+│   │   └── Interfaces/
+│   │       └── ITimeService.cs                # Абстракция времени
 │   ├── MarketDataCollector.Infrastructure/    # Реализации (репозитории, клиенты, фабрики)
 │   │   ├── Clients/BinanceWebSocketClient.cs  # Клиент Binance
 │   │   ├── Data/MarketDataDbContext.cs        # EF Core DbContext
-│   │   ├── Factories/WebSocketClientFactory.cs# Фабрика WebSocket клиентов
-│   │   ├── Repositories/RawTickRepository.cs  # Репозиторий тиков
-│   │   └── Services/SystemTimeService.cs     # Реализация ITimeService
+│   │   ├── Factories/WebSocketClientFactory.cs# Фабрика WebSocket клиентов (двухфазная инициализация)
+│   │   ├── Repositories/
+│   │   │   ├── RawTickRepository.cs           # Репозиторий тиков
+│   │   │   └── ConnectionLogRepository.cs     # Репозиторий логов подключений
+│   │   └── Services/SystemTimeService.cs      # Реализация ITimeService
 │   ├── MarketDataCollector.Application/       # Бизнес-логика, сервисы
-│   │   ├── Services/MarketDataProcessor.cs    # Процессор тиков (Channel + batch)
-│   │   ├── Services/DataStorageService.cs     # Сервис хранения данных
-│   │   └── Services/MonitoringService.cs      # Сервис мониторинга
+│   │   └── Services/
+│   │       ├── MarketDataProcessor.cs         # Процессор тиков (Channel + batch + дедупликация)
+│   │       ├── DataStorageService.cs          # Сервис хранения данных (обёртка над репозиторием)
+│   │       └── MonitoringService.cs           # Сервис мониторинга (счётчики + ConnectionLog)
 │   └── MarketDataCollector.Workers/           # Фоновый сервис сбора данных
 │       └── MarketDataCollector.Worker/
 │           ├── Program.cs                     # Точка входа, регистрация DI
 │           ├── Worker.cs                      # BackgroundService с health-check
 │           ├── appsettings.json               # Конфигурация
-│           └── appsettings.Development.json   # Конфигурация для разработки
+│           ├── appsettings.Development.json   # Конфигурация для разработки
+│           └── Properties/launchSettings.json
 ├── tests/                                     # Тестовые проекты
+│   ├── MarketDataCollector.Tests/             # xUnit модульные тесты (12 файлов)
+│   │   ├── Application/Services/
+│   │   │   ├── MarketDataProcessorTests.cs
+│   │   │   ├── DataStorageServiceTests.cs
+│   │   │   └── MonitoringServiceTests.cs
+│   │   ├── Core/Clients/
+│   │   │   ├── BaseWebSocketClientTests.cs
+│   │   │   ├── ExponentialReconnectStrategyTests.cs
+│   │   │   ├── SubscriptionManagerTests.cs
+│   │   │   ├── WebSocketConnectionManagerTests.cs
+│   │   │   └── WebSocketMessageReceiverTests.cs
+│   │   └── Infrastructure/
+│   │       ├── Clients/BinanceWebSocketClientTests.cs
+│   │       ├── Factories/WebSocketClientFactoryTests.cs
+│   │       └── Repositories/RawTickRepositoryTests.cs
 │   ├── BinanceTick/                           # Консольный монитор Binance
 │   └── KrakenTick/                            # Консольный монитор Kraken
 ├── docker/                                    # Docker конфигурации
-│   ├── docker-compose.yml
-│   └── init.sql
+│   ├── docker-compose.yml                     # PostgreSQL 16
+│   └── init.sql                               # Инициализация схемы БД
+├── scripts/                                   # Скрипты
+├── config/                                    # Дополнительные конфигурации
 ├── plans/                                     # Планы рефакторинга
-└── docs/                                      # Документация
+├── docs/                                      # Документация
+└── tasks/                                     # Описания задач
 ```
 
 ## Архитектура
 
-### Слоистая архитектура с чистыми зависимостями
+### Слоистая архитектура с делегированными компонентами
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  MarketDataCollector.Worker (BackgroundService)         │
-│  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐   │
-│  │  Worker     │  │  Health-Check    │  │  Cleanup  │   │
-│  └──────┬──────┘  └──────────────────┘  └───────────┘   │
-└─────────┼───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  MarketDataCollector.Worker (BackgroundService)                  │
+│  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐            │
+│  │  Worker     │  │  Health-Check    │  │  Cleanup  │            │
+│  │             │  │  (10s interval)  │  │           │            │
+│  └──────┬──────┘  └──────────────────┘  └───────────┘            │
+└─────────┼────────────────────────────────────────────────────────┘
           │ использует
-┌─────────▼───────────────────────────────────────────────┐
-│  MarketDataCollector.Application                        │
-│  ┌───────────────────┐  ┌────────────────────────────┐  │
-│  │MarketDataProcessor│  │ MonitoringService          │  │
-│  │(Channel + Batch)  │  │ (Counters + Status)        │  │
-│  └───────────────────┘  └────────────────────────────┘  │
-└─────────┬───────────────────────────────────────────────┘
-          │ реализует интерфейсы
-┌─────────▼───────────────────────────────────────────────┐
-│  MarketDataCollector.Core                               │
-│  ┌───────────────────┐  ┌────────────────────────────┐  │
-│  │BaseWebSocketClient│  │ Interfaces                 │  │
-│  │(Polly retry,      │  │ (IExchangeWebSocketClient, │  │
-│  │ auto-reconnect)   │  │  IMarketDataProcessor,     │  │
-│  │                   │  │  IWebSocketClientFactory)  │  │
-│  └───────────────────┘  └────────────────────────────┘  │
-└─────────┬───────────────────────────────────────────────┘
-          │ ссылается на
-┌─────────▼───────────────────────────────────────────────┐
-│  MarketDataCollector.Domain                             │
-│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │ RawTick  │  │ AggregatedData│  │ ConnectionLog    │  │
-│  └──────────┘  └───────────────┘  └──────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-          ▲ реализуется
-┌─────────┴───────────────────────────────────────────────┐
-│  MarketDataCollector.Infrastructure                     │
-│  ┌────────────────────┐  ┌───────────────────────────┐  │
-│  │ BinanceWebSocket   │  │ RawTickRepository         │  │
-│  │ Client             │  │ (EF Core)                 │  │
-│  └────────────────────┘  └───────────────────────────┘  │
-│  ┌────────────────────┐  ┌───────────────────────────┐  │
-│  │ WebSocketClient    │  │ MarketDataDbContext       │  │
-│  │ Factory            │  │                           │  │
-│  └────────────────────┘  └───────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────▼────────────────────────────────────────────────────────┐
+│  MarketDataCollector.Infrastructure                              │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  WebSocketClientFactory (двухфазная инициализация)        │    │
+│  │  ┌────────────────────────────────────────────────────┐   │    │
+│  │  │  BinanceWebSocketClient (IExchangeWebSocketClient)  │   │    │
+│  │  │  ┌────────────────┐ ┌───────────────┐              │   │    │
+│  │  │  │ ConnectionMgr  │ │ MessageRcvr   │              │   │    │
+│  │  │  ├────────────────┤ ├───────────────┤              │   │    │
+│  │  │  │ ReconnectStrat │ │ SubscriptionMgr│              │   │    │
+│  │  │  └────────────────┘ └───────────────┘              │   │    │
+│  │  └────────────────────────────────────────────────────┘   │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│  ┌────────────────────┐  ┌───────────────────────────────────┐   │
+│  │ RawTickRepository  │  │ MarketDataDbContext               │   │
+│  │ ConnectionLogRepo  │  │ (EF Core: RawTicks, ConnectionLogs,│   │
+│  └────────────────────┘  │  AggregatedData)                  │   │
+│                          └───────────────────────────────────┘   │
+│  ┌────────────────────┐                                          │
+│  │ SystemTimeService  │                                          │
+│  └────────────────────┘                                          │
+└──────────────────────────────────────────────────────────────────┘
+          ▲ реализует интерфейсы
+┌─────────┴────────────────────────────────────────────────────────┐
+│  MarketDataCollector.Core (Interfaces + BaseWebSocketClient)     │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  IExchangeWebSocketClient ← BaseWebSocketClient          │    │
+│  │  IWebSocketConnectionManager ← WebSocketConnectionManager│    │
+│  │  IWebSocketMessageReceiver  ← WebSocketMessageReceiver   │    │
+│  │  IReconnectStrategy         ← ExponentialReconnectStrat  │    │
+│  │  ISubscriptionManager       ← SubscriptionManager        │    │
+│  │  IWebSocketClientFactory    ← (интерфейс фабрики)         │    │
+│  │  IMarketDataProcessor       ← (интерфейс процессора)      │    │
+│  │  IMonitoringService         ← (интерфейс мониторинга)     │    │
+│  └──────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────┘
+          │ использует
+┌─────────▼────────────────────────────────────────────────────────┐
+│  MarketDataCollector.Application                                 │
+│  ┌───────────────────┐  ┌────────────────────────────┐           │
+│  │MarketDataProcessor│  │ MonitoringService          │           │
+│  │(Channel + Batch)  │  │ (Counters + Status +       │           │
+│  │двухуровневая      │  │  ConnectionLog fire&forget)│           │
+│  │дедупликация)      │  └────────────────────────────┘           │
+│  └───────────────────┘                                          │
+│  ┌───────────────────┐                                          │
+│  │DataStorageService │  (обёртка над IRawTickRepository)         │
+│  └───────────────────┘                                          │
+└──────────────────────────────────────────────────────────────────┘
+          ▲ реализует интерфейсы Domain
+┌─────────┴────────────────────────────────────────────────────────┐
+│  MarketDataCollector.Domain                                      │
+│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐           │
+│  │ RawTick  │  │ AggregatedData│  │ ConnectionLog    │           │
+│  └──────────┘  └───────────────┘  └──────────────────┘           │
+│  ┌────────────────────┐                                         │
+│  │ ITimeService       │                                         │
+│  └────────────────────┘                                         │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### Поток данных
 
 ```
-Binance WebSocket → BinanceWebSocketClient → ProcessMessageAsync()
-    → IMarketDataProcessor.ProcessTickAsync() → Channel<TickData>
-        → MarketDataProcessor (batch loop) → дедупликация
-            → IRawTickRepository.AddRangeAsync() → PostgreSQL
+Binance WebSocket
+    ↓ (сырые JSON сообщения)
+BinanceWebSocketClient.ProcessMessageAsync()
+    ↓ (парсинг в TickData)
+IWebSocketMessageReceiver (цикл приёма)
+    ↓ (вызов ProcessMessageAsync)
+IMarketDataProcessor.ProcessTickAsync()
+    ↓ (запись в Channel<TickData>)
+MarketDataProcessor (фоновый batch loop)
+    ↓ (накопление батча, _batchSize = 5)
+Двухуровневая дедупликация:
+    1. GroupBy в памяти (Ticker, Exchange, Timestamp)
+    2. Проверка в БД через ExistsAsync()
+    ↓ (только новые тики)
+IRawTickRepository.AddRangeAsync() → SaveChangesAsync()
+    ↓
+PostgreSQL (RawTicks)
 ```
 
 ### Принципы SOLID
-1. **Single Responsibility** — каждый класс имеет одну ответственность
+1. **Single Responsibility** — каждый класс имеет одну ответственность: `WebSocketConnectionManager` — соединение, `WebSocketMessageReceiver` — приём, `ExponentialReconnectStrategy` — переподключение, `SubscriptionManager` — подписка
 2. **Open/Closed** — новые биржи добавляются через наследование от `BaseWebSocketClient`
 3. **Liskov Substitution** — клиенты бирж взаимозаменяемы через `IExchangeWebSocketClient`
-4. **Interface Segregation** — интерфейсы разделены по функциональности
+4. **Interface Segregation** — интерфейсы разделены по функциональности (12 интерфейсов вместо одного монолитного)
 5. **Dependency Inversion** — все зависимости через интерфейсы и DI-контейнер
 
 ### Паттерны проектирования
-- **Repository** — для доступа к данным (`IRawTickRepository`, `IRepository<T>`)
-- **Factory** — для создания WebSocket клиентов (`WebSocketClientFactory`)
+- **Repository** — для доступа к данным (`IRawTickRepository`, `IConnectionLogRepository`)
+- **Factory** — для создания WebSocket клиентов (`WebSocketClientFactory`) с двухфазной инициализацией
 - **Observer** — события WebSocket (`MessageReceived`, `Connected`, `Disconnected`, `ErrorOccurred`)
-- **Strategy** — различные форматы данных бирж (через наследование `BaseWebSocketClient`)
+- **Strategy** — стратегия переподключения (`IReconnectStrategy`)
 - **Channel** — асинхронная очередь с backpressure для батчевой обработки
+- **Bridge** — разделение монолитного клиента на связанные, но независимые иерархии (ConnectionManager, MessageReceiver, SubscriptionManager, ReconnectStrategy)
 
 ## Быстрый старт
 
@@ -170,19 +258,16 @@ cd docker
 docker-compose up -d
 ```
 
-Проверьте, что контейнеры запущены:
+Проверьте, что контейнер запущен:
 ```bash
 docker ps
 ```
 
-Доступ к сервисам:
-- **PostgreSQL**: `localhost:5433`
-  - База: `MarketDataDb`
-  - Пользователь: `marketdata_user`
-  - Пароль: `StrongPassword123!`
-- **PgAdmin**: `http://localhost:5050`
-  - Email: `admin@marketdata.local`
-  - Пароль: `admin123`
+Доступ к PostgreSQL:
+- **Хост**: `localhost:5433`
+- **База**: `MarketDataDb`
+- **Пользователь**: `marketdata_user`
+- **Пароль**: `StrongPassword123!`
 
 ### Шаг 2: Сборка решения
 
@@ -193,7 +278,7 @@ dotnet build
 
 ### Шаг 3: Настройка конфигурации
 
-Файл `src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.json`:
+Файл [`src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.json`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.json):
 
 ```json
 {
@@ -218,6 +303,15 @@ dotnet build
       { "ExchangeName": "binance", "Symbol": "xrpusdt" },
       { "ExchangeName": "binance", "Symbol": "adausdt" }
     ]
+  },
+  "WebSocketClient": {
+    "ReconnectDelay": "00:00:05",
+    "MaxReconnectDelay": "00:00:60",
+    "MaxInternalReconnectAttempts": 3,
+    "MaxSubscribeRetries": 3,
+    "ReceiveBufferSize": 4096,
+    "MaxMessageSize": 1048576,
+    "DisposeTimeout": "00:00:05"
   }
 }
 ```
@@ -226,8 +320,15 @@ dotnet build
 - `ConnectionStrings.MarketDataDb` — строка подключения к PostgreSQL
 - `MarketDataProcessor.BatchSize` — размер батча для записи в БД (по умолчанию 100)
 - `MarketDataProcessor.ChannelCapacity` — ёмкость канала сообщений (по умолчанию 10000)
-- `ExchangeOptions.Exchanges` — массив бирж с шаблонами URL
+- `ExchangeOptions.Exchanges` — массив бирж с шаблонами WebSocket URL
 - `ExchangeOptions.Readers` — массив ридеров (пара биржа + символ для подписки)
+- `WebSocketClient.ReconnectDelay` — начальная задержка переподключения (5с)
+- `WebSocketClient.MaxReconnectDelay` — максимальная задержка (60с, cap экспоненты)
+- `WebSocketClient.MaxInternalReconnectAttempts` — попыток переподключения (3)
+- `WebSocketClient.MaxSubscribeRetries` — попыток подписки (3)
+- `WebSocketClient.ReceiveBufferSize` — размер буфера приёма (4096 байт)
+- `WebSocketClient.MaxMessageSize` — макс. размер сообщения (1 МБ)
+- `WebSocketClient.DisposeTimeout` — таймаут остановки (5с)
 
 ### Шаг 4: Запуск воркера сбора данных
 
@@ -236,15 +337,20 @@ cd src/MarketDataCollector.Workers/MarketDataCollector.Worker
 dotnet run
 ```
 
+Также можно использовать скрипт [`run.ps1`](run.ps1):
+```powershell
+.\run.ps1
+```
+
 **Ожидаемый вывод при успешном запуске:**
 
 ```
 info: MarketDataCollector.Worker.Worker[0]
       Worker starting...
 info: MarketDataCollector.Worker.Worker[0]
-      Starting 5 WebSocket clients...
+      Starting 1 WebSocket clients...
 info: MarketDataCollector.Worker.Worker[0]
-      Health-check: 5 connected, 0 disconnected
+      Health-check: 1 connected, 0 disconnected
 ```
 
 Воркер работает непрерывно, автоматически переподключаясь при обрывах соединения.
@@ -258,27 +364,29 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
     private readonly IMarketDataProcessor _dataProcessor;
 
     public NewExchangeWebSocketClient(
-        string webSocketUrl, string exchangeName, string symbol,
-        IMarketDataProcessor dataProcessor)
-        : base(webSocketUrl, exchangeName, symbol)
+        Uri webSocketUri, string exchangeName, string symbol,
+        IMarketDataProcessor dataProcessor,
+        IWebSocketConnectionManager connectionManager,
+        IWebSocketMessageReceiver messageReceiver,
+        IReconnectStrategy reconnectStrategy,
+        IOptions<WebSocketClientOptions> options,
+        ILogger<BaseWebSocketClient> logger)
+        : base(webSocketUri, exchangeName, symbol,
+               connectionManager, messageReceiver, reconnectStrategy, options, logger)
     {
         _dataProcessor = dataProcessor;
     }
 
-    protected override async Task ProcessMessageAsync(string message)
+    protected override Task ProcessMessageAsync(string message)
     {
         // Парсинг специфичного формата биржи
         // Вызов _dataProcessor.ProcessTickAsync(ticker, price, volume, timestamp, exchange);
-    }
-
-    protected override async Task SubscribeToTickerAsync(CancellationToken cancellationToken)
-    {
-        // Отправка сообщения подписки, если требуется
+        return Task.CompletedTask;
     }
 }
 ```
 
-2. Добавьте фабричный метод в `WebSocketClientFactory`
+2. Добавьте фабричный метод в [`WebSocketClientFactory`](src/MarketDataCollector.Infrastructure/Factories/WebSocketClientFactory.cs)
 3. Добавьте конфигурацию в `appsettings.json` (секции `Exchanges` и `Readers`)
 4. Клиент автоматически получит мониторинг через подписку на события в фабрике
 
@@ -298,6 +406,8 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 - `ConnectionLogs`: индексы по `Exchange`, `CreatedAt`
 - `AggregatedData`: индексы по `(Ticker, Interval)`, `StartTime`
 
+Схема создаётся автоматически через [`docker/init.sql`](docker/init.sql) и EF Core `OnModelCreating` в [`MarketDataDbContext`](src/MarketDataCollector.Infrastructure/Data/MarketDataDbContext.cs).
+
 ## Мониторинг и логирование
 
 ### Логи
@@ -305,21 +415,53 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 - Выход: Console (настраивается через `appsettings.json`)
 - События: подключение, отключение, ошибки, статистика, health-check
 
-### Метрики (через MonitoringService)
+### Метрики (через [`MonitoringService`](src/MarketDataCollector.Application/Services/MonitoringService.cs))
 - Количество обработанных тиков по каждой бирже
 - Статус подключений (Connected / Disconnected / Error)
 - Общее количество обработанных тиков
+- Fire-and-forget запись событий в `ConnectionLogs`
 
-### Health-check
-- Периодическая проверка каждые 30 секунд
-- Автоматический перезапуск отключённых клиентов
+### Health-check (в [`Worker.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Worker.cs))
+- Периодическая проверка каждые 10 секунд
+- Автоматический перезапуск отключённых клиентов (через идемпотентный `StartAsync`)
 - Логирование статуса: подключено/отключено
+- Остановка Worker при критической ошибке `MarketDataProcessor`
 
-## Разработка
+## Тестирование
 
-### Запуск тестовых мониторов
+### Модульные тесты (xUnit)
 
-Тестовые проекты — консольные приложения для мониторинга тиков без записи в БД:
+Проект [`tests/MarketDataCollector.Tests/`](tests/MarketDataCollector.Tests/) содержит 12 файлов тестов:
+
+| Категория | Файлы | Описание |
+|-----------|-------|----------|
+| **Application** | `MarketDataProcessorTests.cs`, `DataStorageServiceTests.cs`, `MonitoringServiceTests.cs` | Бизнес-логика |
+| **Core Clients** | `BaseWebSocketClientTests.cs`, `ExponentialReconnectStrategyTests.cs`, `SubscriptionManagerTests.cs`, `WebSocketConnectionManagerTests.cs`, `WebSocketMessageReceiverTests.cs` | Базовые компоненты |
+| **Infrastructure** | `BinanceWebSocketClientTests.cs`, `WebSocketClientFactoryTests.cs`, `RawTickRepositoryTests.cs` | Реализации |
+
+**Запуск тестов:**
+
+```powershell
+.\run_test.ps1
+```
+
+или вручную:
+
+```bash
+cd tests/MarketDataCollector.Tests
+dotnet test
+```
+
+**Технологии тестирования:**
+- **xUnit** — фреймворк
+- **Moq** — мокирование зависимостей
+- **FluentAssertions** — читаемые утверждения
+- **EF Core InMemory** — тестирование репозиториев без реальной БД
+- Таймауты: 5000ms для WebSocket/сетевых тестов, 10000ms для Repository/DataStorage
+
+### Тестовые мониторы
+
+Консольные приложения для мониторинга тиков без записи в БД:
 
 ```bash
 # Монитор Binance
@@ -330,6 +472,13 @@ dotnet run
 cd tests/KrakenTick
 dotnet run
 ```
+
+## Разработка
+
+### Скрипты
+
+- [`run.ps1`](run.ps1) — сборка и запуск воркера
+- [`run_test.ps1`](run_test.ps1) — запуск тестов
 
 ### Переменные окружения
 
@@ -360,13 +509,14 @@ dotnet user-secrets set "ConnectionStrings:MarketDataDb" "Host=...;Password=..."
 **Решение:**
 1. Проверьте уникальный индекс `(Ticker, Exchange, Timestamp)` в БД
 2. Убедитесь в корректности timestamp
-3. Проверьте логику проверки дубликатов в `MarketDataProcessor`
+3. Проверьте логику двухуровневой дедупликации в [`MarketDataProcessor.ProcessBatchAsync`](src/MarketDataCollector.Application/Services/MarketDataProcessor.cs:137)
 
 ### Проблема: Воркер падает с ошибкой
 **Решение:**
 1. Проверьте логи на наличие `Critical` ошибок
 2. Убедитесь, что процессор не завершился с ошибкой (`OnError` event)
 3. Перезапустите воркер — он восстановит соединения
+4. Внешний оркестратор (Docker/K8s) автоматически перезапустит Worker
 
 ## Лицензия
 
