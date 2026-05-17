@@ -40,7 +40,8 @@
 - **.NET 8** — основная платформа
 - **Entity Framework Core 8** — ORM для работы с БД
 - **PostgreSQL 16** — база данных
-- **Docker / Docker Compose** — контейнеризация БД
+- **Apache Kafka (KRaft mode)** — брокер сообщений для развязки компонентов
+- **Docker / Docker Compose** — контейнеризация (PostgreSQL, Kafka, Kafdrop)
 - **Polly 8** — политики повторных попыток (референс в проекте; фактическая стратегия — собственная реализация `ExponentialReconnectStrategy`)
 - **Newtonsoft.Json** — парсинг JSON сообщений бирж
 - **Npgsql** — драйвер PostgreSQL для .NET
@@ -124,8 +125,10 @@ MarketDataCollector/
 │   ├── BinanceTick/                           # Консольный монитор Binance
 │   └── KrakenTick/                            # Консольный монитор Kraken
 ├── docker/                                    # Docker конфигурации
-│   ├── docker-compose.yml                     # PostgreSQL 16
-│   └── init.sql                               # Инициализация схемы БД
+│   ├── docker-compose.yml                     # PostgreSQL 16 + Kafka KRaft + Kafdrop
+│   ├── init.sql                               # Инициализация схемы БД
+│   └── kafka/
+│       └── init-topics.sh                     # Скрипт создания топиков Kafka
 ├── scripts/                                   # Скрипты
 ├── config/                                    # Дополнительные конфигурации
 ├── plans/                                     # Планы рефакторинга
@@ -251,23 +254,63 @@ PostgreSQL (RawTicks)
 1. **.NET 8 SDK** — [скачать](https://dotnet.microsoft.com/download/dotnet/8.0)
 2. **Docker Desktop** — [скачать](https://www.docker.com/products/docker-desktop)
 
-### Шаг 1: Запуск PostgreSQL в Docker
+### Шаг 1: Запуск инфраструктуры в Docker
 
 ```bash
 cd docker
 docker-compose up -d
 ```
 
-Проверьте, что контейнер запущен:
+Эта команда запускает все необходимые сервисы:
+
+| Сервис | Назначение | Порт |
+|--------|------------|------|
+| **PostgreSQL 16** | База данных для хранения тиков | `localhost:5433` |
+| **Kafka (KRaft)** | Брокер сообщений для развязки компонентов | `localhost:9092` (внутренний) / `localhost:9094` (внешний) |
+| **Kafdrop** | Веб-интерфейс для просмотра Kafka | `http://localhost:9000` |
+
+Проверьте, что все контейнеры запущены:
 ```bash
 docker ps
 ```
 
-Доступ к PostgreSQL:
+Ожидаемый вывод:
+```
+CONTAINER ID   IMAGE                         PORTS                              NAMES
+abc123         postgres:16-alpine            0.0.0.0:5433->5432/tcp             marketdata-postgres
+def456         bitnami/kafka:latest          0.0.0.0:9092->9092/tcp,9094/tcp   marketdata-kafka
+ghi789         obsidiandynamics/kafdrop:latest 0.0.0.0:9000->9000/tcp          marketdata-kafdrop
+```
+
+**Доступ к PostgreSQL:**
 - **Хост**: `localhost:5433`
 - **База**: `MarketDataDb`
 - **Пользователь**: `marketdata_user`
 - **Пароль**: `StrongPassword123!`
+
+**Доступ к Kafka:**
+- **Внутренний** (из Docker-сети): `kafka:9092`
+- **Внешний** (с хост-машины): `localhost:9094`
+
+**Доступ к Kafdrop (веб-интерфейс Kafka):**
+- Откройте в браузере: http://localhost:9000
+- Просматривайте топики, сообщения и consumer groups
+
+### Топики Kafka
+
+При старте автоматически создаются следующие топики:
+
+| Топик | Партиции | Назначение |
+|-------|----------|------------|
+| `raw-ticks` | 3 | Сырые тиковые данные с бирж |
+| `aggregated-data` | 3 | OHLCV-свечи после агрегации |
+| `connection-events` | 1 | События подключений/отключений |
+
+Проверить топики можно через Kafdrop или CLI:
+
+```bash
+docker exec marketdata-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
 
 ### Шаг 2: Сборка решения
 
@@ -517,6 +560,30 @@ dotnet user-secrets set "ConnectionStrings:MarketDataDb" "Host=...;Password=..."
 2. Убедитесь, что процессор не завершился с ошибкой (`OnError` event)
 3. Перезапустите воркер — он восстановит соединения
 4. Внешний оркестратор (Docker/K8s) автоматически перезапустит Worker
+
+### Проблема: Kafka не стартует (контейнер падает)
+**Решение:**
+1. Проверьте логи: `docker logs marketdata-kafka`
+2. Убедитесь, что том `kafka_data` не повреждён: `docker-compose down -v && docker-compose up -d` (внимание: удалит все данные Kafka)
+3. Проверьте, что в системе достаточно памяти (Kafka требует минимум 2GB RAM в Docker Desktop)
+4. При первом запуске Kafka может стартовать до 30 секунд — дождитесь `healthy` статуса
+
+### Проблема: Не создались топики Kafka
+**Решение:**
+1. Проверьте, что Kafka полностью запущена: `docker ps | findstr kafka`
+2. Проверьте логи init-контейнера: `docker logs marketdata-kafka-init`
+3. Создайте топики вручную через Kafdrop (http://localhost:9000) или CLI:
+```bash
+docker exec marketdata-kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic raw-ticks --partitions 3 --replication-factor 1
+```
+4. Перезапустите init-контейнер: `docker-compose up -d kafka-init-topics`
+
+### Проблема: Не открывается Kafdrop (http://localhost:9000)
+**Решение:**
+1. Проверьте, что контейнер запущен: `docker ps | findstr kafdrop`
+2. Проверьте логи: `docker logs marketdata-kafdrop`
+3. Убедитесь, что порт 9000 не занят другим приложением
+4. Kafdrop может стартовать с задержкой — обновите страницу через 10-15 секунд
 
 ## Лицензия
 
