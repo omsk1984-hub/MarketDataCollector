@@ -33,6 +33,7 @@ public class Worker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
         var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
+        var tickAggregator = scope.ServiceProvider.GetRequiredService<ITickAggregator>();
 
         var clients = clientFactory.CreateAllClients().ToList();
 
@@ -66,6 +67,9 @@ public class Worker : BackgroundService
             // Запускаем процессор в фоновом режиме — он работает до отмены stoppingToken
             _ = marketDataProcessor.StartProcessingAsync(stoppingToken);
 
+            // Запускаем агрегатор свечей
+            await tickAggregator.StartAsync(stoppingToken);
+
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, processorErrorCts.Token);
@@ -88,15 +92,25 @@ public class Worker : BackgroundService
         }
         finally
         {
-            await CleanupAsync(marketDataProcessor, clients, stoppingToken);
+            await CleanupAsync(marketDataProcessor, tickAggregator, clients, stoppingToken);
         }
     }
 
     private async Task CleanupAsync(
         IMarketDataProcessor marketDataProcessor,
+        ITickAggregator tickAggregator,
         List<IExchangeWebSocketClient> clients,
         CancellationToken stoppingToken)
     {
+        try
+        {
+            await tickAggregator.StopAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping tick aggregator");
+        }
+
         try
         {
             await marketDataProcessor.StopProcessingAsync(stoppingToken);

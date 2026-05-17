@@ -19,6 +19,7 @@ namespace MarketDataCollector.Application.Services
         private readonly Channel<TickData> _channel;
         public Channel<TickData> Channel => _channel;
         private readonly int _batchSize;
+        private readonly ITickAggregator? _tickAggregator;
 
         private Task _processingTask = null!;
         private int _processedCount;
@@ -38,13 +39,15 @@ namespace MarketDataCollector.Application.Services
             ILogger<MarketDataProcessor> logger,
             ITimeService timeService,
             int batchSize,
-            int channelCapacity)
+            int channelCapacity,
+            ITickAggregator? tickAggregator = null)
         {
             _rawTickRepository = rawTickRepository;
             _logger = logger;
             _timeService = timeService;
             _batchSize = batchSize;
             _processedCount = 0;
+            _tickAggregator = tickAggregator;
 
             _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
             {
@@ -57,6 +60,13 @@ namespace MarketDataCollector.Application.Services
         public async Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
             await _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange));
+
+            // Передаём тик в агрегатор (если он подключён)
+            if (_tickAggregator != null)
+            {
+                await _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
+            }
+
             _logger.LogDebug("Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
         }
 

@@ -18,6 +18,7 @@ builder.Services.AddDbContext<MarketDataDbContext>(options =>
 // Configuration
 builder.Services.Configure<ExchangeOptions>(builder.Configuration.GetSection(ExchangeOptions.SectionName));
 builder.Services.Configure<MarketDataProcessorOptions>(builder.Configuration.GetSection(MarketDataProcessorOptions.SectionName));
+builder.Services.Configure<TickAggregatorOptions>(builder.Configuration.GetSection(TickAggregatorOptions.SectionName));
 
 // Core services
 builder.Services.AddScoped<IMarketDataProcessor>(sp =>
@@ -26,21 +27,27 @@ builder.Services.AddScoped<IMarketDataProcessor>(sp =>
     var logger = sp.GetRequiredService<ILogger<MarketDataProcessor>>();
     var timeService = sp.GetRequiredService<ITimeService>();
     var options = sp.GetRequiredService<IOptions<MarketDataProcessorOptions>>().Value;
+    var tickAggregator = sp.GetService<ITickAggregator>();
     
     return new MarketDataProcessor(
         repository,
         logger,
         timeService,
         options.BatchSize,
-        options.ChannelCapacity
+        options.ChannelCapacity,
+        tickAggregator
     );
 });
 builder.Services.AddScoped<IRawTickRepository, RawTickRepository>();
 builder.Services.AddScoped<IConnectionLogRepository, ConnectionLogRepository>();
+builder.Services.AddScoped<IAggregatedDataRepository, AggregatedDataRepository>();
 builder.Services.AddSingleton<ITimeService, SystemTimeService>();
 
 // Monitoring service — singleton, т.к. хранит состояние всех клиентов
 builder.Services.AddSingleton<IMonitoringService, MonitoringService>();
+
+// Aggregation service (singleton, because it maintains in-memory state)
+builder.Services.AddSingleton<ITickAggregator, TickAggregator>();
 
 // WebSocket client factory (must be scoped because it depends on scoped IMarketDataProcessor)
 builder.Services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
