@@ -24,7 +24,8 @@ namespace MarketDataCollector.Application.Services
         private readonly ITickAggregator? _tickAggregator;
 
         private Task _processingTask = null!;
-        private int _processedCount;
+        private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
+        private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
         public event EventHandler<Exception>? OnError;
@@ -50,6 +51,7 @@ namespace MarketDataCollector.Application.Services
             _timeService = timeService;
             _batchSize = batchSize;
             _processedCount = 0;
+            _totalReceivedCount = 0;
             _tickAggregator = tickAggregator;
 
             _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
@@ -167,6 +169,8 @@ namespace MarketDataCollector.Application.Services
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                var batchSize = batch.Count;
+
                 // 1. Убираем дубликаты в памяти
                 var uniqueTicks = batch
                     .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
@@ -185,7 +189,8 @@ namespace MarketDataCollector.Application.Services
 
                 var inserted = await repository.BulkCopyAsync(entities, cancellationToken);
 
-                var count = Interlocked.Add(ref _processedCount, inserted);
+                var totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
+                var totalInserted = Interlocked.Add(ref _processedCount, inserted);
 
                 // Инкрементируем RPS-счётчик для каждого сохранённого тика
                 for (int i = 0; i < inserted; i++)
@@ -193,9 +198,11 @@ namespace MarketDataCollector.Application.Services
                     _processedRpsCounter.Increment();
                 }
                 
-                if (count % 1000 < inserted)
+                if (totalInserted % 1000 < inserted)
                 {
-                    _logger.LogInformation("Всего обработано тиков: {Count}", count);
+                    _logger.LogInformation(
+                        "Всего обработано: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, вставлено={Inserted})",
+                        totalInserted, totalReceived, batchSize, uniqueTicks.Count, inserted);
                 }
 
                 _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено",

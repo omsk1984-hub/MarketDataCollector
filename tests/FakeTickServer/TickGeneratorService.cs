@@ -8,15 +8,26 @@ namespace FakeTickServer;
 /// <summary>
 /// BackgroundService, который генерирует случайные тики в формате Binance trade stream
 /// и отправляет их всем подключённым WebSocket-клиентам.
+/// Каждый тик гарантированно уникален благодаря атомарно инкрементируемому Trade ID.
 /// </summary>
 public class TickGeneratorService : BackgroundService
 {
     private readonly Settings _settings;
     private readonly ILogger<TickGeneratorService> _logger;
     private readonly ConcurrentDictionary<string, ClientState> _clients = new();
-    private readonly Random _random = new();
 
-    /// <summary>Глобальный счётчик trade ID.</summary>
+    /// <summary>
+    /// Потокобезопасный генератор случайных чисел (ThreadLocal).
+    /// </summary>
+    private static readonly ThreadLocal<Random> ThreadLocalRandom = new(
+        () => new Random(Environment.TickCount));
+
+    /// <summary>
+    /// Множество всех сгенерированных Trade ID для runtime-валидации уникальности.
+    /// </summary>
+    private readonly ConcurrentDictionary<long, byte> _generatedTradeIds = new();
+
+    /// <summary>Глобальный счётчик trade ID. Гарантирует уникальность каждого тика.</summary>
     private long _globalTradeId;
 
     /// <summary>Счётчик отправленных сообщений для RPS-мониторинга.</summary>
@@ -35,7 +46,9 @@ public class TickGeneratorService : BackgroundService
         _logger = logger;
 
         // Стартуем trade ID от случайного значения, чтобы было похоже на реальные данные
-        _globalTradeId = _random.NextInt64(100_000_000, 1_000_000_000);
+        // Значение инициализируется один раз, далее только атомарно инкрементируется
+        var random = ThreadLocalRandom.Value!;
+        _globalTradeId = random.NextInt64(100_000_000, 1_000_000_000);
     }
 
     /// <summary>
@@ -186,25 +199,40 @@ public class TickGeneratorService : BackgroundService
 
     /// <summary>
     /// Генерирует JSON-тик в формате Binance trade stream.
+    /// Каждый тик имеет уникальный trade ID (t) благодаря атомарному инкременту _globalTradeId.
     /// Совместимость с BinanceWebSocketClient.ProcessMessageAsync.
     /// </summary>
     private string GenerateTick(string symbol)
     {
+        // Атомарно инкрементируем глобальный счётчик — это гарантирует,
+        // что каждый тик получает уникальный Trade ID.
         var tradeId = Interlocked.Increment(ref _globalTradeId);
+
+        // Runtime-валидация: проверяем, что такой Trade ID ещё не встречался.
+        // В нормальной работе это условие никогда не должно срабатывать,
+        // но на случай бага с multi-instance или переполнением счётчика — защита.
+        if (!_generatedTradeIds.TryAdd(tradeId, 0))
+        {
+            _logger.LogWarning(
+                "НАРУШЕНИЕ УНИКАЛЬНОСТИ: Trade ID {TradeId} уже был сгенерирован ранее! " +
+                "Это может указывать на проблему в логике генерации.", tradeId);
+        }
+
         var unixTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var random = ThreadLocalRandom.Value!;
 
         // Случайное отклонение цены +/- 0.2%
-        var priceVariation = 1.0 + (_random.NextDouble() - 0.5) * 0.004;
+        var priceVariation = 1.0 + (random.NextDouble() - 0.5) * 0.004;
         var price = _settings.BasePrice * (decimal)priceVariation;
 
         // Случайный объём: 0.0001 – 0.1 (для BTC) или 0.1 – 10 (для альткоинов)
         var isBtc = symbol.StartsWith("btc", StringComparison.OrdinalIgnoreCase);
         var volume = isBtc
-            ? 0.0001m + (decimal)_random.NextDouble() * 0.0999m
-            : 0.1m + (decimal)_random.NextDouble() * 9.9m;
+            ? 0.0001m + (decimal)random.NextDouble() * 0.0999m
+            : 0.1m + (decimal)random.NextDouble() * 9.9m;
 
-        var isBuyerMaker = _random.Next(2) == 0;
-        var isBestMatch = _random.Next(2) == 0;
+        var isBuyerMaker = random.Next(2) == 0;
+        var isBestMatch = random.Next(2) == 0;
 
         // Сериализуем в JSON (используем System.Text.Json)
         return JsonSerializer.Serialize(new BinanceTick

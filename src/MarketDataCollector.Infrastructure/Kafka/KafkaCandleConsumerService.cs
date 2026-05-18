@@ -63,13 +63,13 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
             {
                 _logger.LogInformation(
                     "Kafka consumer assigned partitions: {Partitions}",
-                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition.Value}]")));
+                    FormatPartitions(partitions.Select(p => (p.Topic, p.Partition.Value))));
             })
             .SetPartitionsRevokedHandler((_, partitions) =>
             {
                 _logger.LogWarning(
                     "Kafka consumer partitions revoked: {Partitions}",
-                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition.Value}]")));
+                    FormatPartitions(partitions.Select(p => (p.Topic, p.Partition.Value))));
             })
             .Build();
     }
@@ -240,6 +240,18 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
         _cts?.Dispose();
         _consumer?.Dispose();
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Форматирует список партиций в компактный вид: topic[p0, p1, p2], topic2[p0]
+    /// Группирует по топику, чтобы избежать повторения имени топика для каждой партиции.
+    /// </summary>
+    private static string FormatPartitions(IEnumerable<(string Topic, int Partition)> partitions)
+    {
+        return string.Join(", ",
+            partitions
+                .GroupBy(p => p.Topic)
+                .Select(g => $"{g.Key}[{string.Join(", ", g.Select(p => p.Partition))}]"));
     }
 
     /// <summary>
