@@ -90,73 +90,89 @@ public class TickGeneratorService : BackgroundService
         _logger.LogInformation("TickGenerator запущен. Целевой RPS: {Rps}, символов: {Symbols}",
             _settings.Rps, string.Join(", ", _settings.Symbols));
 
-        // Интервал между отправками в миллисекундах
-        // Формула: 1000 / Rps — каждые N мс отправляем по одному тику каждому клиенту
-        var intervalMs = Math.Max(1, 1000 / Math.Max(1, _settings.Rps));
-        var ticksPerInterval = Math.Max(1, _settings.Rps / Math.Max(1, 1000 / intervalMs));
-
-        _logger.LogDebug("Интервал отправки: {IntervalMs}мс, тиков за интервал: {TicksPerInterval}",
-            intervalMs, ticksPerInterval);
+        _logger.LogDebug("Используется Stopwatch-контроль RPS для точного соблюдения целевого RPS");
 
         // Таймер для логирования статистики раз в 5 секунд
         using var statsTimer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         var statsTask = LogStatsPeriodicallyAsync(statsTimer, stoppingToken);
+
+        // Счётчик ожидаемого количества тиков по таймеру
+        long expectedTotal = 0;
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var startTime = DateTime.UtcNow;
-
                 if (_clients.IsEmpty)
                 {
-                    // Если нет клиентов — просто ждём
+                    // Если нет клиентов — сбрасываем expectedTotal и ждём
+                    expectedTotal = (long)(stopwatch.Elapsed.TotalMilliseconds * _settings.Rps / 1000.0);
                     await Task.Delay(100, stoppingToken);
                     continue;
                 }
 
-                // Отправляем тики всем клиентам
-                foreach (var (clientId, clientState) in _clients)
+                // Вычисляем, сколько тиков должно было быть отправлено с момента старта
+                var elapsedMs = stopwatch.Elapsed.TotalMilliseconds;
+                var newExpected = (long)(elapsedMs * _settings.Rps / 1000.0);
+                var need = (int)(newExpected - expectedTotal);
+
+                if (need > 0)
                 {
-                    if (stoppingToken.IsCancellationRequested) break;
+                    expectedTotal = newExpected;
 
-                    try
-                    {
-                        var tickJson = GenerateTick(clientState.Symbol);
-                        var bytes = Encoding.UTF8.GetBytes(tickJson);
-                        var segment = new ArraySegment<byte>(bytes);
+                    // Равномерно распределяем need тиков между клиентами
+                    var totalClients = _clients.Count;
+                    var perClient = need / totalClients;
+                    var extra = need % totalClients;
 
-                        await clientState.WebSocket.SendAsync(
-                            segment, WebSocketMessageType.Text, true, stoppingToken);
+                    foreach (var (clientId, clientState) in _clients)
+                    {
+                        if (stoppingToken.IsCancellationRequested) break;
 
-                        Interlocked.Increment(ref _sentCount);
-                    }
-                    catch (WebSocketException ex) when (
-                        ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely ||
-                        ex.WebSocketErrorCode == WebSocketError.InvalidState)
-                    {
-                        _logger.LogWarning("Клиент {ClientId} отключился (WebSocket ошибка): {Error}",
-                            clientId, ex.Message);
-                        RemoveClient(clientId);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Ошибка при отправке клиенту {ClientId}", clientId);
-                        RemoveClient(clientId);
+                        var count = perClient + (extra > 0 ? 1 : 0);
+                        if (extra > 0) extra--;
+
+                        for (int j = 0; j < count; j++)
+                        {
+                            try
+                            {
+                                var tickJson = GenerateTick(clientState.Symbol);
+                                var bytes = Encoding.UTF8.GetBytes(tickJson);
+                                var segment = new ArraySegment<byte>(bytes);
+
+                                await clientState.WebSocket.SendAsync(
+                                    segment, WebSocketMessageType.Text, true, stoppingToken);
+
+                                Interlocked.Increment(ref _sentCount);
+                            }
+                            catch (WebSocketException ex) when (
+                                ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely ||
+                                ex.WebSocketErrorCode == WebSocketError.InvalidState)
+                            {
+                                _logger.LogWarning("Клиент {ClientId} отключился (WebSocket ошибка): {Error}",
+                                    clientId, ex.Message);
+                                RemoveClient(clientId);
+                                break; // прерываем inner loop для этого клиента
+                            }
+                            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                            {
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Ошибка при отправке клиенту {ClientId}", clientId);
+                                RemoveClient(clientId);
+                                break; // прерываем inner loop для этого клиента
+                            }
+                        }
                     }
                 }
-
-                // Вычисляем, сколько нужно подождать до следующего тика
-                var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
-                var delay = (int)(intervalMs - elapsed);
-                if (delay > 0)
+                else
                 {
-                    await Task.Delay(delay, stoppingToken);
+                    // Ничего отправлять не нужно — спим 10 мс, чтобы не нагружать CPU
+                    await Task.Delay(10, stoppingToken);
                 }
             }
         }

@@ -55,7 +55,7 @@ namespace MarketDataCollector.Application.Services
             _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
+                SingleReader = false,
                 SingleWriter = false
             });
         }
@@ -88,13 +88,21 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Запускаем один consumer (SingleReader=true), который последовательно читает,
-            // набирает батч и пишет в БД. Это устраняет необходимость в SemaphoreSlim
-            // и исключает contention между несколькими consumer'ами.
-            _processingTask = ProcessBatchesAsync(cancellationToken);
-            _logger.LogInformation("Обработчик рыночных данных запущен: 1 consumer, batchSize={_batchSize}, FullMode=DropOldest",
-                _batchSize);
-            
+            // Запускаем несколько parallel consumer'ов, которые конкурентно читают из Channel.
+            // SingleReader=false позволяет нескольким корутинам параллельно вычитывать тики,
+            // набирать батчи и писать в БД через BulkCopyAsync (deadlock'ы обрабатываются
+            // retry-логикой в репозитории).
+            // Ограничиваем consumerCount до 4, чтобы избежать избыточной конкуренции
+            // за Postgres (16+ concurrent BulkCopyAsync создают тяжелый contention).
+            var consumerCount = Math.Clamp(Environment.ProcessorCount, 1, 4);
+            var consumers = Enumerable.Range(0, consumerCount)
+                .Select(_ => ProcessBatchesAsync(cancellationToken));
+            _processingTask = Task.WhenAll(consumers);
+
+            _logger.LogInformation(
+                "Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, FullMode=DropOldest",
+                consumerCount, _batchSize);
+
             return Task.CompletedTask;
         }
 
@@ -185,7 +193,7 @@ namespace MarketDataCollector.Application.Services
                     _processedRpsCounter.Increment();
                 }
                 
-                if (count % 100 < inserted)
+                if (count % 1000 < inserted)
                 {
                     _logger.LogInformation("Всего обработано тиков: {Count}", count);
                 }

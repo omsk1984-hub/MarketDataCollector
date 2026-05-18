@@ -1,7 +1,7 @@
 # Параметры (можно менять под свои нужды)
 $Port = 5000
-$Rps = 800
-$Symbols = "btcusdt,ethusdt,solusdt,xrpusdt,adausdt"
+$Rps = 500
+$Symbols = "btcusdt,ethusdt"
 $BasePrice = 50000
 
 # Останавливаем предыдущий экземпляр, если запущен
