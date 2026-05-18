@@ -525,9 +525,9 @@ public class MarketDataProcessorTests
     }
 
     [Fact(Timeout = 30000)]
-    public async Task ProcessBatchAsync_WithConcurrentConsumers_DbAccessIsSerialized()
+    public async Task ProcessBatchAsync_SingleReader_ProcessesBatchesSequentially()
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithConcurrentConsumers_DbAccessIsSerialized)} ===");
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SingleReader_ProcessesBatchesSequentially)} ===");
 
         // Arrange
         var concurrentCalls = 0;
@@ -538,8 +538,7 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
             {
-                // Эмулируем длительную DB-операцию (100ms),
-                // чтобы можно было засечь конкурентные вызовы
+                // Эмулируем длительную DB-операцию (100ms)
                 lock (callLock)
                 {
                     concurrentCalls++;
@@ -567,8 +566,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await processor.StartProcessingAsync(cts.Token);
 
-        // Act — отправляем много тиков, чтобы заполнить несколько батчей
-        // batchSize=5, отправляем 20 тиков => минимум 4 батча
+        // Act — отправляем 20 тиков (batchSize=5 => минимум 4 батча)
         for (int i = 0; i < 20; i++)
         {
             await processor.ProcessTickAsync(
@@ -579,18 +577,18 @@ public class MarketDataProcessorTests
                 "Binance");
         }
 
-        // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(CancellationToken.None);
 
-        // Assert — SemaphoreSlim(1,1) гарантирует, что в БД писал только 1 поток за раз
+        // Assert — SingleReader=true, только 1 consumer, поэтому
+        // BulkInsertIgnoreConflictsAsync вызывается последовательно
         maxConcurrentCalls.Should().Be(1,
-            "SemaphoreSlim(1,1) должен сериализовать запись в БД");
+            "SingleReader=true гарантирует последовательную запись в БД");
     }
 
     [Fact(Timeout = 30000)]
-    public async Task ProcessBatchAsync_WithAggregator_DbAccessStillSerialized()
+    public async Task ProcessBatchAsync_WithAggregator_SingleReaderStillSequential()
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithAggregator_DbAccessStillSerialized)} ===");
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithAggregator_SingleReaderStillSequential)} ===");
 
         // Arrange
         var maxConcurrentCalls = 0;
@@ -651,13 +649,13 @@ public class MarketDataProcessorTests
 
         // Assert
         maxConcurrentCalls.Should().Be(1,
-            "Даже с агрегатором SemaphoreSlim(1,1) должен сериализовать запись в БД");
+            "SingleReader=true гарантирует последовательную запись даже с агрегатором");
     }
 
     [Fact(Timeout = 30000)]
-    public async Task ProcessBatchAsync_DbException_OtherBatchesStillProcessed()
+    public async Task ProcessBatchAsync_DbException_ContinuesProcessing()
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_DbException_OtherBatchesStillProcessed)} ===");
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_DbException_ContinuesProcessing)} ===");
 
         // Arrange — первые два вызова кидают исключение, третий успешен
         var callCount = 0;
@@ -697,13 +695,12 @@ public class MarketDataProcessorTests
 
         await processor.StopProcessingAsync(CancellationToken.None);
 
-        // Assert — должно быть минимум 2 ошибки (первые два батча, которые упали).
-        // Общее количество вызовов может быть больше 3 из-за множественных consumer'ов
-        // и финального flush'а, но первые два вызова гарантированно упали.
+        // Assert — первые два батча (из 3) упали с ошибкой, третий успешен.
+        // С SingleReader=true всё последовательно: 2 ошибки, затем 1 успех + финальный flush.
         errorCount.Should().Be(2,
             "первые два батча должны упасть с ошибкой, третий — успешно обработаться");
         // Проверяем, что BulkInsertIgnoreConflictsAsync вызывался минимум 3 раза
-        // (2 ошибки + минимум 1 успех)
+        // (2 ошибки + минимум 1 успех + финальный flush)
         _repositoryMock.Verify(
             x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeast(3));
@@ -885,5 +882,63 @@ public class MarketDataProcessorTests
             x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce,
             "Тики должны сохраняться в БД, независимо от агрегатора");
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task ProcessTickAsync_DoesNotBlockWhenMainChannelIsFull()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenMainChannelIsFull)} ===");
+        // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                // Эмулируем медленный DB write (200ms), чтобы канал быстро заполнился
+                await Task.Delay(200);
+                return 1;
+            });
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 100,     // большой batch — чтобы consumer не успевал за producer
+            channelCapacity: 10); // очень маленький канал (вмещает всего 10 тиков)
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 100 тиков. Канал вмещает 10, consumer медленный (200ms).
+        // Если FullMode=Wait, то после 10-го тика WriteAsync заблокируется.
+        // С DropOldest — тики отбрасываются, producer не блокируется.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        for (int i = 0; i < 100; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i % 60, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        stopwatch.Stop();
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — 100 вызовов с медленным consumer должны пройти быстро.
+        // Если бы был Wait, то >10s (пока consumer переварит 100 тиков по 200ms).
+        // С DropOldest — все 100 WriteAsync отрабатывают мгновенно.
+        stopwatch.Elapsed.TotalSeconds.Should().BeLessThan(2.0,
+            "DropOldest не должен блокировать producer при переполнении канала");
+
+        var processedCount = await processor.GetProcessedCountAsync();
+        _output.WriteLine($"Процессор обработал {processedCount} тиков (из 100 отправленных, канал теряет часть)");
+
+        _repositoryMock.Verify(
+            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce,
+            "DropOldest не должен останавливать основной пайплайн обработки");
     }
 }

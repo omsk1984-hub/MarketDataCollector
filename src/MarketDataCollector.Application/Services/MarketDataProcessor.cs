@@ -27,14 +27,6 @@ namespace MarketDataCollector.Application.Services
         private int _processedCount;
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
-        /// <summary>
-        /// Семафор для сериализации записи в БД. Несколько consumer'ов читают из Channel
-        /// параллельно, но вставка в PostgreSQL выполняется только одним потоком за раз.
-        /// Это предотвращает deadlock'и на уникальном индексе (ticker, exchange, timestamp)
-        /// при конкурентных INSERT ... ON CONFLICT.
-        /// </summary>
-        private readonly SemaphoreSlim _dbSemaphore = new(1, 1);
-
         public event EventHandler<Exception>? OnError;
 
         public readonly record struct TickData(
@@ -62,8 +54,8 @@ namespace MarketDataCollector.Application.Services
 
             _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
             {
-                FullMode = BoundedChannelFullMode.Wait,
-                SingleReader = false,
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
                 SingleWriter = false
             });
         }
@@ -96,13 +88,12 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Запускаем несколько параллельных consumer'ов для увеличения пропускной способности
-            var consumerCount = Math.Max(1, Environment.ProcessorCount / 2);
-            var consumers = Enumerable.Range(0, consumerCount)
-                .Select(_ => ProcessBatchesAsync(cancellationToken));
-            _processingTask = Task.WhenAll(consumers);
-            _logger.LogInformation("Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={_batchSize}",
-                consumerCount, _batchSize);
+            // Запускаем один consumer (SingleReader=true), который последовательно читает,
+            // набирает батч и пишет в БД. Это устраняет необходимость в SemaphoreSlim
+            // и исключает contention между несколькими consumer'ами.
+            _processingTask = ProcessBatchesAsync(cancellationToken);
+            _logger.LogInformation("Обработчик рыночных данных запущен: 1 consumer, batchSize={_batchSize}, FullMode=DropOldest",
+                _batchSize);
             
             return Task.CompletedTask;
         }
@@ -139,15 +130,7 @@ namespace MarketDataCollector.Application.Services
 
                     if (batch.Count >= _batchSize)
                     {
-                        await _dbSemaphore.WaitAsync(cancellationToken);
-                        try
-                        {
-                            await ProcessBatchAsync(batch, cancellationToken);
-                        }
-                        finally
-                        {
-                            _dbSemaphore.Release();
-                        }
+                        await ProcessBatchAsync(batch, cancellationToken);
                         batch.Clear();
                     }
                 }
@@ -165,15 +148,7 @@ namespace MarketDataCollector.Application.Services
                 // Финальный flush
                 if (batch.Count > 0)
                 {
-                    await _dbSemaphore.WaitAsync(CancellationToken.None);
-                    try
-                    {
-                        await ProcessBatchAsync(batch, CancellationToken.None);
-                    }
-                    finally
-                    {
-                        _dbSemaphore.Release();
-                    }
+                    await ProcessBatchAsync(batch, CancellationToken.None);
                 }
             }
         }
