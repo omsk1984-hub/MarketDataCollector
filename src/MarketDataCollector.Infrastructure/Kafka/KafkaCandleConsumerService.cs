@@ -63,13 +63,13 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
             {
                 _logger.LogInformation(
                     "Kafka consumer assigned partitions: {Partitions}",
-                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition}]")));
+                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition.Value}]")));
             })
             .SetPartitionsRevokedHandler((_, partitions) =>
             {
                 _logger.LogWarning(
                     "Kafka consumer partitions revoked: {Partitions}",
-                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition}]")));
+                    string.Join(", ", partitions.Select(p => $"{p.Topic}[{p.Partition.Value}]")));
             })
             .Build();
     }
