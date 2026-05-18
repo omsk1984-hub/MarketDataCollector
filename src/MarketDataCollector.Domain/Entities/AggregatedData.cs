@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using MarketDataCollector.Domain.Interfaces;
+using MarketDataCollector.Domain.Utilities;
 
 namespace MarketDataCollector.Domain.Entities
 {
@@ -71,11 +72,11 @@ namespace MarketDataCollector.Domain.Entities
             Id = Guid.NewGuid();
             Ticker = ticker ?? throw new ArgumentNullException(nameof(ticker));
             Interval = interval ?? throw new ArgumentNullException(nameof(interval));
-            OpenPrice = openPrice;
-            HighPrice = highPrice;
-            LowPrice = lowPrice;
-            ClosePrice = closePrice;
-            Volume = volume;
+            OpenPrice = DecimalHelper.TruncateForDatabase(openPrice);
+            HighPrice = DecimalHelper.TruncateForDatabase(highPrice);
+            LowPrice = DecimalHelper.TruncateForDatabase(lowPrice);
+            ClosePrice = DecimalHelper.TruncateForDatabase(closePrice);
+            Volume = DecimalHelper.TruncateForDatabase(volume);
             StartTime = startTime;
             EndTime = endTime;
             CreatedAt = timeService?.UtcNow ?? throw new ArgumentNullException(nameof(timeService));
@@ -83,10 +84,10 @@ namespace MarketDataCollector.Domain.Entities
 
         public void UpdatePrices(decimal high, decimal low, decimal close, decimal volume)
         {
-            if (high > HighPrice) HighPrice = high;
-            if (low < LowPrice) LowPrice = low;
-            ClosePrice = close;
-            Volume += volume;
+            if (high > HighPrice) HighPrice = DecimalHelper.TruncateForDatabase(high);
+            if (low < LowPrice) LowPrice = DecimalHelper.TruncateForDatabase(low);
+            ClosePrice = DecimalHelper.TruncateForDatabase(close);
+            Volume = DecimalHelper.TruncateForDatabase(Volume + volume);
         }
     }
 }

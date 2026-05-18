@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using MarketDataCollector.Domain.Interfaces;
+using MarketDataCollector.Domain.Utilities;
 
 namespace MarketDataCollector.Domain.Entities
 {
@@ -48,8 +49,8 @@ namespace MarketDataCollector.Domain.Entities
         {
             Id = Guid.NewGuid();
             Ticker = ticker ?? throw new ArgumentNullException(nameof(ticker));
-            Price = price;
-            Volume = volume;
+            Price = DecimalHelper.TruncateForDatabase(price);
+            Volume = DecimalHelper.TruncateForDatabase(volume);
             Timestamp = timestamp;
             Exchange = exchange ?? throw new ArgumentNullException(nameof(exchange));
             ReceivedAt = timeService?.UtcNow ?? throw new ArgumentNullException(nameof(timeService));
@@ -63,12 +64,12 @@ namespace MarketDataCollector.Domain.Entities
 
         public void UpdatePrice(decimal newPrice)
         {
-            Price = newPrice;
+            Price = DecimalHelper.TruncateForDatabase(newPrice);
         }
 
         public void UpdateVolume(decimal newVolume)
         {
-            Volume = newVolume;
+            Volume = DecimalHelper.TruncateForDatabase(newVolume);
         }
     }
 }
