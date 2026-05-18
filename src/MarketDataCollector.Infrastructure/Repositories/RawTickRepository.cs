@@ -189,6 +189,79 @@ namespace MarketDataCollector.Infrastructure.Repositories
             }
         }
 
+        public async Task<int> BulkCopyAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
+        {
+            var list = entities.ToList();
+            if (list.Count == 0)
+                return 0;
+
+            var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
+            var needOpen = conn.State != System.Data.ConnectionState.Open;
+            if (needOpen)
+                await conn.OpenAsync(cancellationToken);
+
+            try
+            {
+                // 1. Создаём временную таблицу (per session, удаляется при коммите/закрытии)
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        CREATE TEMP TABLE IF NOT EXISTS rawticks_staging (
+                            id UUID,
+                            ticker VARCHAR(20),
+                            price DECIMAL(18,8),
+                            volume DECIMAL(18,8),
+                            timestamp TIMESTAMPTZ,
+                            exchange VARCHAR(50),
+                            receivedat TIMESTAMPTZ,
+                            normalized BOOLEAN
+                        );";
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                // 2. Binary COPY во временную таблицу
+                await using (var writer = conn.BeginBinaryImport(
+                    "COPY rawticks_staging (id, ticker, price, volume, timestamp, exchange, receivedat, normalized) FROM STDIN (FORMAT BINARY)"))
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        writer.StartRow();
+                        writer.Write(list[i].Id, NpgsqlTypes.NpgsqlDbType.Uuid);
+                        writer.Write(list[i].Ticker, NpgsqlTypes.NpgsqlDbType.Varchar);
+                        writer.Write(list[i].Price, NpgsqlTypes.NpgsqlDbType.Numeric);
+                        writer.Write(list[i].Volume, NpgsqlTypes.NpgsqlDbType.Numeric);
+                        writer.Write(list[i].Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                        writer.Write(list[i].Exchange, NpgsqlTypes.NpgsqlDbType.Varchar);
+                        writer.Write(list[i].ReceivedAt, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                        writer.Write(list[i].Normalized, NpgsqlTypes.NpgsqlDbType.Boolean);
+                    }
+                    await writer.CompleteAsync(cancellationToken);
+                }
+
+                // 3. INSERT INTO rawticks ... ON CONFLICT DO NOTHING из временной таблицы
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        WITH inserted AS (
+                            INSERT INTO rawticks (id, ticker, price, volume, timestamp, exchange, receivedat, normalized)
+                            SELECT id, ticker, price, volume, timestamp, exchange, receivedat, normalized
+                            FROM rawticks_staging
+                            ON CONFLICT (ticker, exchange, timestamp) DO NOTHING
+                            RETURNING 1
+                        )
+                        SELECT COUNT(*) FROM inserted;";
+                    var result = await cmd.ExecuteScalarAsync(cancellationToken);
+                    return result is int i ? i : Convert.ToInt32(result);
+                }
+            }
+            finally
+            {
+                if (needOpen)
+                    await conn.CloseAsync();
+            }
+        }
+
         public async Task<int> GetCountAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
         {
             var query = _dbSet.AsQueryable();

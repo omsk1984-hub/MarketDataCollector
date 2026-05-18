@@ -346,7 +346,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SavesNewTicksToRepository)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
 
         var processor = new MarketDataProcessor(
@@ -367,7 +367,7 @@ public class MarketDataProcessorTests
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert - репозиторий вызывается через scope внутри ProcessBatchAsync
-        _repositoryMock.Verify(x => x.BulkInsertIgnoreConflictsAsync(
+        _repositoryMock.Verify(x => x.BulkCopyAsync(
             It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
@@ -377,7 +377,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SkipsDuplicateTicks)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1); // Только один тик реально вставлен (дубликат отброшен БД)
 
         var processor = new MarketDataProcessor(
@@ -401,7 +401,7 @@ public class MarketDataProcessorTests
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
-        _repositoryMock.Verify(x => x.BulkInsertIgnoreConflictsAsync(
+        _repositoryMock.Verify(x => x.BulkCopyAsync(
             It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
@@ -411,7 +411,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSkippedDuplicates)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2); // Оба вставлены
 
         var processor = new MarketDataProcessor(
@@ -448,7 +448,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Database error"));
 
         var processor = new MarketDataProcessor(
@@ -493,7 +493,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSavedCount)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
 
         var processor = new MarketDataProcessor(
@@ -535,7 +535,7 @@ public class MarketDataProcessorTests
         var callLock = new object();
 
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
             {
                 // Эмулируем длительную DB-операцию (100ms)
@@ -596,7 +596,7 @@ public class MarketDataProcessorTests
         var callLock = new object();
 
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
             {
                 lock (callLock)
@@ -660,7 +660,7 @@ public class MarketDataProcessorTests
         // Arrange — первые два вызова кидают исключение, третий успешен
         var callCount = 0;
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .Returns< IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
             {
                 var current = Interlocked.Increment(ref callCount);
@@ -702,7 +702,7 @@ public class MarketDataProcessorTests
         // Проверяем, что BulkInsertIgnoreConflictsAsync вызывался минимум 3 раза
         // (2 ошибки + минимум 1 успех + финальный flush)
         _repositoryMock.Verify(
-            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeast(3));
     }
 
@@ -712,7 +712,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsTotalProcessedEvery100)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
         var processor = new MarketDataProcessor(
@@ -752,7 +752,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenAggregatorIsSlow)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
         // Создаём mock агрегатора, который работает ОЧЕНЬ МЕДЛЕННО (5 сек на тик).
@@ -808,7 +808,7 @@ public class MarketDataProcessorTests
             "Агрегатор должен получить все 10 тиков через fire-and-forget");
 
         _repositoryMock.Verify(
-            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce,
             "Тики всё равно должны сохраняться в БД через основной пайплайн");
     }
@@ -819,7 +819,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenAggregatorChannelIsFull)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
         // Создаём реальный TickAggregator с малым каналом (capacity=5, DropOldest).
@@ -879,7 +879,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"Процессор обработал {processedCount} тиков (из 1000 отправленных)");
 
         _repositoryMock.Verify(
-            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce,
             "Тики должны сохраняться в БД, независимо от агрегатора");
     }
@@ -890,7 +890,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenMainChannelIsFull)} ===");
         // Arrange
         _repositoryMock
-            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 // Эмулируем медленный DB write (200ms), чтобы канал быстро заполнился
@@ -937,7 +937,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"Процессор обработал {processedCount} тиков (из 100 отправленных, канал теряет часть)");
 
         _repositoryMock.Verify(
-            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce,
             "DropOldest не должен останавливать основной пайплайн обработки");
     }

@@ -170,12 +170,12 @@ namespace MarketDataCollector.Application.Services
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert с ON CONFLICT DO NOTHING — БД сама отбрасывает дубликаты
+                // 3. Bulk insert через Npgsql Binary COPY protocol (быстрее ExecuteSqlRaw в 10-100x)
                 var entities = uniqueTicks.Select(t => new RawTick(
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
 
-                var inserted = await repository.BulkInsertIgnoreConflictsAsync(entities, cancellationToken);
+                var inserted = await repository.BulkCopyAsync(entities, cancellationToken);
 
                 var count = Interlocked.Add(ref _processedCount, inserted);
 
