@@ -24,6 +24,10 @@ namespace MarketDataCollector.Infrastructure.Data
 
                 // Unique constraint to prevent duplicates
                 entity.HasIndex(e => new { e.Ticker, e.Exchange, e.Timestamp }).IsUnique();
+
+                // Decimal precision: up to 18 digits, 8 after decimal point
+                entity.Property(e => e.Price).HasPrecision(18, 8);
+                entity.Property(e => e.Volume).HasPrecision(18, 8);
             });
 
             // ConnectionLog configuration
@@ -42,6 +46,13 @@ namespace MarketDataCollector.Infrastructure.Data
 
                 entity.HasIndex(e => new { e.Ticker, e.Interval });
                 entity.HasIndex(e => e.StartTime);
+
+                // Decimal precision: up to 18 digits, 8 after decimal point
+                entity.Property(e => e.OpenPrice).HasPrecision(18, 8);
+                entity.Property(e => e.HighPrice).HasPrecision(18, 8);
+                entity.Property(e => e.LowPrice).HasPrecision(18, 8);
+                entity.Property(e => e.ClosePrice).HasPrecision(18, 8);
+                entity.Property(e => e.Volume).HasPrecision(18, 8);
             });
         }
     }
