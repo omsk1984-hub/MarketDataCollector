@@ -2,6 +2,7 @@ using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
+using MarketDataCollector.Infrastructure.Kafka;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,6 +10,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -28,6 +30,9 @@ namespace MarketDataCollector.Application.Services
         private readonly ILogger<TickAggregator> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly int _flushIntervalSeconds;
+        private readonly KafkaCandleProducer? _kafkaCandleProducer;
+        private readonly KafkaOptions _kafkaOptions;
+        private readonly bool _useKafka;
 
         private Task _processingTask = Task.CompletedTask;
         private Timer _flushTimer = null!;
@@ -77,7 +82,9 @@ namespace MarketDataCollector.Application.Services
             ITimeService timeService,
             ILogger<TickAggregator> logger,
             IServiceScopeFactory scopeFactory,
-            IOptions<TickAggregatorOptions> options)
+            IOptions<TickAggregatorOptions> options,
+            KafkaCandleProducer? kafkaCandleProducer = null,
+            IOptions<KafkaOptions>? kafkaOptions = null)
         {
             _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -87,12 +94,27 @@ namespace MarketDataCollector.Application.Services
             _flushIntervalSeconds = options.Value.FlushIntervalSeconds;
             _candleInterval = TimeSpan.FromSeconds(options.Value.CandleIntervalSeconds);
 
+            _kafkaCandleProducer = kafkaCandleProducer;
+            _kafkaOptions = kafkaOptions?.Value ?? new KafkaOptions();
+            _useKafka = _kafkaOptions.Enabled && _kafkaCandleProducer != null;
+
             _channel = Channel.CreateBounded<TickData>(new BoundedChannelOptions(options.Value.ChannelCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
                 SingleWriter = false
             });
+
+            if (_useKafka)
+            {
+                _logger.LogInformation(
+                    "TickAggregator will publish candles to Kafka topic={Topic}",
+                    _kafkaOptions.AggregatedDataTopic);
+            }
+            else
+            {
+                _logger.LogInformation("TickAggregator will write candles directly to database (Kafka disabled)");
+            }
         }
 
         public Task OnTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
@@ -235,9 +257,50 @@ namespace MarketDataCollector.Application.Services
         }
 
         /// <summary>
-        /// Сохранение списка свечей в БД через репозиторий.
+        /// Сохранение списка свечей: через Kafka (если включено) или напрямую в БД.
         /// </summary>
         private async Task SaveCandlesAsync(List<InMemoryCandle> candles)
+        {
+            if (_useKafka && _kafkaCandleProducer != null)
+            {
+                await SaveCandlesViaKafkaAsync(candles);
+            }
+            else
+            {
+                await SaveCandlesViaDatabaseAsync(candles);
+            }
+        }
+
+        /// <summary>
+        /// Публикация свечей в Kafka topic aggregated-data.
+        /// </summary>
+        private async Task SaveCandlesViaKafkaAsync(List<InMemoryCandle> candles)
+        {
+            foreach (var candle in candles)
+            {
+                await _kafkaCandleProducer!.ProduceAsync(
+                    candle.Ticker,
+                    candle.Interval,
+                    candle.Open,
+                    candle.High,
+                    candle.Low,
+                    candle.Close,
+                    candle.Volume,
+                    candle.StartTime,
+                    candle.EndTime,
+                    candle.Exchange,
+                    CancellationToken.None);
+            }
+
+            _logger.LogDebug(
+                "Опубликовано {Count} свечей в Kafka topic={Topic}",
+                candles.Count, _kafkaOptions.AggregatedDataTopic);
+        }
+
+        /// <summary>
+        /// Сохранение списка свечей напрямую в БД через репозиторий (fallback).
+        /// </summary>
+        private async Task SaveCandlesViaDatabaseAsync(List<InMemoryCandle> candles)
         {
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IAggregatedDataRepository>();

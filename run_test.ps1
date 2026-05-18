@@ -1,3 +1,3 @@
 cd tests/MarketDataCollector.Tests
-dotnet test MarketDataCollector.Tests.csproj --no-build -v n #--verbosity detailed
+dotnet test MarketDataCollector.Tests.csproj -v n #--verbosity detailed
 Read-Host -Prompt "Нажмиете любую клавишу для выхода"

@@ -4,6 +4,7 @@ using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Infrastructure.Data;
 using MarketDataCollector.Infrastructure.Factories;
+using MarketDataCollector.Infrastructure.Kafka;
 using MarketDataCollector.Infrastructure.Repositories;
 using MarketDataCollector.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,46 @@ builder.Services.AddDbContext<MarketDataDbContext>(options =>
 builder.Services.Configure<ExchangeOptions>(builder.Configuration.GetSection(ExchangeOptions.SectionName));
 builder.Services.Configure<MarketDataProcessorOptions>(builder.Configuration.GetSection(MarketDataProcessorOptions.SectionName));
 builder.Services.Configure<TickAggregatorOptions>(builder.Configuration.GetSection(TickAggregatorOptions.SectionName));
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+
+// ===== Kafka Integration =====
+var kafkaConfig = builder.Configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
+if (kafkaConfig?.Enabled == true)
+{
+    // Kafka producer (singleton — пул соединений)
+    builder.Services.AddSingleton<IKafkaProducer<string, string>>(sp =>
+    {
+        var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
+        var logger = sp.GetRequiredService<ILogger<KafkaProducer>>();
+        return new KafkaProducer(options, logger);
+    });
+
+    // Kafka candle producer (singleton — обёртка над IKafkaProducer)
+    builder.Services.AddSingleton<KafkaCandleProducer>();
+
+    // Kafka candle consumer (hosted service — читает свечи из Kafka и пишет в БД)
+    builder.Services.AddHostedService<KafkaCandleConsumerService>();
+
+    // Aggregation service with Kafka (singleton, because it maintains in-memory state)
+    builder.Services.AddSingleton<ITickAggregator>(sp =>
+    {
+        var timeService = sp.GetRequiredService<ITimeService>();
+        var logger = sp.GetRequiredService<ILogger<TickAggregator>>();
+        var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+        var options = sp.GetRequiredService<IOptions<TickAggregatorOptions>>();
+        var kafkaCandleProducer = sp.GetRequiredService<KafkaCandleProducer>();
+        var kafkaOptions = sp.GetRequiredService<IOptions<KafkaOptions>>();
+
+        return new TickAggregator(timeService, logger, scopeFactory, options,
+            kafkaCandleProducer, kafkaOptions);
+    });
+}
+else
+{
+    // Kafka отключена — TickAggregator пишет напрямую в БД (как сейчас)
+    builder.Services.AddSingleton<ITickAggregator, TickAggregator>();
+}
+// ===== End Kafka Integration =====
 
 // Core services
 builder.Services.AddScoped<IMarketDataProcessor>(sp =>
@@ -45,9 +86,6 @@ builder.Services.AddSingleton<ITimeService, SystemTimeService>();
 
 // Monitoring service — singleton, т.к. хранит состояние всех клиентов
 builder.Services.AddSingleton<IMonitoringService, MonitoringService>();
-
-// Aggregation service (singleton, because it maintains in-memory state)
-builder.Services.AddSingleton<ITickAggregator, TickAggregator>();
 
 // WebSocket client factory (must be scoped because it depends on scoped IMarketDataProcessor)
 builder.Services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
