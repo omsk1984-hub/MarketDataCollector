@@ -54,7 +54,7 @@ namespace MarketDataCollector.Application.Services
             _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
-                SingleReader = true,
+                SingleReader = false,
                 SingleWriter = false
             });
         }
@@ -84,9 +84,13 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Запускаем обработку в фоне, не ожидая её завершения
-            _processingTask = ProcessBatchesAsync(cancellationToken);
-            _logger.LogInformation("Обработчик рыночных данных запущен batchSize={_batchSize}", _batchSize);
+            // Запускаем несколько параллельных consumer'ов для увеличения пропускной способности
+            var consumerCount = Math.Max(1, Environment.ProcessorCount / 2);
+            var consumers = Enumerable.Range(0, consumerCount)
+                .Select(_ => ProcessBatchesAsync(cancellationToken));
+            _processingTask = Task.WhenAll(consumers);
+            _logger.LogInformation("Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={_batchSize}",
+                consumerCount, _batchSize);
             
             return Task.CompletedTask;
         }
@@ -158,41 +162,28 @@ namespace MarketDataCollector.Application.Services
                     .Select(g => g.First())
                     .ToList();
 
-                // 2. Проверяем существующие в БД одним запросом
-                var existingKeys = await GetExistingKeysFromDbAsync(uniqueTicks, cancellationToken);
-                var newTicks = uniqueTicks
-                    .Where(t => !existingKeys.Contains((t.Ticker, t.Exchange, t.Timestamp)))
-                    .ToList();
-
-                if (newTicks.Count == 0)
-                {
-                    _logger.LogDebug("Все {Count} тиков в батче были дубликатами", batch.Count);
-                    return;
-                }
-
-                // 3. Bulk insert
-                var entities = newTicks.Select(t => new RawTick(
+                // 2. Bulk insert с ON CONFLICT DO NOTHING — БД сама отбрасывает дубликаты
+                var entities = uniqueTicks.Select(t => new RawTick(
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
 
-                await _rawTickRepository.AddRangeAsync(entities, cancellationToken);
-                await _rawTickRepository.SaveChangesAsync(cancellationToken);
+                var inserted = await _rawTickRepository.BulkInsertIgnoreConflictsAsync(entities, cancellationToken);
 
-                var count = Interlocked.Add(ref _processedCount, entities.Count);
+                var count = Interlocked.Add(ref _processedCount, inserted);
 
                 // Инкрементируем RPS-счётчик для каждого сохранённого тика
-                for (int i = 0; i < entities.Count; i++)
+                for (int i = 0; i < inserted; i++)
                 {
                     _processedRpsCounter.Increment();
                 }
                 
-                if (count % 100 < entities.Count)
+                if (count % 100 < inserted)
                 {
                     _logger.LogInformation("Всего обработано тиков: {Count}", count);
                 }
 
-                _logger.LogDebug("Батч сохранён: {Saved} новых, {Duplicates} дубликатов пропущено",
-                    entities.Count, batch.Count - entities.Count);
+                _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено",
+                    inserted, entities.Count - inserted);
             }
             catch (OperationCanceledException)
             {
@@ -204,27 +195,6 @@ namespace MarketDataCollector.Application.Services
                 _logger.LogError(ex, "Критическая ошибка при обработке батча из {Count} тиков", batch.Count);
                 OnError?.Invoke(this, ex);
             }
-        }
-
-        private async Task<HashSet<(string, string, DateTime)>> GetExistingKeysFromDbAsync(
-            List<TickData> ticks,
-            CancellationToken cancellationToken)
-        {
-            // Для простоты проверяем каждый тик отдельно
-            // В продакшене лучше использовать один запрос с WHERE IN
-            var existing = new HashSet<(string, string, DateTime)>();
-            
-            foreach (var tick in ticks)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (await _rawTickRepository.ExistsAsync(tick.Ticker, tick.Exchange, tick.Timestamp, cancellationToken))
-                {
-                    existing.Add((tick.Ticker, tick.Exchange, tick.Timestamp));
-                }
-            }
-            
-            return existing;
         }
 
         public double GetProcessedRps() => _processedRpsCounter.GetRps();
