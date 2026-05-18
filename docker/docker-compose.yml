@@ -8,6 +8,9 @@ services:
       POSTGRES_DB: MarketDataDb
       POSTGRES_USER: marketdata_user
       POSTGRES_PASSWORD: StrongPassword123!
+      # trust для dev-окружения — Npgsql на Windows через Docker NAT
+      # не может корректно выполнить SCRAM-SHA-256 аутентификацию
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5433:5432"
     volumes:

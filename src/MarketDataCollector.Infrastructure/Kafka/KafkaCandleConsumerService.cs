@@ -83,7 +83,10 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _consumingTask = ConsumeLoopAsync(_cts.Token);
+        // Важно: оборачиваем в Task.Run, т.к. _consumer.Consume() — синхронный блокирующий вызов.
+        // Без этого StartAsync заблокируется на Consume() и не вернёт управление хосту,
+        // что помешает запуску других HostedService (например, Worker).
+        _consumingTask = Task.Run(() => ConsumeLoopAsync(_cts.Token), _cts.Token);
 
         _logger.LogInformation(
             "KafkaCandleConsumerService started. Topic={Topic}, GroupId={Group}",
