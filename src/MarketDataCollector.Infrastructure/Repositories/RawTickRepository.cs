@@ -2,6 +2,7 @@ using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -121,6 +122,17 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 .ToHashSet();
         }
 
+        /// <summary>
+        /// Количество повторов при deadlock (PostgreSQL error 40P01).
+        /// Deadlock — транзиентная ошибка, повторная попытка обычно успешна.
+        /// </summary>
+        private const int DeadlockMaxRetries = 3;
+
+        /// <summary>
+        /// Базовая задержка между retry при deadlock (экспоненциальная: 200ms, 400ms, 800ms).
+        /// </summary>
+        private static readonly TimeSpan DeadlockBaseDelay = TimeSpan.FromMilliseconds(200);
+
         public async Task<int> BulkInsertIgnoreConflictsAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {
             var list = entities.ToList();
@@ -156,7 +168,25 @@ namespace MarketDataCollector.Infrastructure.Repositories
             }
 
             var formattedSql = string.Format(sql, string.Join(", ", valueRows));
-            return await _context.Database.ExecuteSqlRawAsync(formattedSql, parameters, cancellationToken);
+
+            // Retry loop для транзиентных deadlock'ов (40P01)
+            int attempt = 0;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    return await _context.Database.ExecuteSqlRawAsync(formattedSql, parameters, cancellationToken);
+                }
+                catch (PostgresException ex) when (ex.SqlState == "40P01" && attempt < DeadlockMaxRetries)
+                {
+                    attempt++;
+                    var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
+                    // Логируем через ILogger, если доступен, но здесь просто ожидаем
+                    await Task.Delay(delay, cancellationToken);
+                }
+            }
         }
 
         public async Task<int> GetCountAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)

@@ -18,12 +18,16 @@ namespace MarketDataCollector.Domain.Utilities
         /// </summary>
         public static decimal TruncateForDatabase(decimal value)
         {
-            // 1. Обрезаем дробную часть до 8 знаков (без округления)
-            value = Math.Truncate(value * FractionMask) / FractionMask;
-
-            // 2. Обрезаем по максимальному/минимальному допустимому значению
+            // 1. Сначала проверяем на превышение допустимого диапазона.
+            //    Это важно сделать ДО умножения на FractionMask, т.к. value * 10^8
+            //    может вызвать OverflowException для экстремально больших значений.
             if (value > MaxValue) return MaxValue;
             if (value < MinValue) return MinValue;
+
+            // 2. Обрезаем дробную часть до 8 знаков (без округления).
+            //    После проверки границ value гарантированно в диапазоне,
+            //    и value * FractionMask не вызовет переполнения.
+            value = Math.Truncate(value * FractionMask) / FractionMask;
 
             return value;
         }

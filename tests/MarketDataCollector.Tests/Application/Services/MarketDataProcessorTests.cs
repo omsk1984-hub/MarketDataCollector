@@ -522,6 +522,191 @@ public class MarketDataProcessorTests
             Times.AtLeastOnce);
     }
 
+    [Fact(Timeout = 30000)]
+    public async Task ProcessBatchAsync_WithConcurrentConsumers_DbAccessIsSerialized()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithConcurrentConsumers_DbAccessIsSerialized)} ===");
+
+        // Arrange
+        var concurrentCalls = 0;
+        var maxConcurrentCalls = 0;
+        var callLock = new object();
+
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
+            {
+                // Эмулируем длительную DB-операцию (100ms),
+                // чтобы можно было засечь конкурентные вызовы
+                lock (callLock)
+                {
+                    concurrentCalls++;
+                    if (concurrentCalls > maxConcurrentCalls)
+                        maxConcurrentCalls = concurrentCalls;
+                }
+
+                await Task.Delay(100, ct);
+
+                lock (callLock)
+                {
+                    concurrentCalls--;
+                }
+
+                return ticks.Count();
+            });
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 5,
+            channelCapacity: 200);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем много тиков, чтобы заполнить несколько батчей
+        // batchSize=5, отправляем 20 тиков => минимум 4 батча
+        for (int i = 0; i < 20; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        // Ждём обработки через StopProcessingAsync
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — SemaphoreSlim(1,1) гарантирует, что в БД писал только 1 поток за раз
+        maxConcurrentCalls.Should().Be(1,
+            "SemaphoreSlim(1,1) должен сериализовать запись в БД");
+    }
+
+    [Fact(Timeout = 30000)]
+    public async Task ProcessBatchAsync_WithAggregator_DbAccessStillSerialized()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithAggregator_DbAccessStillSerialized)} ===");
+
+        // Arrange
+        var maxConcurrentCalls = 0;
+        var concurrentCalls = 0;
+        var callLock = new object();
+
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
+            {
+                lock (callLock)
+                {
+                    concurrentCalls++;
+                    if (concurrentCalls > maxConcurrentCalls)
+                        maxConcurrentCalls = concurrentCalls;
+                }
+
+                await Task.Delay(50, ct);
+
+                lock (callLock)
+                {
+                    concurrentCalls--;
+                }
+
+                return ticks.Count();
+            });
+
+        // Создаём mock агрегатора
+        var aggregatorMock = new Mock<ITickAggregator>();
+        aggregatorMock
+            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+                It.IsAny<DateTime>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 5,
+            channelCapacity: 200,
+            tickAggregator: aggregatorMock.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 15 тиков => минимум 3 батча
+        for (int i = 0; i < 15; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert
+        maxConcurrentCalls.Should().Be(1,
+            "Даже с агрегатором SemaphoreSlim(1,1) должен сериализовать запись в БД");
+    }
+
+    [Fact(Timeout = 30000)]
+    public async Task ProcessBatchAsync_DbException_OtherBatchesStillProcessed()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_DbException_OtherBatchesStillProcessed)} ===");
+
+        // Arrange — первые два вызова кидают исключение, третий успешен
+        var callCount = 0;
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
+            {
+                var current = Interlocked.Increment(ref callCount);
+                if (current <= 2)
+                    throw new InvalidOperationException("DB connection lost");
+                return Task.FromResult(ticks.Count());
+            });
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 3,
+            channelCapacity: 100);
+
+        var errorCount = 0;
+        processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — 9 тиков => 3 батча
+        for (int i = 0; i < 9; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — должно быть минимум 2 ошибки (первые два батча, которые упали).
+        // Общее количество вызовов может быть больше 3 из-за множественных consumer'ов
+        // и финального flush'а, но первые два вызова гарантированно упали.
+        errorCount.Should().Be(2,
+            "первые два батча должны упасть с ошибкой, третий — успешно обработаться");
+        // Проверяем, что BulkInsertIgnoreConflictsAsync вызывался минимум 3 раза
+        // (2 ошибки + минимум 1 успех)
+        _repositoryMock.Verify(
+            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(3));
+    }
+
     [Fact(Timeout = 10000)]
     public async Task ProcessBatchAsync_LogsTotalProcessedEvery100()
     {

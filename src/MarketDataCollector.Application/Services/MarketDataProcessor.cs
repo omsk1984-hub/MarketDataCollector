@@ -27,6 +27,14 @@ namespace MarketDataCollector.Application.Services
         private int _processedCount;
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
+        /// <summary>
+        /// Семафор для сериализации записи в БД. Несколько consumer'ов читают из Channel
+        /// параллельно, но вставка в PostgreSQL выполняется только одним потоком за раз.
+        /// Это предотвращает deadlock'и на уникальном индексе (ticker, exchange, timestamp)
+        /// при конкурентных INSERT ... ON CONFLICT.
+        /// </summary>
+        private readonly SemaphoreSlim _dbSemaphore = new(1, 1);
+
         public event EventHandler<Exception>? OnError;
 
         public readonly record struct TickData(
@@ -128,7 +136,15 @@ namespace MarketDataCollector.Application.Services
 
                     if (batch.Count >= _batchSize)
                     {
-                        await ProcessBatchAsync(batch, cancellationToken);
+                        await _dbSemaphore.WaitAsync(cancellationToken);
+                        try
+                        {
+                            await ProcessBatchAsync(batch, cancellationToken);
+                        }
+                        finally
+                        {
+                            _dbSemaphore.Release();
+                        }
                         batch.Clear();
                     }
                 }
@@ -146,7 +162,15 @@ namespace MarketDataCollector.Application.Services
                 // Финальный flush
                 if (batch.Count > 0)
                 {
-                    await ProcessBatchAsync(batch, cancellationToken);
+                    await _dbSemaphore.WaitAsync(CancellationToken.None);
+                    try
+                    {
+                        await ProcessBatchAsync(batch, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        _dbSemaphore.Release();
+                    }
                 }
             }
         }
