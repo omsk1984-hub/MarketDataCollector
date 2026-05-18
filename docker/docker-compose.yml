@@ -23,7 +23,9 @@ services:
     restart: unless-stopped
 
   kafka:
-    image: apache/kafka:latest
+    # Фиксированная версия 3.9.0 — stable KRaft без heartbeat таймаутов,
+    # которые наблюдались на apache/kafka:latest (4.2.0)
+    image: apache/kafka:3.9.0
     container_name: marketdata-kafka
     ports:
       - "9092:9092"
@@ -44,6 +46,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_KRAFT_CLUSTER_ID: marketdata-kafka-cluster
       KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Увеличенные таймауты для стабильности KRaft heartbeat
+      KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: 500
+      KAFKA_CONTROLLER_SOCKET_TIMEOUT_MS: 60000
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: 90000
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
@@ -57,7 +63,7 @@ services:
     restart: unless-stopped
 
   kafka-init-topics:
-    image: apache/kafka:latest
+    image: apache/kafka:3.9.0
     container_name: marketdata-kafka-init
     entrypoint: ["/bin/bash", "-c"]
     command:
