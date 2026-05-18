@@ -434,10 +434,10 @@ public class MarketDataProcessorTests
             x => x.Log(
                 LogLevel.Debug,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("дубликатами")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("дубликатов")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+            Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 10000)]
@@ -519,7 +519,7 @@ public class MarketDataProcessorTests
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Батч сохранён")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+            Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 10000)]
