@@ -2,6 +2,7 @@ using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Core.Utilities;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -14,7 +15,7 @@ namespace MarketDataCollector.Application.Services
 {
     public class MarketDataProcessor : IMarketDataProcessor
     {
-        private readonly IRawTickRepository _rawTickRepository;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<MarketDataProcessor> _logger;
         private readonly ITimeService _timeService;
         private readonly Channel<TickData> _channel;
@@ -37,14 +38,14 @@ namespace MarketDataCollector.Application.Services
         );
 
         public MarketDataProcessor(
-            IRawTickRepository rawTickRepository,
+            IServiceScopeFactory scopeFactory,
             ILogger<MarketDataProcessor> logger,
             ITimeService timeService,
             int batchSize,
             int channelCapacity,
             ITickAggregator? tickAggregator = null)
         {
-            _rawTickRepository = rawTickRepository;
+            _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _logger = logger;
             _timeService = timeService;
             _batchSize = batchSize;
@@ -162,12 +163,17 @@ namespace MarketDataCollector.Application.Services
                     .Select(g => g.First())
                     .ToList();
 
-                // 2. Bulk insert с ON CONFLICT DO NOTHING — БД сама отбрасывает дубликаты
+                // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
+                //    чтобы избежать InvalidOperationException при параллельном доступе из нескольких потоков
+                using var scope = _scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
+
+                // 3. Bulk insert с ON CONFLICT DO NOTHING — БД сама отбрасывает дубликаты
                 var entities = uniqueTicks.Select(t => new RawTick(
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
 
-                var inserted = await _rawTickRepository.BulkInsertIgnoreConflictsAsync(entities, cancellationToken);
+                var inserted = await repository.BulkInsertIgnoreConflictsAsync(entities, cancellationToken);
 
                 var count = Interlocked.Add(ref _processedCount, inserted);
 

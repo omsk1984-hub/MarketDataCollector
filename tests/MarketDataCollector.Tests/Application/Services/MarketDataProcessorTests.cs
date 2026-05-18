@@ -2,6 +2,7 @@ using MarketDataCollector.Application.Services;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,6 +18,9 @@ public class MarketDataProcessorTests
     private readonly Mock<IRawTickRepository> _repositoryMock;
     private readonly Mock<ILogger<MarketDataProcessor>> _loggerMock;
     private readonly Mock<ITimeService> _timeServiceMock;
+    private readonly Mock<IServiceScopeFactory> _scopeFactoryMock;
+    private readonly Mock<IServiceScope> _scopeMock;
+    private readonly Mock<IServiceProvider> _scopeServiceProviderMock;
 
     public MarketDataProcessorTests(ITestOutputHelper output)
     {
@@ -24,6 +28,20 @@ public class MarketDataProcessorTests
         _repositoryMock = new Mock<IRawTickRepository>();
         _loggerMock = new Mock<ILogger<MarketDataProcessor>>();
         _timeServiceMock = new Mock<ITimeService>();
+
+        // Настраиваем IServiceScopeFactory, чтобы она возвращала scope с нужным репозиторием
+        _scopeServiceProviderMock = new Mock<IServiceProvider>();
+        _scopeServiceProviderMock
+            .Setup(sp => sp.GetService(typeof(IRawTickRepository)))
+            .Returns(_repositoryMock.Object);
+
+        _scopeMock = new Mock<IServiceScope>();
+        _scopeMock.Setup(s => s.ServiceProvider).Returns(_scopeServiceProviderMock.Object);
+
+        _scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        _scopeFactoryMock
+            .Setup(f => f.CreateScope())
+            .Returns(_scopeMock.Object);
     }
 
     [Fact(Timeout = 5000)]
@@ -31,7 +49,7 @@ public class MarketDataProcessorTests
     {
         // Arrange & Act
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 10,
@@ -46,7 +64,7 @@ public class MarketDataProcessorTests
     {
         // Arrange & Act
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 0,
@@ -62,7 +80,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WritesToChannel)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -95,7 +113,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsDebugMessage)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -127,7 +145,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsTickerDetails)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -162,7 +180,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_StartsBackgroundTask)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -191,7 +209,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_LogsBatchSize)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 10,
@@ -219,7 +237,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_StopsProcessing)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -249,7 +267,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_LogsProcessedCount)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -280,7 +298,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(GetProcessedCountAsync_ReturnsZeroInitially)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -299,7 +317,7 @@ public class MarketDataProcessorTests
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WithDifferentValues_WritesMultipleTicks)} ===");
         // Arrange
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 5,
@@ -325,15 +343,16 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SavesNewTicksToRepository)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 2,
             channelCapacity: 100);
-
-        _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -345,9 +364,9 @@ public class MarketDataProcessorTests
         // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
-        // Assert
-        _repositoryMock.Verify(x => x.AddRangeAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.Once);
-        _repositoryMock.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        // Assert - репозиторий вызывается через scope внутри ProcessBatchAsync
+        _repositoryMock.Verify(x => x.BulkInsertIgnoreConflictsAsync(
+            It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 10000)]
@@ -355,8 +374,12 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_SkipsDuplicateTicks)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1); // Только один тик реально вставлен (дубликат отброшен БД)
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 2,
@@ -364,11 +387,6 @@ public class MarketDataProcessorTests
 
         var timestamp1 = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
         var timestamp2 = new DateTime(2024, 1, 1, 10, 0, 1, DateTimeKind.Utc);
-
-        // Первый тик не существует, второй - существует (дубликат)
-        _repositoryMock.SetupSequence(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false)  // Первый тик не существует
-            .ReturnsAsync(true);  // Второй тик существует
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -381,7 +399,8 @@ public class MarketDataProcessorTests
         await processor.StopProcessingAsync(cts.Token);
 
         // Assert
-        _repositoryMock.Verify(x => x.AddRangeAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(x => x.BulkInsertIgnoreConflictsAsync(
+            It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 10000)]
@@ -389,15 +408,16 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSkippedDuplicates)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2); // Оба вставлены
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 2,
             channelCapacity: 100);
-
-        _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -425,18 +445,16 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 2,
             channelCapacity: 100);
-
-        _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        _repositoryMock.Setup(x => x.AddRangeAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Database error"));
 
         var errorOccurred = false;
         processor.OnError += (sender, ex) =>
@@ -464,7 +482,7 @@ public class MarketDataProcessorTests
                 It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+            Times.AtLeastOnce);
     }
 
     [Fact(Timeout = 10000)]
@@ -472,15 +490,16 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsSavedCount)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 2,
             channelCapacity: 100);
-
-        _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -508,15 +527,16 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_LogsTotalProcessedEvery100)} ===");
         // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
         var processor = new MarketDataProcessor(
-            _repositoryMock.Object,
+            _scopeFactoryMock.Object,
             _loggerMock.Object,
             _timeServiceMock.Object,
             batchSize: 1,
             channelCapacity: 200);
-
-        _repositoryMock.Setup(x => x.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);

@@ -102,6 +102,14 @@ public class Worker : BackgroundService
         List<IExchangeWebSocketClient> clients,
         CancellationToken stoppingToken)
     {
+        // ВАЖНО: Сначала останавливаем WebSocket-клиенты, чтобы они прекратили
+        // отправку данных в MarketDataProcessor и TickAggregator.
+        // Если остановить процессор первым, клиенты будут пытаться писать в закрытый Channel,
+        // что вызовет ChannelClosedException.
+        _logger.LogInformation("Stopping WebSocket clients...");
+        var stopTasks = clients.Select(client => StopClientAsync(client));
+        await Task.WhenAll(stopTasks);
+
         try
         {
             await tickAggregator.StopAsync(stoppingToken);
@@ -111,6 +119,7 @@ public class Worker : BackgroundService
             _logger.LogError(ex, "Error stopping tick aggregator");
         }
 
+        // Stop TickAggregator channel first to prevent new data from being written
         try
         {
             await marketDataProcessor.StopProcessingAsync(stoppingToken);
@@ -119,10 +128,6 @@ public class Worker : BackgroundService
         {
             _logger.LogError(ex, "Error stopping market data processor");
         }
-
-        _logger.LogInformation("Stopping WebSocket clients...");
-        var stopTasks = clients.Select(client => StopClientAsync(client));
-        await Task.WhenAll(stopTasks);
     }
 
     private async Task StopClientAsync(IExchangeWebSocketClient client)

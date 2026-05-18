@@ -62,16 +62,19 @@ else
 // ===== End Kafka Integration =====
 
 // Core services
-builder.Services.AddScoped<IMarketDataProcessor>(sp =>
+// MarketDataProcessor — Singleton, так как является единой точкой входа для всех
+// WebSocket-клиентов. При этом каждый batch создаёт отдельный scope для DbContext
+// через IServiceScopeFactory, что гарантирует thread-safe работу.
+builder.Services.AddSingleton<IMarketDataProcessor>(sp =>
 {
-    var repository = sp.GetRequiredService<IRawTickRepository>();
+    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
     var logger = sp.GetRequiredService<ILogger<MarketDataProcessor>>();
     var timeService = sp.GetRequiredService<ITimeService>();
     var options = sp.GetRequiredService<IOptions<MarketDataProcessorOptions>>().Value;
     var tickAggregator = sp.GetService<ITickAggregator>();
     
     return new MarketDataProcessor(
-        repository,
+        scopeFactory,
         logger,
         timeService,
         options.BatchSize,
@@ -87,7 +90,8 @@ builder.Services.AddSingleton<ITimeService, SystemTimeService>();
 // Monitoring service — singleton, т.к. хранит состояние всех клиентов
 builder.Services.AddSingleton<IMonitoringService, MonitoringService>();
 
-// WebSocket client factory (must be scoped because it depends on scoped IMarketDataProcessor)
+// WebSocket client factory — Scoped, т.к. создаёт клиенты внутри одного scope Worker'а.
+// Зависимость от IMarketDataProcessor (Singleton) разрешается корректно.
 builder.Services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
 
 // Worker
