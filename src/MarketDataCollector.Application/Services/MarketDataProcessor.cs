@@ -1,4 +1,5 @@
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Core.Utilities;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,7 @@ namespace MarketDataCollector.Application.Services
 
         private Task _processingTask = null!;
         private int _processedCount;
+        private readonly SlidingWindowCounter _processedRpsCounter = new();
 
         public event EventHandler<Exception>? OnError;
 
@@ -177,6 +179,12 @@ namespace MarketDataCollector.Application.Services
                 await _rawTickRepository.SaveChangesAsync(cancellationToken);
 
                 var count = Interlocked.Add(ref _processedCount, entities.Count);
+
+                // Инкрементируем RPS-счётчик для каждого сохранённого тика
+                for (int i = 0; i < entities.Count; i++)
+                {
+                    _processedRpsCounter.Increment();
+                }
                 
                 if (count % 100 < entities.Count)
                 {
@@ -218,6 +226,8 @@ namespace MarketDataCollector.Application.Services
             
             return existing;
         }
+
+        public double GetProcessedRps() => _processedRpsCounter.GetRps();
 
         public Task<int> GetProcessedCountAsync()
         {

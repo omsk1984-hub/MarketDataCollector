@@ -73,7 +73,7 @@ public class Worker : BackgroundService
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, processorErrorCts.Token);
-            await RunHealthCheckAsync(clients, combinedCts.Token);
+            await RunHealthCheckAsync(clients, marketDataProcessor, combinedCts.Token);
 
             // Выбрасываем ошибку для внешнего оркестратора
             if (processorErrorException != null)
@@ -144,6 +144,7 @@ public class Worker : BackgroundService
     /// </summary>
     private async Task RunHealthCheckAsync(
         List<IExchangeWebSocketClient> clients,
+        IMarketDataProcessor marketDataProcessor,
         CancellationToken stoppingToken)
     {
         _logger.LogInformation("Health-check: Запущен");
@@ -161,8 +162,18 @@ public class Worker : BackgroundService
             var connected = clients.Count(c => c.IsConnected);
             var disconnected = clients.Count - connected;
 
-            _logger.LogInformation("Health-check: {Connected} connected, {Disconnected} disconnected",
-                connected, disconnected);
+            // RPS метрики
+            var incommingRps = clients.Sum(c => c.GetMessagesPerSecond());
+            var processedRps = marketDataProcessor.GetProcessedRps();
+
+            // Детальные RPS по каждому клиенту
+            var clientDetails = string.Join(", ", clients.Select(c =>
+                $"{c.ExchangeName}_{c.Symbol}={c.GetMessagesPerSecond():F1}"));
+
+            _logger.LogInformation(
+                "Health-check: {Connected} connected, {Disconnected} disconnected | " +
+                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | Clients: {ClientDetails}",
+                connected, disconnected, incommingRps, processedRps, clientDetails);
 
             foreach (var client in clients.Where(c => !c.IsConnected))
             {

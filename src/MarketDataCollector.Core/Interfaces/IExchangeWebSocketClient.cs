@@ -76,6 +76,11 @@ namespace MarketDataCollector.Core.Interfaces
         event EventHandler Disconnected;
 
         /// <summary>
+        /// Среднее количество входящих WebSocket-сообщений в секунду за последние 10 секунд.
+        /// </summary>
+        double GetMessagesPerSecond();
+
+        /// <summary>
         /// Событие ошибки
         /// </summary>
         event EventHandler<Exception> ErrorOccurred;

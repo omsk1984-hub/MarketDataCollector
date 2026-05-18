@@ -1,5 +1,6 @@
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
@@ -30,6 +31,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     private readonly IReconnectStrategy _reconnectStrategy;
     private ISubscriptionManager? _subscriptionManager;
     private readonly WebSocketClientOptions _options;
+    private readonly SlidingWindowCounter _msgRpsCounter = new();
     protected readonly ILogger<BaseWebSocketClient> _logger;
 
     private Task? _backgroundRecoveryTask;
@@ -62,6 +64,9 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     /// <inheritdoc />
     public event EventHandler<Exception> ErrorOccurred = null!;
+
+    /// <inheritdoc />
+    public double GetMessagesPerSecond() => _msgRpsCounter.GetRps();
 
     /// <summary>
     /// Создаёт экземпляр базового WebSocket-клиента.
@@ -358,6 +363,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <param name="message">Текст сообщения.</param>
     protected internal virtual void OnMessageReceived(string message)
     {
+        _msgRpsCounter.Increment();
         MessageReceived?.Invoke(this, message);
     }
 

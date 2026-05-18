@@ -16,5 +16,10 @@ namespace MarketDataCollector.Core.Interfaces
         Task<int> GetProcessedCountAsync();
         Task StartProcessingAsync(CancellationToken cancellationToken = default);
         Task StopProcessingAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Среднее количество обработанных тиков в секунду за последние 10 секунд.
+        /// </summary>
+        double GetProcessedRps();
     }
 }
