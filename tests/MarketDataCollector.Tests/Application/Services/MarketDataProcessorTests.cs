@@ -1,9 +1,11 @@
 using MarketDataCollector.Application.Services;
+using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
@@ -745,5 +747,143 @@ public class MarketDataProcessorTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task ProcessTickAsync_DoesNotBlockWhenAggregatorIsSlow()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenAggregatorIsSlow)} ===");
+        // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        // Создаём mock агрегатора, который работает ОЧЕНЬ МЕДЛЕННО (5 сек на тик).
+        // До исправления (await) это заблокировало бы ProcessTickAsync на 5 сек,
+        // после исправления (fire-and-forget) ProcessTickAsync возвращается мгновенно.
+        var slowAggregatorMock = new Mock<ITickAggregator>();
+        slowAggregatorMock
+            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+                It.IsAny<DateTime>(), It.IsAny<string>()))
+            .Returns(async () => await Task.Delay(5000)); // very slow
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 50,
+            channelCapacity: 10000,
+            tickAggregator: slowAggregatorMock.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 10 тиков, замеряем время
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        stopwatch.Stop();
+
+        // Дожидаемся обработки
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert
+        // Если бы был await агрегатора, 10 тиков * 5 сек = 50+ секунд.
+        // С fire-and-forget вызовы возвращаются немедленно.
+        // Время должно быть < 1 секунды (только WriteAsync в Channel).
+        stopwatch.Elapsed.TotalSeconds.Should().BeLessThan(1.0,
+            "ProcessTickAsync не должен ждать агрегатор (fire-and-forget)");
+
+        // Проверяем, что основной пайплайн всё равно обработал тики
+        slowAggregatorMock.Verify(
+            x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+                It.IsAny<DateTime>(), It.IsAny<string>()),
+            Times.Exactly(10),
+            "Агрегатор должен получить все 10 тиков через fire-and-forget");
+
+        _repositoryMock.Verify(
+            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce,
+            "Тики всё равно должны сохраняться в БД через основной пайплайн");
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task ProcessTickAsync_DoesNotBlockWhenAggregatorChannelIsFull()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_DoesNotBlockWhenAggregatorChannelIsFull)} ===");
+        // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        // Создаём реальный TickAggregator с малым каналом (capacity=5, DropOldest).
+        // Если ProcessTickAsync блокируется на WriteAsync в канал агрегатора,
+        // то после заполнения канала он бы завис. Но fire-and-forget +
+        // DropOldest позволяют каналу отбрасывать старые тики без блокировки.
+        var aggregator = new TickAggregator(
+            _timeServiceMock.Object,
+            Mock.Of<ILogger<TickAggregator>>(),
+            Mock.Of<IServiceScopeFactory>(),
+            Options.Create(new TickAggregatorOptions
+            {
+                CandleIntervalSeconds = 3600, // никогда не завершается
+                FlushIntervalSeconds = 86400, // никогда не флашится
+                ChannelCapacity = 5           // очень маленький канал
+            }));
+
+        using var aggregatorCts = new CancellationTokenSource();
+        await aggregator.StartAsync(aggregatorCts.Token);
+
+        var processor = new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            batchSize: 100,
+            channelCapacity: 10000,
+            tickAggregator: aggregator);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 1000 тиков. Канал агрегатора вмещает всего 5.
+        // Если бы был await, после 5-го тика ProcessTickAsync заблокировался бы.
+        // С fire-and-forget + DropOldest — всё проходит быстро.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        for (int i = 0; i < 1000; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i % 60, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        stopwatch.Stop();
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — 1000 вызовов должны пройти быстро (<< 1 секунда на вызов)
+        stopwatch.Elapsed.TotalSeconds.Should().BeLessThan(5.0,
+            "ProcessTickAsync не должен блокироваться при полном канале агрегатора (DropOldest)");
+
+        // Проверяем, что основной пайплайн работал
+        var processedCount = await processor.GetProcessedCountAsync();
+        _output.WriteLine($"Процессор обработал {processedCount} тиков (из 1000 отправленных)");
+
+        _repositoryMock.Verify(
+            x => x.BulkInsertIgnoreConflictsAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce,
+            "Тики должны сохраняться в БД, независимо от агрегатора");
     }
 }

@@ -100,8 +100,8 @@ namespace MarketDataCollector.Application.Services
 
             _channel = Channel.CreateBounded<TickData>(new BoundedChannelOptions(options.Value.ChannelCapacity)
             {
-                FullMode = BoundedChannelFullMode.Wait,
-                SingleReader = true,
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = false,
                 SingleWriter = false
             });
 

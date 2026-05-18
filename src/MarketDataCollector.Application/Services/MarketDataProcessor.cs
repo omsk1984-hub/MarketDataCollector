@@ -72,10 +72,13 @@ namespace MarketDataCollector.Application.Services
         {
             await _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange));
 
-            // Передаём тик в агрегатор (если он подключён)
+            // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
+            // чтобы агрегатор не блокировал основной пайплайн.
+            // Канал агрегатора использует DropOldest, поэтому при перегрузке
+            // старые тики отбрасываются, а не блокируется producer.
             if (_tickAggregator != null)
             {
-                await _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
+                _ = _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
             }
 
             _logger.LogDebug("Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
