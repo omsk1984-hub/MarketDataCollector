@@ -191,8 +191,10 @@ public class Worker : BackgroundService
 
             // Заполненность канала (для мониторинга перегрузки)
             var channelCount = marketDataProcessor.GetChannelCount();
-            var channelCapacity = 500_000; // дублируем из appsettings для метрики
-            var channelFillPercent = (double)channelCount / channelCapacity * 100.0;
+            var channelCapacity = marketDataProcessor.GetChannelCapacity();
+            var channelFillPercent = channelCapacity > 0
+                ? (double)channelCount / channelCapacity * 100.0
+                : 0.0;
 
             // Логи health-check с полной статистикой
             _logger.LogInformation(

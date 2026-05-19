@@ -433,5 +433,10 @@ namespace MarketDataCollector.Application.Services
         /// Текущее количество тиков в очереди канала (для мониторинга заполненности).
         /// </summary>
         public int GetChannelCount() => _channel.Reader.Count;
+
+        /// <summary>
+        /// Ёмкость канала (ChannelCapacity из конфигурации).
+        /// </summary>
+        public int GetChannelCapacity() => _channelCapacity;
     }
 }

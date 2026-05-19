@@ -36,5 +36,11 @@ namespace MarketDataCollector.Core.Interfaces
         /// Текущее количество тиков в очереди канала (для мониторинга заполненности).
         /// </summary>
         int GetChannelCount();
+
+        /// <summary>
+        /// Ёмкость канала (ChannelCapacity из конфигурации).
+        /// Используется совместно с <see cref="GetChannelCount"/> для расчёта процента заполненности.
+        /// </summary>
+        int GetChannelCapacity();
     }
 }
