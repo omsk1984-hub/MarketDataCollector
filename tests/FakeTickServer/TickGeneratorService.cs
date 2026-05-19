@@ -42,6 +42,12 @@ public class TickGeneratorService : BackgroundService
     /// <summary>Счётчик всех сгенерированных тиков за всё время работы сервера.</summary>
     private long _totalTicks;
 
+    /// <summary>Флаг: достигнут ли лимит MaxTicks.</summary>
+    private volatile bool _isLimitReached;
+
+    /// <summary>Достигнут ли лимит MaxTicks.</summary>
+    public bool IsLimitReached => _isLimitReached;
+
     /// <summary>Таймер для логирования статистики RPS.</summary>
     private DateTime _lastStatsTime = DateTime.UtcNow;
     private long _lastSentCount;
@@ -149,6 +155,20 @@ public class TickGeneratorService : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                // Проверка лимита MaxTicks — если достигнут, спим и не генерируем
+                if (_settings.MaxTicks > 0 && Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks)
+                {
+                    if (!_isLimitReached)
+                    {
+                        _isLimitReached = true;
+                        _logger.LogInformation(
+                            "Достигнут лимит тиков: {MaxTicks}. Генерация остановлена, сервис продолжает работу.",
+                            _settings.MaxTicks);
+                    }
+                    await Task.Delay(1000, stoppingToken);
+                    continue;
+                }
+
                 if (_clients.IsEmpty)
                 {
                     // Если нет клиентов — сбрасываем expectedTotal и ждём

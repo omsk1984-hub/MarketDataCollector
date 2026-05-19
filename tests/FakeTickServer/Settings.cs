@@ -18,9 +18,12 @@ public class Settings
     /// <summary>Базовая цена в USD (--base-price, -b). По умолчанию: 50000.</summary>
     public decimal BasePrice { get; set; } = 50000m;
 
+    /// <summary>Максимальное количество тиков (--max-ticks, -m). 0 = без лимита. По умолчанию: 0.</summary>
+    public long MaxTicks { get; set; } = 0;
+
     /// <summary>
     /// Парсит аргументы командной строки и возвращает Settings.
-    /// Поддерживаемые флаги: --port/-p, --rps/-r, --symbols/-s, --base-price/-b
+    /// Поддерживаемые флаги: --port/-p, --rps/-r, --symbols/-s, --base-price/-b, --max-ticks/-m
     /// </summary>
     public static Settings Parse(string[] args)
     {
@@ -57,6 +60,12 @@ public class Settings
                     if (i + 1 < args.Length && decimal.TryParse(args[++i], out var basePrice))
                         result.BasePrice = basePrice;
                     break;
+
+                case "--max-ticks":
+                case "-m":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var maxTicks))
+                        result.MaxTicks = maxTicks;
+                    break;
             }
         }
 
@@ -65,6 +74,6 @@ public class Settings
 
     public override string ToString()
     {
-        return $"FakeTickServer Settings: port={Port}, rps={Rps}, symbols=[{string.Join(", ", Symbols)}], basePrice={BasePrice}";
+        return $"FakeTickServer Settings: port={Port}, rps={Rps}, symbols=[{string.Join(", ", Symbols)}], basePrice={BasePrice}, maxTicks={MaxTicks}";
     }
 }
