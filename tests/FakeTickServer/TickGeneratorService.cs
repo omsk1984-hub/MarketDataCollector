@@ -17,6 +17,12 @@ public class TickGeneratorService : BackgroundService
     private readonly ConcurrentDictionary<string, ClientState> _clients = new();
 
     /// <summary>
+    /// Сигнал, который срабатывает при первом подключении клиента.
+    /// Используется, чтобы генерация не запускалась до появления хоть одного подписчика.
+    /// </summary>
+    private readonly TaskCompletionSource _firstClientConnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
     /// Потокобезопасный генератор случайных чисел (ThreadLocal).
     /// </summary>
     private static readonly ThreadLocal<Random> ThreadLocalRandom = new(
@@ -32,6 +38,9 @@ public class TickGeneratorService : BackgroundService
 
     /// <summary>Счётчик отправленных сообщений для RPS-мониторинга.</summary>
     private long _sentCount;
+
+    /// <summary>Счётчик всех сгенерированных тиков за всё время работы сервера.</summary>
+    private long _totalTicks;
 
     /// <summary>Таймер для логирования статистики RPS.</summary>
     private DateTime _lastStatsTime = DateTime.UtcNow;
@@ -60,6 +69,9 @@ public class TickGeneratorService : BackgroundService
         _clients.TryAdd(clientId, new ClientState(webSocket, symbol));
         _logger.LogInformation("Клиент {ClientId} подключился. Всего клиентов: {Count}, symbol: {Symbol}",
             clientId, _clients.Count, symbol);
+
+        // Сигнализируем ожидающему ExecuteAsync, что первый клиент подключился
+        _firstClientConnected.TrySetResult();
     }
 
     /// <summary>
@@ -78,6 +90,11 @@ public class TickGeneratorService : BackgroundService
     /// Возвращает количество подключённых клиентов.
     /// </summary>
     public int ClientCount => _clients.Count;
+
+    /// <summary>
+    /// Общее количество сгенерированных тиков с момента запуска сервера.
+    /// </summary>
+    public long TotalTicksGenerated => Interlocked.Read(ref _totalTicks);
 
     /// <summary>
     /// Возвращает текущий RPS (отправлено сообщений за последнюю секунду).
@@ -104,6 +121,20 @@ public class TickGeneratorService : BackgroundService
             _settings.Rps, string.Join(", ", _settings.Symbols));
 
         _logger.LogDebug("Используется Stopwatch-контроль RPS для точного соблюдения целевого RPS");
+
+        // Ждём первого подключения клиента, чтобы не генерировать тики впустую
+        _logger.LogInformation("Ожидание первого подключения клиента...");
+        try
+        {
+            await _firstClientConnected.Task.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Сервер остановлен до подключения первого клиента");
+            return;
+        }
+
+        _logger.LogInformation("Первый клиент подключился, запуск генерации тиков");
 
         // Таймер для логирования статистики раз в 5 секунд
         using var statsTimer = new PeriodicTimer(TimeSpan.FromSeconds(5));
@@ -159,6 +190,7 @@ public class TickGeneratorService : BackgroundService
                                     segment, WebSocketMessageType.Text, true, stoppingToken);
 
                                 Interlocked.Increment(ref _sentCount);
+                                Interlocked.Increment(ref _totalTicks);
                             }
                             catch (WebSocketException ex) when (
                                 ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely ||
@@ -281,9 +313,10 @@ public class TickGeneratorService : BackgroundService
                 var actualRps = GetCurrentRps();
                 var targetRps = _settings.Rps;
                 var clients = _clients.Count;
+                var totalTicks = Interlocked.Read(ref _totalTicks);
                 _logger.LogInformation(
-                    "Статус: клиентов={Clients}, targetRps={TargetRps}, actualRps={ActualRps:F0}",
-                    clients, targetRps, actualRps);
+                    "Статус: клиентов={Clients}, targetRps={TargetRps}, actualRps={ActualRps:F0}, всего тиков={TotalTicks}",
+                    clients, targetRps, actualRps, totalTicks);
             }
         }
         catch (OperationCanceledException)

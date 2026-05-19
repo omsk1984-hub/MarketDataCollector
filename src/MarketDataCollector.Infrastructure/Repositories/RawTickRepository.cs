@@ -126,12 +126,42 @@ namespace MarketDataCollector.Infrastructure.Repositories
         /// Количество повторов при deadlock (PostgreSQL error 40P01).
         /// Deadlock — транзиентная ошибка, повторная попытка обычно успешна.
         /// </summary>
-        private const int DeadlockMaxRetries = 3;
+        private const int DeadlockMaxRetries = 5;
 
         /// <summary>
-        /// Базовая задержка между retry при deadlock (экспоненциальная: 200ms, 400ms, 800ms).
+        /// Базовая задержка между retry при deadlock (экспоненциальная: 200ms, 400ms, 800ms, 1600ms, 3200ms).
         /// </summary>
         private static readonly TimeSpan DeadlockBaseDelay = TimeSpan.FromMilliseconds(200);
+
+        /// <summary>
+        /// Максимальный jitter (случайная прибавка к задержке), чтобы избежать
+        /// thundering herd при одновременном retry нескольких consumer'ов.
+        /// </summary>
+        private static readonly TimeSpan DeadlockMaxJitter = TimeSpan.FromMilliseconds(500);
+
+        /// <summary>
+        /// Семафор для сериализации всех вызовов BulkCopyAsync.
+        ///
+        /// Root cause deadlock'ов: несколько параллельных consumer'ов одновременно
+        /// вставляют данные через temp table + INSERT ... ON CONFLICT DO NOTHING
+        /// в таблицу rawticks с unique-индексом (ticker, exchange, timestamp).
+        /// PostgreSQL's B-tree index page-level блокировки приводят к взаимоблокировке
+        /// при конкурентной вставке записей, попадающих в одни и те же страницы индекса.
+        ///
+        /// SemaphoreSlim(1,1) гарантирует, что только один поток одновременно выполняет
+        /// DROP/CREATE temp table, Binary COPY и INSERT ... ON CONFLICT.
+        /// Это полностью устраняет deadlock'и на уровне БД.
+        ///
+        /// Retry-логика (5 попыток) остаётся safety net'ом на случай других транзиентных
+        /// ошибок (timeout, serialization failures).
+        /// </summary>
+        private static readonly SemaphoreSlim BulkCopyLock = new(1, 1);
+
+        /// <summary>
+        /// Источник случайных чисел для jitter. Shared между всеми экземплярами,
+        /// т.к. Random не thread-safe — используем ThreadLocal.
+        /// </summary>
+        private static readonly ThreadLocal<Random> JitterRandom = new(() => new Random());
 
         public async Task<int> BulkInsertIgnoreConflictsAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {
@@ -183,7 +213,9 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 {
                     attempt++;
                     var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
-                    await Task.Delay(delay, cancellationToken);
+                    // Jitter для предотвращения thundering herd
+                    var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next((int)DeadlockMaxJitter.TotalMilliseconds));
+                    await Task.Delay(delay + jitter, cancellationToken);
                 }
             }
         }
@@ -205,100 +237,114 @@ namespace MarketDataCollector.Infrastructure.Repositories
             if (list.Count == 0)
                 return 0;
 
-            // Retry loop для транзиентных deadlock'ов (40P01) и timeouts
-            int attempt = 0;
-            while (true)
+            // Сериализуем доступ к binary COPY + INSERT ON CONFLICT через семафор.
+            // Root cause deadlock'ов: конкуренция за page-level блокировки B-tree
+            // индекса unique_tick при параллельной вставке из 4 consumer'ов.
+            // SemaphoreSlim(1,1) гарантирует выполнение только одним потоком.
+            await BulkCopyLock.WaitAsync(cancellationToken);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-                var needOpen = conn.State != System.Data.ConnectionState.Open;
-                if (needOpen)
-                    await conn.OpenAsync(cancellationToken);
-
-                try
+                // Retry loop для транзиентных deadlock'ов (40P01) и timeouts
+                int attempt = 0;
+                while (true)
                 {
-                    // 1. Пересоздаём временную таблицу (DROP + CREATE вместо CREATE IF NOT EXISTS)
-                    //    Это гарантирует чистый стейт, даже если No Reset On Close=true сохранил
-                    //    старые данные в temp-таблице от предыдущего вызова.
-                    await using (var cmd = conn.CreateCommand())
-                    {
-                        cmd.CommandText = @"
-                            DROP TABLE IF EXISTS rawticks_staging;
-                            CREATE TEMP TABLE rawticks_staging (
-                                id UUID,
-                                ticker VARCHAR(20),
-                                price DECIMAL(18,8),
-                                volume DECIMAL(18,8),
-                                timestamp TIMESTAMPTZ,
-                                exchange VARCHAR(50),
-                                receivedat TIMESTAMPTZ,
-                                normalized BOOLEAN
-                            );";
-                        await cmd.ExecuteNonQueryAsync(cancellationToken);
-                    }
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    // 2. Binary COPY во временную таблицу
-                    await using (var writer = conn.BeginBinaryImport(
-                        "COPY rawticks_staging (id, ticker, price, volume, timestamp, exchange, receivedat, normalized) FROM STDIN (FORMAT BINARY)"))
+                    var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
+                    var needOpen = conn.State != System.Data.ConnectionState.Open;
+                    if (needOpen)
+                        await conn.OpenAsync(cancellationToken);
+
+                    try
                     {
-                        for (int i = 0; i < list.Count; i++)
+                        // 1. Пересоздаём временную таблицу (DROP + CREATE вместо CREATE IF NOT EXISTS)
+                        //    Это гарантирует чистый стейт, даже если No Reset On Close=true сохранил
+                        //    старые данные в temp-таблице от предыдущего вызова.
+                        await using (var cmd = conn.CreateCommand())
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            writer.StartRow();
-                            writer.Write(list[i].Id, NpgsqlTypes.NpgsqlDbType.Uuid);
-                            writer.Write(list[i].Ticker, NpgsqlTypes.NpgsqlDbType.Varchar);
-                            writer.Write(list[i].Price, NpgsqlTypes.NpgsqlDbType.Numeric);
-                            writer.Write(list[i].Volume, NpgsqlTypes.NpgsqlDbType.Numeric);
-                            writer.Write(list[i].Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz);
-                            writer.Write(list[i].Exchange, NpgsqlTypes.NpgsqlDbType.Varchar);
-                            writer.Write(list[i].ReceivedAt, NpgsqlTypes.NpgsqlDbType.TimestampTz);
-                            writer.Write(list[i].Normalized, NpgsqlTypes.NpgsqlDbType.Boolean);
+                            cmd.CommandText = @"
+                                DROP TABLE IF EXISTS rawticks_staging;
+                                CREATE TEMP TABLE rawticks_staging (
+                                    id UUID,
+                                    ticker VARCHAR(20),
+                                    price DECIMAL(18,8),
+                                    volume DECIMAL(18,8),
+                                    timestamp TIMESTAMPTZ,
+                                    exchange VARCHAR(50),
+                                    receivedat TIMESTAMPTZ,
+                                    normalized BOOLEAN
+                                );";
+                            await cmd.ExecuteNonQueryAsync(cancellationToken);
                         }
-                        await writer.CompleteAsync(cancellationToken);
-                    }
 
-                    // 3. INSERT INTO rawticks ... ON CONFLICT DO NOTHING из временной таблицы
-                    //    Увеличиваем CommandTimeout до 120 секунд, т.к. при retry после deadlock'а
-                    //    объём данных может быть больше обычного.
-                    await using (var cmd = conn.CreateCommand())
+                        // 2. Binary COPY во временную таблицу
+                        await using (var writer = conn.BeginBinaryImport(
+                            "COPY rawticks_staging (id, ticker, price, volume, timestamp, exchange, receivedat, normalized) FROM STDIN (FORMAT BINARY)"))
+                        {
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                writer.StartRow();
+                                writer.Write(list[i].Id, NpgsqlTypes.NpgsqlDbType.Uuid);
+                                writer.Write(list[i].Ticker, NpgsqlTypes.NpgsqlDbType.Varchar);
+                                writer.Write(list[i].Price, NpgsqlTypes.NpgsqlDbType.Numeric);
+                                writer.Write(list[i].Volume, NpgsqlTypes.NpgsqlDbType.Numeric);
+                                writer.Write(list[i].Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                                writer.Write(list[i].Exchange, NpgsqlTypes.NpgsqlDbType.Varchar);
+                                writer.Write(list[i].ReceivedAt, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                                writer.Write(list[i].Normalized, NpgsqlTypes.NpgsqlDbType.Boolean);
+                            }
+                            await writer.CompleteAsync(cancellationToken);
+                        }
+
+                        // 3. INSERT INTO rawticks ... ON CONFLICT DO NOTHING из временной таблицы
+                        //    Увеличиваем CommandTimeout до 120 секунд, т.к. при retry после deadlock'а
+                        //    объём данных может быть больше обычного.
+                        await using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = @"
+                                WITH inserted AS (
+                                    INSERT INTO rawticks (id, ticker, price, volume, timestamp, exchange, receivedat, normalized)
+                                    SELECT id, ticker, price, volume, timestamp, exchange, receivedat, normalized
+                                    FROM rawticks_staging
+                                    ON CONFLICT (ticker, exchange, timestamp) DO NOTHING
+                                    RETURNING 1
+                                )
+                                SELECT COUNT(*) FROM inserted;";
+                            cmd.CommandTimeout = 120;
+                            var result = await cmd.ExecuteScalarAsync(cancellationToken);
+                            return result is int i ? i : Convert.ToInt32(result);
+                        }
+                    }
+                    catch (Exception ex) when (
+                        (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < DeadlockMaxRetries)
+                        || (ex is NpgsqlException && attempt < DeadlockMaxRetries)
+                    )
                     {
-                        cmd.CommandText = @"
-                            WITH inserted AS (
-                                INSERT INTO rawticks (id, ticker, price, volume, timestamp, exchange, receivedat, normalized)
-                                SELECT id, ticker, price, volume, timestamp, exchange, receivedat, normalized
-                                FROM rawticks_staging
-                                ON CONFLICT (ticker, exchange, timestamp) DO NOTHING
-                                RETURNING 1
-                            )
-                            SELECT COUNT(*) FROM inserted;";
-                        cmd.CommandTimeout = 120;
-                        var result = await cmd.ExecuteScalarAsync(cancellationToken);
-                        return result is int i ? i : Convert.ToInt32(result);
-                    }
-                }
-                catch (Exception ex) when (
-                    (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < DeadlockMaxRetries)
-                    || (ex is NpgsqlException && attempt < DeadlockMaxRetries)
-                )
-                {
-                    attempt++;
+                        attempt++;
 
-                    // При retry закрываем соединение — temp-таблица будет пересоздана
-                    // через DROP + CREATE при следующей попытке
-                    if (conn.State == System.Data.ConnectionState.Open || conn.State == System.Data.ConnectionState.Broken)
+                        // При retry закрываем соединение — temp-таблица будет пересоздана
+                        // через DROP + CREATE при следующей попытке
+                        if (conn.State == System.Data.ConnectionState.Open || conn.State == System.Data.ConnectionState.Broken)
+                        {
+                            try { await conn.CloseAsync(); } catch { /* игнорируем */ }
+                        }
+
+                        var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
+                        // Jitter для предотвращения thundering herd
+                        var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next((int)DeadlockMaxJitter.TotalMilliseconds));
+                        await Task.Delay(delay + jitter, cancellationToken);
+                    }
+                    finally
                     {
-                        try { await conn.CloseAsync(); } catch { /* игнорируем */ }
+                        if (needOpen && conn.State == System.Data.ConnectionState.Open)
+                            await conn.CloseAsync();
                     }
-
-                    var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
-                    await Task.Delay(delay, cancellationToken);
                 }
-                finally
-                {
-                    if (needOpen && conn.State == System.Data.ConnectionState.Open)
-                        await conn.CloseAsync();
-                }
+            }
+            finally
+            {
+                BulkCopyLock.Release();
             }
         }
 

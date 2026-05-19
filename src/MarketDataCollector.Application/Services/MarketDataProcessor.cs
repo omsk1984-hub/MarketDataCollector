@@ -92,15 +92,20 @@ namespace MarketDataCollector.Application.Services
 
             // Запускаем несколько parallel consumer'ов, которые конкурентно читают из Channel.
             // SingleReader=false позволяет нескольким корутинам параллельно вычитывать тики,
-            // набирать батчи и писать в БД через BulkCopyAsync (deadlock'ы обрабатываются
-            // retry-логикой в репозитории).
+            // набирать батчи, дедуплицировать и готовить entities.
             //
-            // ВАЖНО: Количество consumer'ов ограничено 4, т.к. большее число конкурентных
-            // вставок через Binary COPY + temp table + ON CONFLICT приводит к deadlock'ам (40P01)
-            // на индексе unique_tick. Retry-логика в BulkCopyAsync решает проблему для единичных
-            // deadlock'ов, но при 8+ consumer'ах они возникают слишком часто.
-            // По результатам бенчмарка: 2-4 consumer'а с чанком 800 дают
-            // ~50-55k ticks/sec без deadlock'ов, что достаточно для текущей нагрузки.
+            // Сама вставка в БД (BulkCopyAsync) сериализована через SemaphoreSlim(1,1)
+            // в RawTickRepository. Это полностью устраняет deadlock'и на индексе unique_tick,
+            // которые возникали при конкурентной вставке из 4+ потоков.
+            // Подробнее: B-tree page-level lock contention при INSERT ... ON CONFLICT DO NOTHING
+            // на одном индексе приводит к взаимоблокировкам (40P01).
+            //
+            // Несмотря на сериализованную вставку, несколько consumer'ов полезны:
+            // дедупликация (GroupBy) и подготовка объектов выполняется параллельно,
+            // что частично скрывает задержки I/O при записи.
+            //
+            // По результатам бенчмарка: 4 consumer'а с чанком 800 дают
+            // ~50-55k ticks/sec, что достаточно для текущей нагрузки.
             var consumerCount = Math.Clamp((int)Math.Ceiling(Environment.ProcessorCount / 2.0), 1, 4);
             var consumers = Enumerable.Range(0, consumerCount)
                 .Select(_ => ProcessBatchesAsync(cancellationToken));

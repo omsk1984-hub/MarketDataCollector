@@ -79,7 +79,8 @@ app.MapGet("/", () => Results.Ok(new
     symbols = settings.Symbols,
     basePrice = settings.BasePrice,
     clients = generator.ClientCount,
-    actualRps = generator.GetCurrentRps()
+    actualRps = generator.GetCurrentRps(),
+    totalTicks = generator.TotalTicksGenerated
 }));
 
 app.MapGet("/health", () => Results.Ok(new
