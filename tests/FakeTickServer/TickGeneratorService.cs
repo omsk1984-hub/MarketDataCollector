@@ -68,8 +68,9 @@ public class TickGeneratorService : BackgroundService
 
     /// <summary>
     /// Добавляет WebSocket-клиента в список получателей тиков.
+    /// Возвращает сгенерированный ID клиента для последующего удаления.
     /// </summary>
-    public void AddClient(WebSocket webSocket, string symbol)
+    public string AddClient(WebSocket webSocket, string symbol)
     {
         var clientId = Guid.NewGuid().ToString("N")[..8];
         _clients.TryAdd(clientId, new ClientState(webSocket, symbol));
@@ -78,6 +79,7 @@ public class TickGeneratorService : BackgroundService
 
         // Сигнализируем ожидающему ExecuteAsync, что первый клиент подключился
         _firstClientConnected.TrySetResult();
+        return clientId;
     }
 
     /// <summary>
@@ -251,15 +253,10 @@ public class TickGeneratorService : BackgroundService
     }
 
     /// <summary>
-    /// Локальный счётчик для синтеза микросекундного смещения (0..999),
-    /// чтобы каждый сгенерированный тик имел уникальный timestamp
-    /// и не отбрасывался как дубликат по (ticker, exchange, timestamp).
-    /// </summary>
-    private long _timestampOffset;
-
-    /// <summary>
     /// Генерирует JSON-тик в формате Binance trade stream.
     /// Каждый тик имеет уникальный trade ID (t) благодаря атомарному инкременту _globalTradeId.
+    /// Timestamp (E, T) = tradeId, что гарантирует 100% уникальность каждого тика
+    /// при дедупликации по (Ticker, Exchange, Timestamp) в MarketDataProcessor.
     /// Совместимость с BinanceWebSocketClient.ProcessMessageAsync.
     /// </summary>
     private string GenerateTick(string symbol)
@@ -278,19 +275,10 @@ public class TickGeneratorService : BackgroundService
                 "Это может указывать на проблему в логике генерации.", tradeId);
         }
 
-        // Синтезируем уникальный миллисекундный timestamp для каждого тика.
-        // База — реальное unix-время в миллисекундах + атомарное смещение (0..999)
-        // для гарантии уникальности каждого тика.
-        //
-        // Это критически важно: без смещения тики, сгенерированные в одной миллисекунде,
-        // получают одинаковый timestamp и отбрасываются как дубликаты в MarketDataProcessor
-        // (GroupBy по (Ticker, Exchange, Timestamp) + ON CONFLICT DO NOTHING).
-        //
-        // В реальной бирже Binance каждая сделка имеет уникальный T (ms), поэтому
-        // использование синтетического timestamp имитирует реальное поведение.
-        var offset = Interlocked.Increment(ref _timestampOffset) % 1000;
-        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var syntheticTimestamp = nowMs + offset;
+        // Timestamp = tradeId (строго монотонный, 100% уникален).
+        // Это гарантирует, что ни один тик не будет отброшен как дубликат
+        // при дедупликации GroupBy((Ticker, Exchange, Timestamp)) в MarketDataProcessor.
+        var syntheticTimestamp = tradeId;
 
         var random = ThreadLocalRandom.Value!;
 

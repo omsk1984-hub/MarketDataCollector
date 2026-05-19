@@ -34,10 +34,8 @@ app.Map("/ws/{symbol}@trade", async (HttpContext context, string symbol, TickGen
 
     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
-    // Генерируем уникальный ID для клиента
-    var clientId = Guid.NewGuid().ToString("N")[..8];
-
-    gen.AddClient(webSocket, symbol);
+    // AddClient сам генерирует ID и возвращает его
+    var clientId = gen.AddClient(webSocket, symbol);
 
     try
     {
