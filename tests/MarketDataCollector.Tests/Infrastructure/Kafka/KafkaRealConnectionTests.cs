@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
@@ -74,7 +75,7 @@ public class KafkaRealConnectionTests : IAsyncLifetime
         await _kafkaContainer.DisposeAsync();
     }
 
-    [Fact(Timeout = 60_000)]
+    [Fact(Timeout = 120_000)]
     public async Task KafkaRealConnection_ProduceAndConsume_FullCycle()
     {
         // Arrange: создаём producer и consumer с реальными настройками
@@ -91,11 +92,16 @@ public class KafkaRealConnectionTests : IAsyncLifetime
         timeServiceMock.Setup(t => t.UtcNow).Returns(utcNow);
 
         var savedCandles = new List<AggregatedData>();
+        var saveSemaphore = new SemaphoreSlim(0, 10);
 
         var repoMock = new Mock<IAggregatedDataRepository>();
         repoMock
             .Setup(r => r.AddAsync(It.IsAny<AggregatedData>(), It.IsAny<CancellationToken>()))
-            .Callback<AggregatedData, CancellationToken>((entity, _) => savedCandles.Add(entity))
+            .Callback<AggregatedData, CancellationToken>((entity, _) =>
+            {
+                savedCandles.Add(entity);
+                saveSemaphore.Release();
+            })
             .Returns(Task.CompletedTask);
         repoMock
             .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -152,11 +158,11 @@ public class KafkaRealConnectionTests : IAsyncLifetime
             consumerLoggerMock.Object);
 
         // Запускаем consumer и ждём, пока он прочитает сообщение
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await consumer.StartAsync(cts.Token);
 
-        // Даём consumer'у время на чтение и запись
-        await Task.Delay(3000, CancellationToken.None);
+        // Ждём, пока consumer получит сообщение (с запасом на ребаланс группы)
+        var saved = await saveSemaphore.WaitAsync(TimeSpan.FromSeconds(20));
 
         // Останавливаем consumer
         await consumer.StopAsync(CancellationToken.None);
@@ -165,22 +171,22 @@ public class KafkaRealConnectionTests : IAsyncLifetime
         savedCandles.Should().NotBeEmpty("Consumer должен был прочитать хотя бы одну свечу");
         savedCandles.Should().ContainSingle();
 
-        var saved = savedCandles[0];
-        saved.Ticker.Should().Be(testTicker);
-        saved.Interval.Should().Be("1m");
-        saved.OpenPrice.Should().Be(45000.00m);
-        saved.HighPrice.Should().Be(45100.00m);
-        saved.LowPrice.Should().Be(44950.00m);
-        saved.ClosePrice.Should().Be(45080.00m);
-        saved.Volume.Should().Be(123.45m);
-        saved.StartTime.Should().Be(startTime);
-        saved.EndTime.Should().Be(endTime);
+        var result = savedCandles[0];
+        result.Ticker.Should().Be(testTicker);
+        result.Interval.Should().Be("1m");
+        result.OpenPrice.Should().Be(45000.00m);
+        result.HighPrice.Should().Be(45100.00m);
+        result.LowPrice.Should().Be(44950.00m);
+        result.ClosePrice.Should().Be(45080.00m);
+        result.Volume.Should().Be(123.45m);
+        result.StartTime.Should().Be(startTime);
+        result.EndTime.Should().Be(endTime);
 
-        Console.WriteLine($"[Test] Candle consumed and saved: ticker={saved.Ticker}, " +
-                          $"O={saved.OpenPrice}/H={saved.HighPrice}/L={saved.LowPrice}/C={saved.ClosePrice}");
+        Console.WriteLine($"[Test] Candle consumed and saved: ticker={result.Ticker}, " +
+                          $"O={result.OpenPrice}/H={result.HighPrice}/L={result.LowPrice}/C={result.ClosePrice}");
     }
 
-    [Fact(Timeout = 60_000)]
+    [Fact(Timeout = 120_000)]
     public async Task KafkaRealConnection_MultipleCandles_AllConsumed()
     {
         // Arrange: публикуем несколько свечей и проверяем, что все доставлены
@@ -195,6 +201,8 @@ public class KafkaRealConnectionTests : IAsyncLifetime
         timeServiceMock.Setup(t => t.UtcNow).Returns(DateTime.UtcNow);
 
         var savedCandles = new List<AggregatedData>();
+        // Счётчик для отслеживания количества обработанных свечей
+        int savedCount = 0;
         var saveSemaphore = new SemaphoreSlim(0, 100);
 
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -203,6 +211,7 @@ public class KafkaRealConnectionTests : IAsyncLifetime
             .Callback<AggregatedData, CancellationToken>((entity, _) =>
             {
                 savedCandles.Add(entity);
+                Interlocked.Increment(ref savedCount);
                 saveSemaphore.Release();
             })
             .Returns(Task.CompletedTask);
@@ -258,17 +267,26 @@ public class KafkaRealConnectionTests : IAsyncLifetime
             scopeFactoryMock.Object,
             consumerLoggerMock.Object);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await consumer.StartAsync(cts.Token);
 
-        // Ждём, пока все 5 свечей будут сохранены
-        var allSaved = await saveSemaphore.WaitAsync(TimeSpan.FromSeconds(10));
-        await Task.Delay(2000, CancellationToken.None);
+        // Ждём, пока все свечи будут сохранены (с запасом времени на ребаланс группы)
+        // На старте consumer'у нужно время на подключение, join группы и назначение партиций.
+        // Ждём пока savedCount не достигнет symbols.Length.
+        var allSaved = await WaitForAllCandlesAsync(saveSemaphore, symbols.Length, TimeSpan.FromSeconds(30));
+
+        // Даём время на обработку оставшихся сообщений до StopAsync
+        if (!allSaved)
+        {
+            await Task.Delay(5000, CancellationToken.None);
+        }
+
         await consumer.StopAsync(CancellationToken.None);
 
         // Assert
         savedCandles.Should().HaveCount(symbols.Length,
-            $"все {symbols.Length} свечей должны быть прочитаны и сохранены");
+            $"все {symbols.Length} свечей должны быть прочитаны и сохранены. " +
+            $"Фактически сохранено: {savedCandles.Count}");
 
         savedCandles.Select(c => c.Ticker).Should().BeEquivalentTo(symbols);
         savedCandles.Select(c => c.OpenPrice).Should().OnlyHaveUniqueItems(
@@ -283,6 +301,33 @@ public class KafkaRealConnectionTests : IAsyncLifetime
 
         Console.WriteLine($"[Test] Successfully consumed {savedCandles.Count} candles: " +
                           $"[{string.Join(", ", savedCandles.Select(c => c.Ticker))}]");
+    }
+
+    /// <summary>
+    /// Ждёт, пока семафор не получит ожидаемое количество сигналов.
+    /// </summary>
+    private static async Task<bool> WaitForAllCandlesAsync(SemaphoreSlim semaphore, int expectedCount, TimeSpan timeout)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        int acquired = 0;
+
+        while (acquired < expectedCount)
+        {
+            var remaining = timeout - stopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                return false;
+
+            if (await semaphore.WaitAsync(remaining))
+            {
+                acquired++;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     [Fact(Timeout = 30_000)]

@@ -1,6 +1,6 @@
 # Параметры (можно менять под свои нужды)
 $Port = 5000
-$Rps = 10000
+$Rps = 5000
 $Symbols = "btcusdt,ethusdt,solusdt"
 $BasePrice = 5000
 

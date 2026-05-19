@@ -1175,4 +1175,184 @@ public class MarketDataProcessorTests
         batchCallSizes[1].Should().Be(7, "второй батч = batchSize");
         batchCallSizes[2].Should().Be(6, "третий батч = остаток");
     }
+
+    // ========== Flush Timer Tests ==========
+
+    [Fact(Timeout = 10000)]
+    public async Task FlushTimer_WithFlushIntervalZero_DoesNotStartTimer()
+    {
+        _output.WriteLine($"=== Running: {nameof(FlushTimer_WithFlushIntervalZero_DoesNotStartTimer)} ===");
+        // Arrange
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 100,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true,
+            FlushIntervalSeconds = 0 // отключено
+        });
+
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Assert — нет сообщения о запуске таймера
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Таймер сброса частичных батчей запущен")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task FlushTimer_WithFlushIntervalPositive_StartsTimer()
+    {
+        _output.WriteLine($"=== Running: {nameof(FlushTimer_WithFlushIntervalPositive_StartsTimer)} ===");
+        // Arrange
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 100,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true,
+            FlushIntervalSeconds = 5
+        });
+
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Assert — есть сообщение о запуске таймера
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Таймер сброса частичных батчей запущен")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task FlushTimer_FlushesPartialBatch_OnTimerTick()
+    {
+        _output.WriteLine($"=== Running: {nameof(FlushTimer_FlushesPartialBatch_OnTimerTick)} ===");
+        // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
+            {
+                _output.WriteLine($"BulkCopyAsync called with {ticks.Count()} ticks");
+                return Task.FromResult(ticks.Count());
+            });
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 100,          // большой batch — не наберётся за 1 таймерный тик
+            ChannelCapacity = 1000,
+            UseSingleConsumer = true,
+            FlushIntervalSeconds = 1  // таймер каждую секунду
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 5 тиков (меньше BatchSize=100)
+        for (int i = 0; i < 5; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        // Ждём срабатывания таймера (1 сек) + запас
+        await Task.Delay(2000, cts.Token);
+
+        // Останавливаем процессор
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — частичный батч должен быть сброшен по таймеру (до StopProcessingAsync)
+        var processedCount = await processor.GetProcessedCountAsync();
+        _output.WriteLine($"Processed count: {processedCount}");
+        processedCount.Should().Be(5, "все 5 тиков должны быть сброшены по таймеру до остановки");
+
+        // BulkCopyAsync должен быть вызван минимум 1 раз (таймерный сброс) + финальный flush (пустой после таймера)
+        _repositoryMock.Verify(
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task FlushTimer_MultipleTimerTicks_OnlyOneFlush()
+    {
+        _output.WriteLine($"=== Running: {nameof(FlushTimer_MultipleTimerTicks_OnlyOneFlush)} ===");
+        // Arrange
+        var callCount = 0;
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
+            {
+                Interlocked.Increment(ref callCount);
+                _output.WriteLine($"BulkCopyAsync call #{callCount} with {ticks.Count()} ticks");
+                return Task.FromResult(ticks.Count());
+            });
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 100,
+            ChannelCapacity = 1000,
+            UseSingleConsumer = true,
+            FlushIntervalSeconds = 1 // таймер каждую секунду
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 3 тика (меньше BatchSize)
+        for (int i = 0; i < 3; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        // Ждём 2+ тиков таймера (3 секунды)
+        await Task.Delay(3000, cts.Token);
+
+        // Отправляем ещё 2 тика (тики после сброса — новый частичный батч)
+        for (int i = 3; i < 5; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        // Ждём ещё 2 секунды (ещё один тик таймера)
+        await Task.Delay(2000, cts.Token);
+
+        // Останавливаем
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — проверяем, что все 5 тиков обработаны
+        var processedCount = await processor.GetProcessedCountAsync();
+        _output.WriteLine($"Processed count: {processedCount}, BulkCopy calls: {callCount}");
+        processedCount.Should().Be(5, "все 5 тиков должны быть обработаны");
+
+        // Должно быть минимум 2 вызова BulkCopyAsync:
+        // 1-й: сброс первых 3 тиков по таймеру
+        // 2-й: сброс следующих 2 тиков по таймеру (или финальный flush)
+        callCount.Should().BeGreaterThanOrEqualTo(2, "должно быть минимум 2 сброса (3 + 2)");
+    }
 }

@@ -13,6 +13,16 @@ namespace MarketDataCollector.Core.Configuration
         public int ChannelCapacity { get; set; } = 10000;
 
         /// <summary>
+        /// Интервал принудительного сброса неполных батчей в БД (в секундах).
+        /// Если за это время не набрался полный батч (BatchSize),
+        /// частичный батч сбрасывается принудительно.
+        /// 0 = отключено (только полные батчи).
+        /// Значение по умолчанию 0 — включается через конфигурацию (appsettings.json),
+        /// где установлено 5 секунд.
+        /// </summary>
+        public int FlushIntervalSeconds { get; set; } = 0;
+
+        /// <summary>
         /// Режим Single Consumer: использует ровно 1 consumer вместо N параллельных.
         ///
         /// Когда true:

@@ -23,6 +23,7 @@ namespace MarketDataCollector.Application.Services
         public Channel<TickData> Channel => _channel;
         private readonly int _batchSize;
         private readonly int _channelCapacity;
+        private readonly int _flushIntervalSeconds;
         private readonly bool _useSingleConsumer;
         private readonly ITickAggregator? _tickAggregator;
 
@@ -30,6 +31,10 @@ namespace MarketDataCollector.Application.Services
         private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
         private readonly SlidingWindowCounter _processedRpsCounter = new();
+
+        // Таймерный сброс частичных батчей
+        private readonly Channel<byte> _flushSignal;   // сигнальный канал для таймера
+        private Timer? _flushTimer;
 
         public event EventHandler<Exception>? OnError;
 
@@ -56,10 +61,22 @@ namespace MarketDataCollector.Application.Services
             _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
             _batchSize = options.BatchSize;
             _channelCapacity = options.ChannelCapacity;
+            _flushIntervalSeconds = options.FlushIntervalSeconds;
             _useSingleConsumer = options.UseSingleConsumer;
             _processedCount = 0;
             _totalReceivedCount = 0;
             _tickAggregator = tickAggregator;
+
+            // Создаём сигнальный канал для таймерного сброса частичных батчей.
+            // Ёмкость 1, SingleReader=true (только ProcessBatchesAsync читает).
+            // DropOldest — если таймер сработал повторно до обработки сигнала,
+            // старый сигнал отбрасывается, что безопасно (сброс будет в следующем цикле).
+            _flushSignal = System.Threading.Channels.Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false
+            });
 
             // Создаём канал по умолчанию (режим multiple consumers), чтобы ProcessTickAsync
             // мог безопасно писать до вызова StartProcessingAsync.
@@ -147,17 +164,47 @@ namespace MarketDataCollector.Application.Services
                     consumerCount, _batchSize, _channelCapacity);
             }
 
+            // Запускаем таймер для принудительного сброса частичных батчей при простое.
+            // Таймер пишет 1 байт в сигнальный канал _flushSignal.
+            // ProcessBatchesAsync через Task.WhenAny ждёт либо новые тики, либо сигнал сброса.
+            if (_flushIntervalSeconds > 0)
+            {
+                _flushTimer?.Dispose();
+                _flushTimer = new Timer(
+                    static state =>
+                    {
+                        var signal = (Channel<byte>)state!;
+                        signal.Writer.TryWrite(0);
+                    },
+                    _flushSignal,
+                    TimeSpan.FromSeconds(_flushIntervalSeconds),
+                    TimeSpan.FromSeconds(_flushIntervalSeconds));
+
+                _logger.LogInformation(
+                    "Таймер сброса частичных батчей запущен: каждые {FlushInterval}с, batchSize={BatchSize}",
+                    _flushIntervalSeconds, _batchSize);
+            }
+
             return Task.CompletedTask;
         }
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
+            // 1. Останавливаем таймер — он больше не будет писать в сигнальный канал
+            _flushTimer?.Dispose();
+            _flushTimer = null;
+
+            // 2. Завершаем канал данных — это заставит ProcessBatchesAsync
+            //    выйти из цикла (readTask.Result == false → break).
+            //    ВАЖНО: завершаем ДО сигнального канала, чтобы ProcessBatchesAsync
+            //    корректно дочитал оставшиеся тики и выполнил финальный flush.
             _channel.Writer.TryComplete();
-            
+
             if (_processingTask != null)
             {
                 try
                 {
+                    // 3. Ждём, пока ProcessBatchesAsync завершится (дочитает остатки и выйдет)
                     await _processingTask.WaitAsync(cancellationToken);
                 }
                 catch (OperationCanceledException)
@@ -165,29 +212,88 @@ namespace MarketDataCollector.Application.Services
                     _logger.LogWarning("Остановка обработки отменена");
                 }
             }
-            
+
+            // 4. После остановки processing task — завершаем сигнальный канал
+            _flushSignal.Writer.TryComplete();
+
             _logger.LogInformation("Обработчик рыночных данных остановлен. Всего обработано: {Count}", _processedCount);
         }
 
         private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
         {
             var batch = new List<TickData>(_batchSize);
+            var flushReader = _flushSignal.Reader;
 
             try
             {
-                await foreach (var tick in _channel.Reader.ReadAllAsync(cancellationToken))
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    batch.Add(tick);
 
-                    if (batch.Count >= _batchSize)
+                    // Ждём: либо новый тик в канале данных, либо сигнал от таймера сброса
+                    var readTask = _channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                    var flushTask = flushReader.WaitToReadAsync(cancellationToken).AsTask();
+                    var completed = await Task.WhenAny(readTask, flushTask);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var isReadCompleted = completed == readTask;
+                    var isFlushCompleted = completed == flushTask;
+
+                    // --- Обработка новых тиков ---
+                    if (isReadCompleted)
                     {
+                        if (readTask.Result)
+                        {
+                            // Вычитываем ВСЕ доступные тики из канала (non-blocking)
+                            while (_channel.Reader.TryRead(out var tick))
+                            {
+                                batch.Add(tick);
+                                if (batch.Count >= _batchSize)
+                                {
+                                    await ProcessBatchAsync(batch, cancellationToken);
+                                    batch.Clear();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Канал данных завершён (TryComplete) — выходим из цикла
+                            // Перед выходом сбросим частичный батч
+                            if (batch.Count > 0)
+                            {
+                                await ProcessBatchAsync(batch, cancellationToken);
+                                batch.Clear();
+                            }
+                            break;
+                        }
+                    }
+
+                    // --- Сброс частичного батча по сигналу таймера ---
+                    if (batch.Count > 0 && isFlushCompleted)
+                    {
+                        // Потребляем сигнал из канала
+                        while (flushReader.TryRead(out _)) { }
+
+                        _logger.LogDebug(
+                            "Таймерный сброс частичного батча: {Count} тиков (batchSize={BatchSize})",
+                            batch.Count, _batchSize);
+
                         await ProcessBatchAsync(batch, cancellationToken);
                         batch.Clear();
                     }
+
+                    // --- Потребляем "зависшие" сигналы из канала сброса ---
+                    // Это необходимо, если таймер успел сработать несколько раз до обработки,
+                    // а данные пришли раньше сигнала сброса (isReadCompleted=true, isFlushCompleted=false).
+                    // Если в канале сброса есть данные — потребляем их, чтобы не накапливались.
+                    if (isReadCompleted && !isFlushCompleted)
+                    {
+                        while (flushReader.TryRead(out _)) { }
+                    }
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 _logger.LogInformation("Обработка отменена");
             }
@@ -197,9 +303,13 @@ namespace MarketDataCollector.Application.Services
             }
             finally
             {
-                // Финальный flush
+                // Финальный flush (даже при ошибке — CancellationToken.None)
+                // Важно: не вызываем ProcessBatchAsync повторно, если уже сбросили выше
                 if (batch.Count > 0)
                 {
+                    _logger.LogDebug(
+                        "Финальный сброс: {Count} тиков (batchSize={BatchSize})",
+                        batch.Count, _batchSize);
                     await ProcessBatchAsync(batch, CancellationToken.None);
                 }
             }

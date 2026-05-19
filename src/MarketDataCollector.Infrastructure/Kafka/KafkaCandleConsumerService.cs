@@ -107,12 +107,18 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
         {
             if (_consumingTask != null)
             {
-                await _consumingTask.WaitAsync(cancellationToken);
+                // Используем таймаут, чтобы гарантированно завершить остановку,
+                // даже если Consumer.Consume() не реагирует на отмену токена
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+                
+                await _consumingTask.WaitAsync(timeoutCts.Token);
             }
         }
         catch (OperationCanceledException)
         {
-            // Ожидаемо при остановке
+            // Ожидаемо при остановке или таймауте
+            _logger.LogWarning("Consumer task did not complete within timeout, forcing close");
         }
         finally
         {
