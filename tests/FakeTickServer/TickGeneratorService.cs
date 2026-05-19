@@ -42,6 +42,9 @@ public class TickGeneratorService : BackgroundService
     /// <summary>Счётчик всех сгенерированных тиков за всё время работы сервера.</summary>
     private long _totalTicks;
 
+    /// <summary>Флаг: был ли уже залогирован первый тик.</summary>
+    private bool _firstTickLogged;
+
     /// <summary>Флаг: достигнут ли лимит MaxTicks.</summary>
     private volatile bool _isLimitReached;
 
@@ -205,6 +208,20 @@ public class TickGeneratorService : BackgroundService
                             try
                             {
                                 var tickJson = GenerateTick(clientState.Symbol);
+
+                                // Логируем первый сгенерированный тик
+                                if (!_firstTickLogged)
+                                {
+                                    _firstTickLogged = true;
+                                    _logger.LogInformation(
+                                        "ПЕРВЫЙ ТИК: symbol={Symbol}, tradeId={TradeId}, price={Price}, volume={Volume}, json={TickJson}",
+                                        clientState.Symbol,
+                                        Interlocked.Read(ref _globalTradeId),
+                                        _settings.BasePrice,
+                                        tickJson.Length,
+                                        tickJson);
+                                }
+
                                 var bytes = Encoding.UTF8.GetBytes(tickJson);
                                 var segment = new ArraySegment<byte>(bytes);
 
