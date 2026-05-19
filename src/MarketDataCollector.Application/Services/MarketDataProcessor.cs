@@ -25,6 +25,7 @@ namespace MarketDataCollector.Application.Services
         private readonly int _channelCapacity;
         private readonly int _flushIntervalSeconds;
         private readonly bool _useSingleConsumer;
+        private readonly int _consumerCount;
         private readonly ITickAggregator? _tickAggregator;
 
         private Task _processingTask = null!;
@@ -66,6 +67,7 @@ namespace MarketDataCollector.Application.Services
             _channelCapacity = options.ChannelCapacity;
             _flushIntervalSeconds = options.FlushIntervalSeconds;
             _useSingleConsumer = options.UseSingleConsumer;
+            _consumerCount = options.ConsumerCount;
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
@@ -184,14 +186,26 @@ namespace MarketDataCollector.Application.Services
                 // По результатам бенчмарка: 4 consumer'а с чанком 800 дают
                 // ~50-55k ticks/sec.
 
-                var consumerCount = Math.Clamp((int)Math.Ceiling(Environment.ProcessorCount / 2.0), 1, 4);
+                int consumerCount;
+                string countSource;
+                if (_consumerCount > 0)
+                {
+                    consumerCount = _consumerCount;
+                    countSource = "configured";
+                }
+                else
+                {
+                    consumerCount = Math.Clamp((int)Math.Ceiling(Environment.ProcessorCount / 2.0), 1, 4);
+                    countSource = "auto";
+                }
+
                 var consumers = Enumerable.Range(0, consumerCount)
                     .Select(_ => ProcessBatchesAsync(cancellationToken));
                 _processingTask = Task.WhenAll(consumers);
 
                 _logger.LogInformation(
-                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, ChannelCapacity={Capacity}",
-                    _sessionId, consumerCount, _batchSize, _channelCapacity);
+                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов ({CountSource}), batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    _sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
             }
 
             // Запускаем таймер для принудительного сброса частичных батчей при простое.

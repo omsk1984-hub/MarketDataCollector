@@ -32,12 +32,20 @@ namespace MarketDataCollector.Core.Configuration
         ///
         /// Когда false (по умолчанию):
         /// - Channel с SingleReader=false
-        /// - Запускается Math.Clamp(CPU/2, 1, 4) parallel consumer'ов
+        /// - Запускается ConsumerCount parallel consumer'ов (если ConsumerCount > 0)
+        ///   либо Math.Clamp(CPU/2, 1, 4) при ConsumerCount = 0
         /// - Вставка в БД сериализована через SemaphoreSlim(1,1) в BulkCopyAsync
         ///
         /// По результатам бенчмарка: Sequential batch=700 даёт ~62 680 ticks/sec,
         /// что достаточно для текущей нагрузки на одном потоке.
         /// </summary>
         public bool UseSingleConsumer { get; set; } = false;
+
+        /// <summary>
+        /// Количество parallel consumer'ов для режима Multiple Consumers (UseSingleConsumer=false).
+        /// 0 = авто-определение (Math.Clamp(CPU/2, 1, 4), по умолчанию).
+        /// Значение больше 0 — фиксированное количество consumer'ов.
+        /// </summary>
+        public int ConsumerCount { get; set; } = 0;
     }
 }

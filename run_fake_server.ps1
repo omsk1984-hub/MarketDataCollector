@@ -1,9 +1,9 @@
 # Параметры (можно менять под свои нужды)
 $Port = 5000
-$Rps = 20000
+$Rps = 22000
 $Symbols = "btcusdt,ethusdt,solusdt"
 $BasePrice = 5000
-$MaxTicks = 100000
+$MaxTicks = 300000
 $DupPercent = 2
 
 # Останавливаем предыдущий экземпляр, если запущен
