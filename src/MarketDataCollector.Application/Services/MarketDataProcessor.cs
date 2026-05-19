@@ -30,7 +30,8 @@ namespace MarketDataCollector.Application.Services
         private Task _processingTask = null!;
         private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
-        private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync (до Channel DropOldest)
+        private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync
+        private int _totalDroppedCount;    // сколько тиков реально дропнуто каналом (TryWrite=false из-за DropOldest)
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
@@ -68,6 +69,7 @@ namespace MarketDataCollector.Application.Services
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
+            _totalDroppedCount = 0;
             _tickAggregator = tickAggregator;
 
             // Создаём сигнальный канал для таймерного сброса частичных батчей.
@@ -93,13 +95,20 @@ namespace MarketDataCollector.Application.Services
             });
         }
 
-        public async Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
+        public Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
-            // Инкрементируем счётчик ДО записи в канал, чтобы можно было вычислить,
-            // сколько тиков дропнуто при переполнении (DropOldest).
+            // Инкрементируем счётчик ДО записи в канал — общее количество попыток записи.
             Interlocked.Increment(ref _totalIncomingCount);
 
-            await _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange));
+            // TryWrite — неблокирующая запись. При переполнении канала (BoundedChannelFullMode.DropOldest)
+            // возвращает false без исключения. Считаем такие случаи как реальные дропы.
+            // Это точнее, чем вычислять разницу incoming - received постфактум,
+            // т.к. received обновляется с задержкой (после формирования и обработки батча).
+            var tick = new TickData(ticker, price, volume, timestamp, exchange);
+            if (!_channel.Writer.TryWrite(tick))
+            {
+                Interlocked.Increment(ref _totalDroppedCount);
+            }
 
             // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
             // чтобы агрегатор не блокировал основной пайплайн.
@@ -111,6 +120,8 @@ namespace MarketDataCollector.Application.Services
             }
 
             _logger.LogDebug("Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
+
+            return Task.CompletedTask;
         }
 
         public Task StartProcessingAsync(CancellationToken cancellationToken = default)
@@ -249,14 +260,15 @@ namespace MarketDataCollector.Application.Services
             var totalIncoming = _totalIncomingCount;
             var totalReceived = _totalReceivedCount;
             var totalInserted = _processedCount;
-            var droppedByChannel = totalIncoming - totalReceived;
+            var totalDropped = _totalDroppedCount;           // реальные дропы через TryWrite
+            var droppedByChannel = totalIncoming - totalReceived; // backlog (для сравнения)
             var remainingAfterStop = _channel.Reader.Count;
 
             _logger.LogInformation(
                 "Session={SessionId}: Обработчик рыночных данных остановлен. " +
                 "Входящих: {Incoming}, получено из канала: {Received}, вставлено в БД: {Inserted}, " +
-                "дропнуто каналом: {Dropped}, остаток в канале: {Remaining}",
-                _sessionId, totalIncoming, totalReceived, totalInserted, droppedByChannel, remainingAfterStop);
+                "реально дропнуто: {DroppedReal}, backlog (incoming-received): {DroppedCalc}, остаток в канале: {Remaining}",
+                _sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
         }
 
         private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
@@ -420,7 +432,7 @@ namespace MarketDataCollector.Application.Services
         }
 
         /// <summary>
-        /// Возвращает общее количество тиков, поступивших в ProcessTickAsync.
+        /// Возвращает общее количество тиков, поступивших в ProcessTick.
         /// </summary>
         public int GetTotalIncomingCount() => _totalIncomingCount;
 
@@ -428,6 +440,12 @@ namespace MarketDataCollector.Application.Services
         /// Возвращает общее количество тиков, успешно прочитанных из канала.
         /// </summary>
         public int GetTotalReceivedCount() => _totalReceivedCount;
+
+        /// <summary>
+        /// Количество тиков, реально дропнутых каналом из-за переполнения
+        /// (TryWrite вернул false при BoundedChannelFullMode.DropOldest).
+        /// </summary>
+        public int GetTotalDroppedCount() => _totalDroppedCount;
 
         /// <summary>
         /// Текущее количество тиков в очереди канала (для мониторинга заполненности).

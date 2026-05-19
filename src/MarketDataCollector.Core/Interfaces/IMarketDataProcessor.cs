@@ -41,6 +41,17 @@ namespace MarketDataCollector.Core.Interfaces
         /// Ёмкость канала (ChannelCapacity из конфигурации).
         /// Используется совместно с <see cref="GetChannelCount"/> для расчёта процента заполненности.
         /// </summary>
+        /// <summary>
+        /// Ёмкость канала (ChannelCapacity из конфигурации).
+        /// Используется совместно с <see cref="GetChannelCount"/> для расчёта процента заполненности.
+        /// </summary>
         int GetChannelCapacity();
+
+        /// <summary>
+        /// Количество тиков, реально дропнутых каналом из-за переполнения
+        /// (BoundedChannelFullMode.DropOldest).
+        /// Сбрасывается при пересоздании канала в StartProcessingAsync.
+        /// </summary>
+        int GetTotalDroppedCount();
     }
 }

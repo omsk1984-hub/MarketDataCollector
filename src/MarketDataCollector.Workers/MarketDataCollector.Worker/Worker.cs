@@ -184,6 +184,7 @@ public class Worker : BackgroundService
             var totalWsMessages = clients.Sum(c => c.GetTotalMessagesCount());
             var totalChannelIncoming = marketDataProcessor.GetTotalIncomingCount();
             var totalChannelReceived = marketDataProcessor.GetTotalReceivedCount();
+            var totalChannelDropped = marketDataProcessor.GetTotalDroppedCount();
 
             // Детальные RPS + total по каждому клиенту
             var clientDetails = string.Join(", ", clients.Select(c =>
@@ -219,13 +220,26 @@ public class Worker : BackgroundService
                         totalWsMessages, totalChannelIncoming, wsVsChannelDiff);
                 }
 
-                var channelDropped = totalChannelIncoming - totalChannelReceived;
-                if (channelDropped > 100)
+                // Реальные дропы — считаются через TryWrite в ProcessTickAsync.
+                // backlog (incoming - received) — это нормальный остаток в канале/батче,
+                // а не дропнутые тики (см. архитектурное решение в MarketDataProcessor).
+                if (totalChannelDropped > 100)
                 {
                     _logger.LogWarning(
-                        "Health-check: Channel DropOldest дропнул {Dropped} тиков (incoming={In}, received={Rec}). " +
+                        "Health-check: Channel DropOldest дропнул {Dropped} тиков (incoming={In}, received={Rec}, backlog={Backlog}). " +
                         "Канал переполняется! Увеличьте ChannelCapacity или оптимизируйте скорость записи в БД.",
-                        channelDropped, totalChannelIncoming, totalChannelReceived);
+                        totalChannelDropped, totalChannelIncoming, totalChannelReceived,
+                        totalChannelIncoming - totalChannelReceived);
+                }
+
+                // INFO-лог backlog'а — для аналитики, не варнинг
+                var backlog = totalChannelIncoming - totalChannelReceived;
+                if (backlog > 100 && totalChannelDropped == 0)
+                {
+                    _logger.LogInformation(
+                        "Health-check: Backlog канала: {Backlog} тиков (incoming={In}, received={Rec}). " +
+                        "Тики в очереди/батче, не дропнуты.",
+                        backlog, totalChannelIncoming, totalChannelReceived);
                 }
             }
 
