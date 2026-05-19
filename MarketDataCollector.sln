@@ -14,6 +14,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Applica
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketDataCollector.Worker", "src\MarketDataCollector.Workers\MarketDataCollector.Worker\MarketDataCollector.Worker.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A622787D-022D-4663-AE9C-0B33B4EA7A55}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TickWriteBenchmark", "tests\TickWriteBenchmark\TickWriteBenchmark.csproj", "{2688AC4B-765F-48F7-9320-65C4A0D61B33}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +47,10 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2688AC4B-765F-48F7-9320-65C4A0D61B33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2688AC4B-765F-48F7-9320-65C4A0D61B33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2688AC4B-765F-48F7-9320-65C4A0D61B33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2688AC4B-765F-48F7-9320-65C4A0D61B33}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8F3436E6-147F-4697-8515-458EB7FB4820} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
@@ -50,5 +58,6 @@ Global
 		{3044994A-3BEA-4753-8457-EBDB44D04031} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
 		{FA3A6FAD-82A6-48CC-8195-2E62CC60D655} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {177788B7-DB2A-4E40-BEB0-8F36EAD6E130}
+		{2688AC4B-765F-48F7-9320-65C4A0D61B33} = {A622787D-022D-4663-AE9C-0B33B4EA7A55}
 	EndGlobalSection
 EndGlobal

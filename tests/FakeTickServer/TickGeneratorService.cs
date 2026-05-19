@@ -198,6 +198,13 @@ public class TickGeneratorService : BackgroundService
     }
 
     /// <summary>
+    /// Локальный счётчик для синтеза микросекундного смещения (0..999),
+    /// чтобы каждый сгенерированный тик имел уникальный timestamp
+    /// и не отбрасывался как дубликат по (ticker, exchange, timestamp).
+    /// </summary>
+    private long _timestampOffset;
+
+    /// <summary>
     /// Генерирует JSON-тик в формате Binance trade stream.
     /// Каждый тик имеет уникальный trade ID (t) благодаря атомарному инкременту _globalTradeId.
     /// Совместимость с BinanceWebSocketClient.ProcessMessageAsync.
@@ -218,7 +225,20 @@ public class TickGeneratorService : BackgroundService
                 "Это может указывать на проблему в логике генерации.", tradeId);
         }
 
-        var unixTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // Синтезируем уникальный миллисекундный timestamp для каждого тика.
+        // База — реальное unix-время в миллисекундах + атомарное смещение (0..999)
+        // для гарантии уникальности каждого тика.
+        //
+        // Это критически важно: без смещения тики, сгенерированные в одной миллисекунде,
+        // получают одинаковый timestamp и отбрасываются как дубликаты в MarketDataProcessor
+        // (GroupBy по (Ticker, Exchange, Timestamp) + ON CONFLICT DO NOTHING).
+        //
+        // В реальной бирже Binance каждая сделка имеет уникальный T (ms), поэтому
+        // использование синтетического timestamp имитирует реальное поведение.
+        var offset = Interlocked.Increment(ref _timestampOffset) % 1000;
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var syntheticTimestamp = nowMs + offset;
+
         var random = ThreadLocalRandom.Value!;
 
         // Случайное отклонение цены +/- 0.2%
@@ -238,12 +258,12 @@ public class TickGeneratorService : BackgroundService
         return JsonSerializer.Serialize(new BinanceTick
         {
             e = "trade",
-            E = unixTimeMs,
+            E = syntheticTimestamp,
             s = symbol.ToUpperInvariant(),
             t = tradeId,
             p = price,
             q = volume,
-            T = unixTimeMs,
+            T = syntheticTimestamp,
             m = isBuyerMaker,
             M = isBestMatch
         });
