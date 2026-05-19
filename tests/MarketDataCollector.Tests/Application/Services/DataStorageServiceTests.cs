@@ -42,12 +42,9 @@ public class DataStorageServiceTests
     [Fact(Timeout = 5000)]
     public void Constructor_WithNullRepository_ThrowsArgumentNullException()
     {
-        // Arrange
-        IRawTickRepository? nullRepository = null;
-
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new DataStorageService(
-            nullRepository,
+            null!,
             _loggerMock.Object));
     }
 

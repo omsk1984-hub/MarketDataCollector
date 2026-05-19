@@ -102,7 +102,7 @@ public class SubscriptionManagerTests
             _connectionManagerMock.Object,
             Options.Create(_defaultOptions),
             _loggerMock.Object,
-            async (symbol, ct) => { /* Success - do nothing */ });
+            (symbol, ct) => { /* Success - do nothing */ return Task.CompletedTask; });
 
         var symbol = "BTCUSDT";
         var cancellationToken = CancellationToken.None;
@@ -139,13 +139,14 @@ public class SubscriptionManagerTests
             MaxSubscribeRetries = maxRetries
         };
         
-        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        var subscribeAction = new Func<string, CancellationToken, Task>((symbol, ct) =>
         {
             retryCount++;
             if (retryCount <= maxRetries)
             {
                 throw new Exception("Subscription failed");
             }
+            return Task.CompletedTask;
         });
 
         var manager = new SubscriptionManager(
@@ -190,7 +191,7 @@ public class SubscriptionManagerTests
             MaxSubscribeRetries = 1 // 1 retry с задержкой 2^1 = 2s, укладывается в timeout 5s
         };
         
-        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        var subscribeAction = new Func<string, CancellationToken, Task>((symbol, ct) =>
         {
             throw new Exception("Subscription failed");
         });
@@ -260,7 +261,7 @@ public class SubscriptionManagerTests
         // Arrange
         var maxRetries = 1; // 1 retry с задержкой 2^1 = 2s, укладывается в timeout 5s
         
-        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        var subscribeAction = new Func<string, CancellationToken, Task>((symbol, ct) =>
         {
             throw new Exception("Subscription failed");
         });
@@ -323,9 +324,10 @@ public class SubscriptionManagerTests
         // Arrange
         string? capturedSymbol = null;
         
-        var subscribeAction = new Func<string, CancellationToken, Task>(async (symbol, ct) =>
+        var subscribeAction = new Func<string, CancellationToken, Task>((symbol, ct) =>
         {
             capturedSymbol = symbol;
+            return Task.CompletedTask;
         });
 
         var manager = new SubscriptionManager(

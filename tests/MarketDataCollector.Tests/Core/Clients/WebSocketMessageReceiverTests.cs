@@ -58,10 +58,11 @@ public class WebSocketMessageReceiverTests
         var receivedMessages = new List<string>();
         var processMessageCalled = false;
         
-        var processMessage = async (string message) =>
+        var processMessage = (string message) =>
         {
             receivedMessages.Add(message);
             processMessageCalled = true;
+            return Task.CompletedTask;
         };
 
         var onMessageReceived = new Action<string>(msg => { });
@@ -143,9 +144,10 @@ public class WebSocketMessageReceiverTests
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
         var processMessageCalled = false;
-        var processMessage = new Func<string, Task>(async msg =>
+        var processMessage = new Func<string, Task>(msg =>
         {
             processMessageCalled = true;
+            return Task.CompletedTask;
         });
         var onMessageReceived = new Action<string>(msg => { });
         var onError = new Action<Exception>(ex => { });
@@ -252,7 +254,7 @@ public class WebSocketMessageReceiverTests
             ex.Should().NotBeNull();
         });
 
-        var processMessage = new Func<string, Task>(async msg =>
+        var processMessage = new Func<string, Task>(msg =>
         {
             throw new Exception("Test process error");
         });

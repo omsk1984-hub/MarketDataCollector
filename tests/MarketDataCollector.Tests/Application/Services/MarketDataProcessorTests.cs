@@ -174,7 +174,7 @@ public class MarketDataProcessorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task StartProcessingAsync_StartsBackgroundTask()
+    public void StartProcessingAsync_StartsBackgroundTask()
     {
         _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_StartsBackgroundTask)} ===");
         // Arrange

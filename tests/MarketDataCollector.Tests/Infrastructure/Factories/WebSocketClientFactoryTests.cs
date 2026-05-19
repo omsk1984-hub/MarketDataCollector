@@ -90,11 +90,9 @@ public class WebSocketClientFactoryTests
     public void Constructor_WithNullDataProcessor_ThrowsArgumentNullException()
     {
         // Arrange
-        IMarketDataProcessor? nullProcessor = null;
-
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new WebSocketClientFactory(
-            nullProcessor,
+            null!,
             _monitoringServiceMock.Object,
             _exchangeOptionsMock.Object,
             _wsOptionsMock.Object,
@@ -104,13 +102,10 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void Constructor_WithNullMonitoringService_ThrowsArgumentNullException()
     {
-        // Arrange
-        IMonitoringService? nullMonitoring = null;
-
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new WebSocketClientFactory(
             _dataProcessorMock.Object,
-            nullMonitoring,
+            null!,
             _exchangeOptionsMock.Object,
             _wsOptionsMock.Object,
             _loggerFactory));
@@ -119,14 +114,11 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void Constructor_WithNullExchangeOptions_ThrowsArgumentNullException()
     {
-        // Arrange
-        IOptions<ExchangeOptions>? nullOptions = null;
-
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new WebSocketClientFactory(
             _dataProcessorMock.Object,
             _monitoringServiceMock.Object,
-            nullOptions,
+            null!,
             _wsOptionsMock.Object,
             _loggerFactory));
     }
@@ -134,15 +126,12 @@ public class WebSocketClientFactoryTests
     [Fact(Timeout = 5000)]
     public void Constructor_WithNullWsOptions_ThrowsArgumentNullException()
     {
-        // Arrange
-        IOptions<WebSocketClientOptions>? nullOptions = null;
-
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => new WebSocketClientFactory(
             _dataProcessorMock.Object,
             _monitoringServiceMock.Object,
             _exchangeOptionsMock.Object,
-            nullOptions,
+            null!,
             _loggerFactory));
     }
 

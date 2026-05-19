@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);CS8604;CS1998;CS0168;SYSLIB0050;xUnit1031;NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

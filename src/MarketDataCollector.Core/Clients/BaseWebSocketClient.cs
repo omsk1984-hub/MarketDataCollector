@@ -323,7 +323,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 reconnectAttempt++;
 

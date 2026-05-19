@@ -83,8 +83,10 @@ public class RawTickRepositoryDeadlockTests
     {
         // PostgresException в Npgsql 8.x имеет read-only свойства.
         // Используем FormatterServices для создания + рефлексию для полей.
+#pragma warning disable SYSLIB0050
         var ex = (Npgsql.PostgresException)FormatterServices
             .GetUninitializedObject(typeof(Npgsql.PostgresException));
+#pragma warning restore SYSLIB0050
 
         var sqlStateField = typeof(Npgsql.PostgresException).GetField("_sqlState",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);

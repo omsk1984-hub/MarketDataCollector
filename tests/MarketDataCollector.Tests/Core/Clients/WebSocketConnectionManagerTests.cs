@@ -278,7 +278,7 @@ public class WebSocketConnectionManagerTests
     }
 
     [Fact(Timeout = 5000)]
-    public void StateChanged_Event_FiresOnConnect()
+    public async Task StateChanged_Event_FiresOnConnect()
     {
         // Arrange
         var newSocketMock = new Mock<IClientWebSocket>();
@@ -294,7 +294,7 @@ public class WebSocketConnectionManagerTests
         manager.StateChanged += (sender, state) => receivedState = state;
 
         // Act
-        manager.ConnectAsync(uri, CancellationToken.None).GetAwaiter().GetResult();
+        await manager.ConnectAsync(uri, CancellationToken.None);
 
         // Assert
         receivedState.Should().Be(WebSocketState.Open);
