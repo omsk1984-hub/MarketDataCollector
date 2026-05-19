@@ -21,9 +21,12 @@ public class Settings
     /// <summary>Максимальное количество тиков (--max-ticks, -m). 0 = без лимита. По умолчанию: 0.</summary>
     public long MaxTicks { get; set; } = 0;
 
+    /// <summary>Процент дублей (--dup-percent, -d). 0-100. 0 = все тики уникальны. По умолчанию: 0.</summary>
+    public int DupPercent { get; set; } = 0;
+
     /// <summary>
     /// Парсит аргументы командной строки и возвращает Settings.
-    /// Поддерживаемые флаги: --port/-p, --rps/-r, --symbols/-s, --base-price/-b, --max-ticks/-m
+    /// Поддерживаемые флаги: --port/-p, --rps/-r, --symbols/-s, --base-price/-b, --max-ticks/-m, --dup-percent/-d
     /// </summary>
     public static Settings Parse(string[] args)
     {
@@ -66,6 +69,12 @@ public class Settings
                     if (i + 1 < args.Length && long.TryParse(args[++i], out var maxTicks))
                         result.MaxTicks = maxTicks;
                     break;
+
+                case "--dup-percent":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var dupPercent))
+                        result.DupPercent = Math.Clamp(dupPercent, 0, 100);
+                    break;
             }
         }
 
@@ -74,6 +83,6 @@ public class Settings
 
     public override string ToString()
     {
-        return $"FakeTickServer Settings: port={Port}, rps={Rps}, symbols=[{string.Join(", ", Symbols)}], basePrice={BasePrice}, maxTicks={MaxTicks}";
+        return $"FakeTickServer Settings: port={Port}, rps={Rps}, symbols=[{string.Join(", ", Symbols)}], basePrice={BasePrice}, maxTicks={MaxTicks}, dupPercent={DupPercent}%";
     }
 }

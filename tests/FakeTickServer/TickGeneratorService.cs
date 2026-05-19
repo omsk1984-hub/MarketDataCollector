@@ -57,6 +57,32 @@ public class TickGeneratorService : BackgroundService
     private long _lastSentCount;
 
     /// <summary>
+    /// Буфер последних сгенерированных JSON-тиков для каждого symbol.
+    /// Используется для генерации дублей: с вероятностью DupPercent
+    /// отправляется полная копия одного из последних 20 тиков.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _recentJsons = new();
+
+    /// <summary>
+    /// Максимальный размер буфера _recentJsons для каждого symbol.
+    /// Вычисляется как Rps / Symbols.Length * 2, минимум 1000.
+    /// </summary>
+    private readonly int _bufferSize;
+
+    /// <summary>Счётчик отправленных дубликатов (полных копий JSON).</summary>
+    private long _duplicateTicksSent;
+
+    /// <summary>Сколько дубликатов (полных копий JSON) было отправлено.</summary>
+    public long DuplicateTicksSent => Interlocked.Read(ref _duplicateTicksSent);
+
+    /// <summary>
+    /// Реальный процент дублей от общего числа отправленных тиков.
+    /// </summary>
+    public double ActualDupPercent => TotalTicksGenerated > 0
+        ? (double)DuplicateTicksSent / TotalTicksGenerated * 100.0
+        : 0.0;
+
+    /// <summary>
     /// Конструктор.
     /// </summary>
     public TickGeneratorService(Settings settings, ILogger<TickGeneratorService> logger)
@@ -68,6 +94,16 @@ public class TickGeneratorService : BackgroundService
         // Значение инициализируется один раз, далее только атомарно инкрементируется
         var random = ThreadLocalRandom.Value!;
         _globalTradeId = random.NextInt64(100_000_000, 1_000_000_000);
+
+        // Вычисляем размер буфера для дублей: ~2 секунды данных на symbol, минимум 1000
+        _bufferSize = Math.Max(_settings.Rps / Math.Max(_settings.Symbols.Length, 1) * 2, 1000);
+
+        if (_settings.DupPercent > 0)
+        {
+            _logger.LogInformation(
+                "Режим дублей включён: DupPercent={DupPercent}%, bufferSize={BufferSize} на symbol",
+                _settings.DupPercent, _bufferSize);
+        }
     }
 
     /// <summary>
@@ -272,20 +308,34 @@ public class TickGeneratorService : BackgroundService
 
     /// <summary>
     /// Генерирует JSON-тик в формате Binance trade stream.
-    /// Каждый тик имеет уникальный trade ID (t) благодаря атомарному инкременту _globalTradeId.
-    /// Timestamp (E, T) = tradeId, что гарантирует 100% уникальность каждого тика
-    /// при дедупликации по (Ticker, Exchange, Timestamp) в MarketDataProcessor.
-    /// Совместимость с BinanceWebSocketClient.ProcessMessageAsync.
+    /// Если включён режим дублей (DupPercent > 0), с заданной вероятностью
+    /// возвращает полную копию одного из последних 20 тиков для этого symbol.
+    /// Иначе — генерирует новый уникальный тик и сохраняет его в буфер.
     /// </summary>
     private string GenerateTick(string symbol)
     {
-        // Атомарно инкрементируем глобальный счётчик — это гарантирует,
-        // что каждый тик получает уникальный Trade ID.
+        var random = ThreadLocalRandom.Value!;
+
+        // Режим дубля: с вероятностью DupPercent берём случайный JSON из последних 20
+        if (_settings.DupPercent > 0 && random.Next(100) < _settings.DupPercent)
+        {
+            if (_recentJsons.TryGetValue(symbol, out var queue) && !queue.IsEmpty)
+            {
+                var snapshot = queue.ToArray();
+                var maxIndex = Math.Min(20, snapshot.Length);
+                if (maxIndex > 0)
+                {
+                    var dupJson = snapshot[random.Next(maxIndex)];
+                    Interlocked.Increment(ref _duplicateTicksSent);
+                    return dupJson; // полная копия JSON — тот же tradeId, timestamp, цена, объём
+                }
+            }
+        }
+
+        // Нормальный режим: генерируем новый уникальный тик
         var tradeId = Interlocked.Increment(ref _globalTradeId);
 
         // Runtime-валидация: проверяем, что такой Trade ID ещё не встречался.
-        // В нормальной работе это условие никогда не должно срабатывать,
-        // но на случай бага с multi-instance или переполнением счётчика — защита.
         if (!_generatedTradeIds.TryAdd(tradeId, 0))
         {
             _logger.LogWarning(
@@ -293,12 +343,8 @@ public class TickGeneratorService : BackgroundService
                 "Это может указывать на проблему в логике генерации.", tradeId);
         }
 
-        // Timestamp = tradeId (строго монотонный, 100% уникален).
-        // Это гарантирует, что ни один тик не будет отброшен как дубликат
-        // при дедупликации GroupBy((Ticker, Exchange, Timestamp)) в MarketDataProcessor.
+        // Timestamp = tradeId (строго монотонный)
         var syntheticTimestamp = tradeId;
-
-        var random = ThreadLocalRandom.Value!;
 
         // Случайное отклонение цены +/- 0.2%
         var priceVariation = 1.0 + (random.NextDouble() - 0.5) * 0.004;
@@ -314,7 +360,7 @@ public class TickGeneratorService : BackgroundService
         var isBestMatch = random.Next(2) == 0;
 
         // Сериализуем в JSON (используем System.Text.Json)
-        return JsonSerializer.Serialize(new BinanceTick
+        var json = JsonSerializer.Serialize(new BinanceTick
         {
             e = "trade",
             E = syntheticTimestamp,
@@ -326,6 +372,15 @@ public class TickGeneratorService : BackgroundService
             m = isBuyerMaker,
             M = isBestMatch
         });
+
+        // Сохраняем JSON в буфер для последующего использования как дубль
+        var symbolQueue = _recentJsons.GetOrAdd(symbol, _ => new ConcurrentQueue<string>());
+        symbolQueue.Enqueue(json);
+
+        // Поддерживаем максимальный размер очереди (удаляем старые записи)
+        while (symbolQueue.Count > _bufferSize && symbolQueue.TryDequeue(out _)) { }
+
+        return json;
     }
 
     /// <summary>
@@ -341,9 +396,13 @@ public class TickGeneratorService : BackgroundService
                 var targetRps = _settings.Rps;
                 var clients = _clients.Count;
                 var totalTicks = Interlocked.Read(ref _totalTicks);
+                var totalDuplicates = Interlocked.Read(ref _duplicateTicksSent);
+                var uniqueTicks = totalTicks - totalDuplicates;
                 _logger.LogInformation(
-                    "Статус: клиентов={Clients}, targetRps={TargetRps}, actualRps={ActualRps:F0}, всего тиков={TotalTicks}",
-                    clients, targetRps, actualRps, totalTicks);
+                    "Статус: клиентов={Clients}, targetRps={TargetRps}, actualRps={ActualRps:F0}, " +
+                    "всего={TotalTicks}, уникальных={UniqueTicks}, дублей={Duplicates} ({DupPercent:F1}%)",
+                    clients, targetRps, actualRps, totalTicks, uniqueTicks, totalDuplicates,
+                    totalTicks > 0 ? (double)totalDuplicates / totalTicks * 100.0 : 0.0);
             }
         }
         catch (OperationCanceledException)
