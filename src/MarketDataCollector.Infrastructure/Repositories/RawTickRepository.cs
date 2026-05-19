@@ -183,82 +183,122 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 {
                     attempt++;
                     var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
-                    // Логируем через ILogger, если доступен, но здесь просто ожидаем
                     await Task.Delay(delay, cancellationToken);
                 }
             }
         }
 
+        /// <summary>
+        /// Bulk insert через Binary COPY protocol (Npgsql) + temp table + ON CONFLICT DO NOTHING.
+        /// 
+        /// ВАЖНО: Временная таблица DROP'ается и CREATE'ится заново при каждом вызове,
+        /// чтобы избежать накопления данных из предыдущих вызовов (что может произойти
+        /// при использовании No Reset On Close=true и retry-логики).
+        /// 
+        /// Retry-логика обрабатывает:
+        /// - deadlock detected (40P01) — транзиентные конфликты блокировок
+        /// - TimeoutException — долгие запросы при возросшем объёме данных
+        /// </summary>
         public async Task<int> BulkCopyAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {
             var list = entities.ToList();
             if (list.Count == 0)
                 return 0;
 
-            var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-            var needOpen = conn.State != System.Data.ConnectionState.Open;
-            if (needOpen)
-                await conn.OpenAsync(cancellationToken);
-
-            try
+            // Retry loop для транзиентных deadlock'ов (40P01) и timeouts
+            int attempt = 0;
+            while (true)
             {
-                // 1. Создаём временную таблицу (per session, удаляется при коммите/закрытии)
-                await using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        CREATE TEMP TABLE IF NOT EXISTS rawticks_staging (
-                            id UUID,
-                            ticker VARCHAR(20),
-                            price DECIMAL(18,8),
-                            volume DECIMAL(18,8),
-                            timestamp TIMESTAMPTZ,
-                            exchange VARCHAR(50),
-                            receivedat TIMESTAMPTZ,
-                            normalized BOOLEAN
-                        );";
-                    await cmd.ExecuteNonQueryAsync(cancellationToken);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
 
-                // 2. Binary COPY во временную таблицу
-                await using (var writer = conn.BeginBinaryImport(
-                    "COPY rawticks_staging (id, ticker, price, volume, timestamp, exchange, receivedat, normalized) FROM STDIN (FORMAT BINARY)"))
-                {
-                    for (int i = 0; i < list.Count; i++)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        writer.StartRow();
-                        writer.Write(list[i].Id, NpgsqlTypes.NpgsqlDbType.Uuid);
-                        writer.Write(list[i].Ticker, NpgsqlTypes.NpgsqlDbType.Varchar);
-                        writer.Write(list[i].Price, NpgsqlTypes.NpgsqlDbType.Numeric);
-                        writer.Write(list[i].Volume, NpgsqlTypes.NpgsqlDbType.Numeric);
-                        writer.Write(list[i].Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz);
-                        writer.Write(list[i].Exchange, NpgsqlTypes.NpgsqlDbType.Varchar);
-                        writer.Write(list[i].ReceivedAt, NpgsqlTypes.NpgsqlDbType.TimestampTz);
-                        writer.Write(list[i].Normalized, NpgsqlTypes.NpgsqlDbType.Boolean);
-                    }
-                    await writer.CompleteAsync(cancellationToken);
-                }
-
-                // 3. INSERT INTO rawticks ... ON CONFLICT DO NOTHING из временной таблицы
-                await using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        WITH inserted AS (
-                            INSERT INTO rawticks (id, ticker, price, volume, timestamp, exchange, receivedat, normalized)
-                            SELECT id, ticker, price, volume, timestamp, exchange, receivedat, normalized
-                            FROM rawticks_staging
-                            ON CONFLICT (ticker, exchange, timestamp) DO NOTHING
-                            RETURNING 1
-                        )
-                        SELECT COUNT(*) FROM inserted;";
-                    var result = await cmd.ExecuteScalarAsync(cancellationToken);
-                    return result is int i ? i : Convert.ToInt32(result);
-                }
-            }
-            finally
-            {
+                var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
+                var needOpen = conn.State != System.Data.ConnectionState.Open;
                 if (needOpen)
-                    await conn.CloseAsync();
+                    await conn.OpenAsync(cancellationToken);
+
+                try
+                {
+                    // 1. Пересоздаём временную таблицу (DROP + CREATE вместо CREATE IF NOT EXISTS)
+                    //    Это гарантирует чистый стейт, даже если No Reset On Close=true сохранил
+                    //    старые данные в temp-таблице от предыдущего вызова.
+                    await using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            DROP TABLE IF EXISTS rawticks_staging;
+                            CREATE TEMP TABLE rawticks_staging (
+                                id UUID,
+                                ticker VARCHAR(20),
+                                price DECIMAL(18,8),
+                                volume DECIMAL(18,8),
+                                timestamp TIMESTAMPTZ,
+                                exchange VARCHAR(50),
+                                receivedat TIMESTAMPTZ,
+                                normalized BOOLEAN
+                            );";
+                        await cmd.ExecuteNonQueryAsync(cancellationToken);
+                    }
+
+                    // 2. Binary COPY во временную таблицу
+                    await using (var writer = conn.BeginBinaryImport(
+                        "COPY rawticks_staging (id, ticker, price, volume, timestamp, exchange, receivedat, normalized) FROM STDIN (FORMAT BINARY)"))
+                    {
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            writer.StartRow();
+                            writer.Write(list[i].Id, NpgsqlTypes.NpgsqlDbType.Uuid);
+                            writer.Write(list[i].Ticker, NpgsqlTypes.NpgsqlDbType.Varchar);
+                            writer.Write(list[i].Price, NpgsqlTypes.NpgsqlDbType.Numeric);
+                            writer.Write(list[i].Volume, NpgsqlTypes.NpgsqlDbType.Numeric);
+                            writer.Write(list[i].Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                            writer.Write(list[i].Exchange, NpgsqlTypes.NpgsqlDbType.Varchar);
+                            writer.Write(list[i].ReceivedAt, NpgsqlTypes.NpgsqlDbType.TimestampTz);
+                            writer.Write(list[i].Normalized, NpgsqlTypes.NpgsqlDbType.Boolean);
+                        }
+                        await writer.CompleteAsync(cancellationToken);
+                    }
+
+                    // 3. INSERT INTO rawticks ... ON CONFLICT DO NOTHING из временной таблицы
+                    //    Увеличиваем CommandTimeout до 120 секунд, т.к. при retry после deadlock'а
+                    //    объём данных может быть больше обычного.
+                    await using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            WITH inserted AS (
+                                INSERT INTO rawticks (id, ticker, price, volume, timestamp, exchange, receivedat, normalized)
+                                SELECT id, ticker, price, volume, timestamp, exchange, receivedat, normalized
+                                FROM rawticks_staging
+                                ON CONFLICT (ticker, exchange, timestamp) DO NOTHING
+                                RETURNING 1
+                            )
+                            SELECT COUNT(*) FROM inserted;";
+                        cmd.CommandTimeout = 120;
+                        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+                        return result is int i ? i : Convert.ToInt32(result);
+                    }
+                }
+                catch (Exception ex) when (
+                    (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < DeadlockMaxRetries)
+                    || (ex is NpgsqlException && attempt < DeadlockMaxRetries)
+                )
+                {
+                    attempt++;
+
+                    // При retry закрываем соединение — temp-таблица будет пересоздана
+                    // через DROP + CREATE при следующей попытке
+                    if (conn.State == System.Data.ConnectionState.Open || conn.State == System.Data.ConnectionState.Broken)
+                    {
+                        try { await conn.CloseAsync(); } catch { /* игнорируем */ }
+                    }
+
+                    var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
+                    await Task.Delay(delay, cancellationToken);
+                }
+                finally
+                {
+                    if (needOpen && conn.State == System.Data.ConnectionState.Open)
+                        await conn.CloseAsync();
+                }
             }
         }
 

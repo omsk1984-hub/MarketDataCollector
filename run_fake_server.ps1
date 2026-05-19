@@ -1,8 +1,8 @@
 # Параметры (можно менять под свои нужды)
 $Port = 5000
-$Rps = 500
-$Symbols = "btcusdt,ethusdt"
-$BasePrice = 50000
+$Rps = 10000
+$Symbols = "btcusdt,ethusdt,solusdt"
+$BasePrice = 5000
 
 # Останавливаем предыдущий экземпляр, если запущен
 $proc = Get-Process -Name "FakeTickServer" -ErrorAction SilentlyContinue
