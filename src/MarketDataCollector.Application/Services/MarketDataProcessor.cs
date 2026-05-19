@@ -94,9 +94,11 @@ namespace MarketDataCollector.Application.Services
             // SingleReader=false позволяет нескольким корутинам параллельно вычитывать тики,
             // набирать батчи и писать в БД через BulkCopyAsync (deadlock'ы обрабатываются
             // retry-логикой в репозитории).
-            // Ограничиваем consumerCount до 4, чтобы избежать избыточной конкуренции
-            // за Postgres (16+ concurrent BulkCopyAsync создают тяжелый contention).
-            var consumerCount = Math.Clamp(Environment.ProcessorCount, 1, 4);
+            // По результатам бенчмарка: 8 parallel consumer'ов с чанком 800 дают
+            // ~53 775 ticks/sec через BulkCopyAsync (Binary COPY + temp table + ON CONFLICT).
+            // Без ON CONFLICT (BinaryCopyDirect) результат ~100 000 ticks/sec,
+            // но для безопасности данных используем BulkCopyAsync с ON CONFLICT DO NOTHING.
+            var consumerCount = Math.Clamp(Environment.ProcessorCount, 1, 8);
             var consumers = Enumerable.Range(0, consumerCount)
                 .Select(_ => ProcessBatchesAsync(cancellationToken));
             _processingTask = Task.WhenAll(consumers);
