@@ -54,7 +54,18 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     /// <inheritdoc />
     /// <remarks>
     /// Парсит сообщения о сделках от Binance и передаёт данные в <see cref="IMarketDataProcessor"/>.
-    /// Ожидаемый формат: {"e":"trade","E":123456789,"s":"BTCUSDT","t":12345,"p":"0.001","q":"100",...}
+    /* Ожидаемый формат: {
+                        "e": "trade",           // string: Тип события (всегда "trade")
+                        "E": 1672515782136,     // int64: Время события (Event Time) в миллисекундах (UTC)
+                        "s": "BNBBTC",          // string: Символ торговой пары (в верхнем регистре)
+                        "t": 12345,             // int64: Уникальный идентификатор сделки (Trade ID)
+                        "p": "0.001",           // string: Цена сделки
+                        "q": "100",             // string: Количество (объем) в базовой валюте
+                        "T": 1672515782136,     // int64: Время совершения сделки (Trade Time) в мс
+                        "m": true,              // bool: Был ли покупатель мейкером? (true = покупатель был мейкером)
+                        "M": true               // bool: Игнорировать (служебное поле, зарезервировано)
+                    }
+    */
     /// </remarks>
     protected override async Task ProcessMessageAsync(string message)
     {

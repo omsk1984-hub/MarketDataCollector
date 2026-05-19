@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -319,8 +320,8 @@ public class TickGeneratorService : BackgroundService
             E = syntheticTimestamp,
             s = symbol.ToUpperInvariant(),
             t = tradeId,
-            p = price,
-            q = volume,
+            p = price.ToString("F8", CultureInfo.InvariantCulture),
+            q = volume.ToString("F8", CultureInfo.InvariantCulture),
             T = syntheticTimestamp,
             m = isBuyerMaker,
             M = isBestMatch
@@ -367,8 +368,8 @@ public class TickGeneratorService : BackgroundService
         public long E { get; init; }
         public string s { get; init; } = "";
         public long t { get; init; }
-        public decimal p { get; init; }
-        public decimal q { get; init; }
+        public string p { get; init; } = "0";
+        public string q { get; init; } = "0";
         public long T { get; init; }
         public bool m { get; init; }
         public bool M { get; init; }
