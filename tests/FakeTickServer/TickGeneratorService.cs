@@ -226,7 +226,8 @@ public class TickGeneratorService : BackgroundService
             // Ожидаемое завершение
         }
 
-        _logger.LogInformation("TickGenerator остановлен");
+        var finalTotalTicks = Interlocked.Read(ref _totalTicks);
+        _logger.LogInformation("TickGenerator остановлен. Всего сгенерировано тиков: {TotalTicks}", finalTotalTicks);
     }
 
     /// <summary>
