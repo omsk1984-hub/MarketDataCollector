@@ -334,7 +334,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
                 }
 
                 var delay = _reconnectStrategy.GetDelay(reconnectAttempt);
-                _logger.LogWarning(ex,
+                _logger.LogWarning(
                     "{Name}: Ошибка подключения (попытка {Attempt}). Повтор через {Delay}s...",
                     Name, reconnectAttempt, delay.TotalSeconds);
 

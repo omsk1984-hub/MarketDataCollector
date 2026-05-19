@@ -77,8 +77,7 @@ builder.Services.AddSingleton<IMarketDataProcessor>(sp =>
         scopeFactory,
         logger,
         timeService,
-        options.BatchSize,
-        options.ChannelCapacity,
+        options,
         tickAggregator
     );
 });

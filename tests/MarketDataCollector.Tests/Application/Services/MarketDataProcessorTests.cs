@@ -24,6 +24,13 @@ public class MarketDataProcessorTests
     private readonly Mock<IServiceScope> _scopeMock;
     private readonly Mock<IServiceProvider> _scopeServiceProviderMock;
 
+    private static MarketDataProcessorOptions DefaultOptions => new()
+    {
+        BatchSize = 5,
+        ChannelCapacity = 100,
+        UseSingleConsumer = false
+    };
+
     public MarketDataProcessorTests(ITestOutputHelper output)
     {
         _output = output;
@@ -46,16 +53,21 @@ public class MarketDataProcessorTests
             .Returns(_scopeMock.Object);
     }
 
+    private MarketDataProcessor CreateProcessor(MarketDataProcessorOptions? options = null, ITickAggregator? tickAggregator = null)
+    {
+        return new MarketDataProcessor(
+            _scopeFactoryMock.Object,
+            _loggerMock.Object,
+            _timeServiceMock.Object,
+            options ?? DefaultOptions,
+            tickAggregator);
+    }
+
     [Fact(Timeout = 5000)]
     public void Constructor_WithValidParameters_CreatesProcessor()
     {
         // Arrange & Act
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 10,
-            channelCapacity: 200);
+        var processor = CreateProcessor();
 
         // Assert
         processor.Should().NotBeNull();
@@ -65,12 +77,12 @@ public class MarketDataProcessorTests
     public void Constructor_WithZeroBatchSize_CreatesProcessor()
     {
         // Arrange & Act
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 0,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 0,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         // Assert
         processor.Should().NotBeNull();
@@ -81,12 +93,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WritesToChannel)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         var ticker = "BTCUSDT";
         var price = 1000.50m;
@@ -114,12 +121,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsDebugMessage)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         var ticker = "BTCUSDT";
         var price = 1000.50m;
@@ -146,12 +148,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_LogsTickerDetails)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         var ticker = "BTCUSDT";
         var price = 1000.50m;
@@ -181,12 +178,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_StartsBackgroundTask)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         using var cts = new CancellationTokenSource();
 
@@ -210,12 +202,12 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_LogsBatchSize)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 10,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 10,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource();
 
@@ -238,12 +230,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_StopsProcessing)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         using var cts = new CancellationTokenSource();
         
@@ -268,12 +255,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(StopProcessingAsync_LogsProcessedCount)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         using var cts = new CancellationTokenSource();
         
@@ -299,12 +281,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(GetProcessedCountAsync_ReturnsZeroInitially)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         // Act
         var count = await processor.GetProcessedCountAsync();
@@ -318,12 +295,7 @@ public class MarketDataProcessorTests
     {
         _output.WriteLine($"=== Running: {nameof(ProcessTickAsync_WithDifferentValues_WritesMultipleTicks)} ===");
         // Arrange
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 100);
+        var processor = CreateProcessor();
 
         // Act
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
@@ -349,12 +321,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 2,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -380,12 +352,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1); // Только один тик реально вставлен (дубликат отброшен БД)
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 2,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         var timestamp1 = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
         var timestamp2 = new DateTime(2024, 1, 1, 10, 0, 1, DateTimeKind.Utc);
@@ -414,12 +386,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2); // Оба вставлены
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 2,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -451,12 +423,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Database error"));
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 2,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         var errorOccurred = false;
         processor.OnError += (sender, ex) =>
@@ -496,12 +468,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 2,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -556,12 +528,12 @@ public class MarketDataProcessorTests
                 return ticks.Count();
             });
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 200);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 5,
+            ChannelCapacity = 200,
+            UseSingleConsumer = true
+        });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await processor.StartProcessingAsync(cts.Token);
@@ -580,7 +552,7 @@ public class MarketDataProcessorTests
         await processor.StopProcessingAsync(CancellationToken.None);
 
         // Assert — SingleReader=true, только 1 consumer, поэтому
-        // BulkInsertIgnoreConflictsAsync вызывается последовательно
+        // BulkCopyAsync вызывается последовательно
         maxConcurrentCalls.Should().Be(1,
             "SingleReader=true гарантирует последовательную запись в БД");
     }
@@ -623,12 +595,13 @@ public class MarketDataProcessorTests
                 It.IsAny<DateTime>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 5,
-            channelCapacity: 200,
+        var processor = CreateProcessor(
+            new MarketDataProcessorOptions
+            {
+                BatchSize = 5,
+                ChannelCapacity = 200,
+                UseSingleConsumer = true
+            },
             tickAggregator: aggregatorMock.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -669,12 +642,12 @@ public class MarketDataProcessorTests
                 return Task.FromResult(ticks.Count());
             });
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 3,
-            channelCapacity: 100);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 3,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
 
         var errorCount = 0;
         processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
@@ -699,7 +672,7 @@ public class MarketDataProcessorTests
         // С SingleReader=true всё последовательно: 2 ошибки, затем 1 успех + финальный flush.
         errorCount.Should().Be(2,
             "первые два батча должны упасть с ошибкой, третий — успешно обработаться");
-        // Проверяем, что BulkInsertIgnoreConflictsAsync вызывался минимум 3 раза
+        // Проверяем, что BulkCopyAsync вызывался минимум 3 раза
         // (2 ошибки + минимум 1 успех + финальный flush)
         _repositoryMock.Verify(
             x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
@@ -715,12 +688,12 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 1,
-            channelCapacity: 200);
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 1,
+            ChannelCapacity = 200,
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource();
         await processor.StartProcessingAsync(cts.Token);
@@ -740,7 +713,7 @@ public class MarketDataProcessorTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Всего обработано тиков")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Всего обработано")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
@@ -764,12 +737,13 @@ public class MarketDataProcessorTests
                 It.IsAny<DateTime>(), It.IsAny<string>()))
             .Returns(async () => await Task.Delay(5000)); // very slow
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 50,
-            channelCapacity: 10000,
+        var processor = CreateProcessor(
+            new MarketDataProcessorOptions
+            {
+                BatchSize = 50,
+                ChannelCapacity = 10000,
+                UseSingleConsumer = false
+            },
             tickAggregator: slowAggregatorMock.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -840,12 +814,13 @@ public class MarketDataProcessorTests
         using var aggregatorCts = new CancellationTokenSource();
         await aggregator.StartAsync(aggregatorCts.Token);
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 100,
-            channelCapacity: 10000,
+        var processor = CreateProcessor(
+            new MarketDataProcessorOptions
+            {
+                BatchSize = 100,
+                ChannelCapacity = 10000,
+                UseSingleConsumer = false
+            },
             tickAggregator: aggregator);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -898,12 +873,12 @@ public class MarketDataProcessorTests
                 return 1;
             });
 
-        var processor = new MarketDataProcessor(
-            _scopeFactoryMock.Object,
-            _loggerMock.Object,
-            _timeServiceMock.Object,
-            batchSize: 100,     // большой batch — чтобы consumer не успевал за producer
-            channelCapacity: 10); // очень маленький канал (вмещает всего 10 тиков)
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 100,     // большой batch — чтобы consumer не успевал за producer
+            ChannelCapacity = 10, // очень маленький канал (вмещает всего 10 тиков)
+            UseSingleConsumer = false
+        });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await processor.StartProcessingAsync(cts.Token);
@@ -940,5 +915,264 @@ public class MarketDataProcessorTests
             x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce,
             "DropOldest не должен останавливать основной пайплайн обработки");
+    }
+
+    // ========== Single Consumer Mode Tests ==========
+
+    [Fact(Timeout = 5000)]
+    public void Constructor_WithUseSingleConsumer_CreatesProcessor()
+    {
+        // Arrange & Act
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 10,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true
+        });
+
+        // Assert
+        processor.Should().NotBeNull();
+    }
+
+    [Fact(Timeout = 10000)]
+    public void Constructor_DefaultOptions_ChannelSingleReaderFalse()
+    {
+        // Arrange & Act - по умолчанию UseSingleConsumer=false (multiple consumers)
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 10,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
+
+        // Assert
+        processor.Channel.Should().NotBeNull();
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task StartProcessingAsync_SingleConsumer_LogsCorrectMode()
+    {
+        _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_SingleConsumer_LogsCorrectMode)} ===");
+        // Arrange
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 10,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true
+        });
+
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Assert — Single Consumer mode лог
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Single Consumer mode")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task StartProcessingAsync_MultipleConsumers_LogsCorrectMode()
+    {
+        _output.WriteLine($"=== Running: {nameof(StartProcessingAsync_MultipleConsumers_LogsCorrectMode)} ===");
+        // Arrange
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 10,
+            ChannelCapacity = 100,
+            UseSingleConsumer = false
+        });
+
+        using var cts = new CancellationTokenSource();
+
+        // Act
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Assert — Multiple consumers лог (содержит цифру consumer'ов)
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("consumer'ов")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact(Timeout = 30000)]
+    public async Task SingleConsumerMode_ProcessesTicksSequentially()
+    {
+        _output.WriteLine($"=== Running: {nameof(SingleConsumerMode_ProcessesTicksSequentially)} ===");
+
+        // Arrange
+        var concurrentCalls = 0;
+        var maxConcurrentCalls = 0;
+        var callLock = new object();
+
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
+            {
+                lock (callLock)
+                {
+                    concurrentCalls++;
+                    if (concurrentCalls > maxConcurrentCalls)
+                        maxConcurrentCalls = concurrentCalls;
+                }
+
+                await Task.Delay(100, ct);
+
+                lock (callLock)
+                {
+                    concurrentCalls--;
+                }
+
+                return ticks.Count();
+            });
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 5,
+            ChannelCapacity = 200,
+            UseSingleConsumer = true // Single Consumer Mode
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 20 тиков (batchSize=5 => минимум 4 батча)
+        for (int i = 0; i < 20; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — Single Consumer Mode, поэтому последовательно
+        maxConcurrentCalls.Should().Be(1,
+            "Single Consumer mode гарантирует последовательную запись в БД");
+    }
+
+    [Fact(Timeout = 30000)]
+    public async Task SingleConsumerMode_WithAggregator_ProcessesTicksSequentially()
+    {
+        _output.WriteLine($"=== Running: {nameof(SingleConsumerMode_WithAggregator_ProcessesTicksSequentially)} ===");
+
+        // Arrange
+        var maxConcurrentCalls = 0;
+        var concurrentCalls = 0;
+        var callLock = new object();
+
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>(async (ticks, ct) =>
+            {
+                lock (callLock)
+                {
+                    concurrentCalls++;
+                    if (concurrentCalls > maxConcurrentCalls)
+                        maxConcurrentCalls = concurrentCalls;
+                }
+
+                await Task.Delay(50, ct);
+
+                lock (callLock)
+                {
+                    concurrentCalls--;
+                }
+
+                return ticks.Count();
+            });
+
+        // Создаём mock агрегатора
+        var aggregatorMock = new Mock<ITickAggregator>();
+        aggregatorMock
+            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+                It.IsAny<DateTime>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+
+        var processor = CreateProcessor(
+            new MarketDataProcessorOptions
+            {
+                BatchSize = 5,
+                ChannelCapacity = 200,
+                UseSingleConsumer = true // Single Consumer Mode
+            },
+            tickAggregator: aggregatorMock.Object);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 15 тиков => минимум 3 батча
+        for (int i = 0; i < 15; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — Single Consumer Mode, поэтому последовательно
+        maxConcurrentCalls.Should().Be(1,
+            "Single Consumer mode гарантирует последовательную запись даже с агрегатором");
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task SingleConsumerMode_BatchSizeRespected()
+    {
+        _output.WriteLine($"=== Running: {nameof(SingleConsumerMode_BatchSizeRespected)} ===");
+        // Arrange
+        var batchCallSizes = new List<int>();
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .Returns< IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
+            {
+                batchCallSizes.Add(ticks.Count());
+                return Task.FromResult(ticks.Count());
+            });
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 7, // batch=7
+            ChannelCapacity = 100,
+            UseSingleConsumer = true
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 20 тиков => 2 полных батча по 7 + остаток 6
+        for (int i = 0; i < 20; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert
+        batchCallSizes.Should().HaveCount(3, "должно быть 3 вызова: 7 + 7 + 6");
+        batchCallSizes[0].Should().Be(7, "первый батч = batchSize");
+        batchCallSizes[1].Should().Be(7, "второй батч = batchSize");
+        batchCallSizes[2].Should().Be(6, "третий батч = остаток");
     }
 }

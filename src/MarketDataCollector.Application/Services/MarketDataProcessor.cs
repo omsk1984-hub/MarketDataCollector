@@ -1,3 +1,4 @@
+using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Core.Utilities;
 using MarketDataCollector.Domain.Entities;
@@ -18,9 +19,11 @@ namespace MarketDataCollector.Application.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<MarketDataProcessor> _logger;
         private readonly ITimeService _timeService;
-        private readonly Channel<TickData> _channel;
+        private Channel<TickData> _channel = null!;
         public Channel<TickData> Channel => _channel;
         private readonly int _batchSize;
+        private readonly int _channelCapacity;
+        private readonly bool _useSingleConsumer;
         private readonly ITickAggregator? _tickAggregator;
 
         private Task _processingTask = null!;
@@ -42,19 +45,27 @@ namespace MarketDataCollector.Application.Services
             IServiceScopeFactory scopeFactory,
             ILogger<MarketDataProcessor> logger,
             ITimeService timeService,
-            int batchSize,
-            int channelCapacity,
+            MarketDataProcessorOptions options,
             ITickAggregator? tickAggregator = null)
         {
-            _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-            _logger = logger;
-            _timeService = timeService;
-            _batchSize = batchSize;
+            ArgumentNullException.ThrowIfNull(scopeFactory);
+            ArgumentNullException.ThrowIfNull(options);
+
+            _scopeFactory = scopeFactory;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
+            _batchSize = options.BatchSize;
+            _channelCapacity = options.ChannelCapacity;
+            _useSingleConsumer = options.UseSingleConsumer;
             _processedCount = 0;
             _totalReceivedCount = 0;
             _tickAggregator = tickAggregator;
 
-            _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(channelCapacity)
+            // Создаём канал по умолчанию (режим multiple consumers), чтобы ProcessTickAsync
+            // мог безопасно писать до вызова StartProcessingAsync.
+            // В StartProcessingAsync канал будет пересоздан с правильными параметрами
+            // (SingleReader=true/false) перед запуском consumer'ов.
+            _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
                 SingleReader = false,
@@ -90,30 +101,51 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Запускаем несколько parallel consumer'ов, которые конкурентно читают из Channel.
-            // SingleReader=false позволяет нескольким корутинам параллельно вычитывать тики,
-            // набирать батчи, дедуплицировать и готовить entities.
-            //
-            // Сама вставка в БД (BulkCopyAsync) сериализована через SemaphoreSlim(1,1)
-            // в RawTickRepository. Это полностью устраняет deadlock'и на индексе unique_tick,
-            // которые возникали при конкурентной вставке из 4+ потоков.
-            // Подробнее: B-tree page-level lock contention при INSERT ... ON CONFLICT DO NOTHING
-            // на одном индексе приводит к взаимоблокировкам (40P01).
-            //
-            // Несмотря на сериализованную вставку, несколько consumer'ов полезны:
-            // дедупликация (GroupBy) и подготовка объектов выполняется параллельно,
-            // что частично скрывает задержки I/O при записи.
-            //
-            // По результатам бенчмарка: 4 consumer'а с чанком 800 дают
-            // ~50-55k ticks/sec, что достаточно для текущей нагрузки.
-            var consumerCount = Math.Clamp((int)Math.Ceiling(Environment.ProcessorCount / 2.0), 1, 4);
-            var consumers = Enumerable.Range(0, consumerCount)
-                .Select(_ => ProcessBatchesAsync(cancellationToken));
-            _processingTask = Task.WhenAll(consumers);
+            if (_useSingleConsumer)
+            {
+                // ===== Single Consumer Mode =====
+                // Пересоздаём Channel с SingleReader=true — гарантия, что только один поток
+                // читает из канала. Полностью исключает конкуренцию за BulkCopyLock семафор
+                // и deadlock'и (40P01) на уровне БД.
+                //
+                // По результатам бенчмарка: Sequential batch=700 даёт ~62 680 ticks/sec,
+                // что достаточно для текущей нагрузки.
+                // writer.TryComplete() на старом канале не требуется — он не использовался,
+                // т.к. StartProcessingAsync вызывается до ProcessTickAsync.
+                _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false
+                });
 
-            _logger.LogInformation(
-                "Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, FullMode=DropOldest",
-                consumerCount, _batchSize);
+                _processingTask = ProcessBatchesAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    _batchSize, _channelCapacity);
+            }
+            else
+            {
+                // ===== Multiple Consumers Mode (default) =====
+                // Канал уже создан в конструкторе с SingleReader=false.
+                // Запускаем несколько parallel consumer'ов, которые конкурентно читают из Channel.
+                //
+                // Сама вставка в БД (BulkCopyAsync) сериализована через SemaphoreSlim(1,1)
+                // в RawTickRepository.
+                //
+                // По результатам бенчмарка: 4 consumer'а с чанком 800 дают
+                // ~50-55k ticks/sec.
+
+                var consumerCount = Math.Clamp((int)Math.Ceiling(Environment.ProcessorCount / 2.0), 1, 4);
+                var consumers = Enumerable.Range(0, consumerCount)
+                    .Select(_ => ProcessBatchesAsync(cancellationToken));
+                _processingTask = Task.WhenAll(consumers);
+
+                _logger.LogInformation(
+                    "Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    consumerCount, _batchSize, _channelCapacity);
+            }
 
             return Task.CompletedTask;
         }
