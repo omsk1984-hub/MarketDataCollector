@@ -125,6 +125,18 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
+            // Диагностика: проверяем, не осталось ли данных от предыдущего channel
+            // (например, если этот метод был вызван повторно, или клиенты начали
+            // писать данные до старта процессора).
+            var oldChannelCount = _channel.Reader.Count;
+            if (oldChannelCount > 0)
+            {
+                _logger.LogWarning(
+                    "Session={SessionId}: Старый канал содержит {Count} необработанных тиков перед заменой. " +
+                    "Это указывает на ошибку порядка запуска — клиенты писали данные до старта процессора.",
+                    _sessionId, oldChannelCount);
+            }
+
             if (_useSingleConsumer)
             {
                 // ===== Single Consumer Mode =====
@@ -219,11 +231,14 @@ namespace MarketDataCollector.Application.Services
                 try
                 {
                     // 4. Ждём, пока ProcessBatchesAsync завершится (дочитает остатки и выйдет)
-                    await _processingTask.WaitAsync(cancellationToken);
+                    //    Используем внутренний timeout 15с вместо внешнего cancellationToken,
+                    //    т.к. внешний токен может быть уже отменён (например, при остановке Worker).
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    await _processingTask.WaitAsync(timeoutCts.Token);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Session={SessionId}: Остановка обработки отменена", _sessionId);
+                    _logger.LogWarning("Session={SessionId}: Превышен таймаут ожидания обработки (15с)", _sessionId);
                 }
             }
 
@@ -413,5 +428,10 @@ namespace MarketDataCollector.Application.Services
         /// Возвращает общее количество тиков, успешно прочитанных из канала.
         /// </summary>
         public int GetTotalReceivedCount() => _totalReceivedCount;
+
+        /// <summary>
+        /// Текущее количество тиков в очереди канала (для мониторинга заполненности).
+        /// </summary>
+        public int GetChannelCount() => _channel.Reader.Count;
     }
 }

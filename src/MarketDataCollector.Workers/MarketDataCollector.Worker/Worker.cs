@@ -50,7 +50,10 @@ public class Worker : BackgroundService
 
         try
         {
-            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
+            // ВАЖНО: Сначала запускаем процессор и агрегатор, чтобы их Channel'ы
+            // были готовы к приёму данных ДО того, как WebSocket-клиенты начнут
+            // отправлять тики. Это предотвращает потерю данных в "канале-призраке"
+            // (старый channel, созданный в конструкторе, заменяется при старте).
 
             // Подписываемся на критические ошибки процессора
             marketDataProcessor.OnError += (sender, ex) =>
@@ -60,15 +63,17 @@ public class Worker : BackgroundService
                 processorErrorCts.Cancel();
             };
 
-            // Запускаем каждого клиента — каждый живёт своей жизнью с автовосстановлением
-            var tasks = clients.Select(client => client.StartAsync(stoppingToken));
-            await Task.WhenAll(tasks);
-
-            // Запускаем процессор в фоновом режиме — он работает до отмены stoppingToken
+            // Запускаем процессор — создаёт правильный channel с consumer'ом
             _ = marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Запускаем агрегатор свечей
             await tickAggregator.StartAsync(stoppingToken);
+
+            // Теперь запускаем WebSocket-клиентов — все их тики пойдут
+            // в уже готовый канал процессора, ничего не потеряется.
+            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
+            var tasks = clients.Select(client => client.StartAsync(stoppingToken));
+            await Task.WhenAll(tasks);
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
@@ -83,7 +88,8 @@ public class Worker : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Worker is stopping due to cancellation.");
+            var remaining = marketDataProcessor.GetChannelCount();
+            _logger.LogWarning("Worker is stopping due to cancellation. Remaining ticks in channel: {Remaining}", remaining);
         }
         catch (Exception ex)
         {
@@ -92,7 +98,10 @@ public class Worker : BackgroundService
         }
         finally
         {
-            await CleanupAsync(marketDataProcessor, tickAggregator, clients, stoppingToken);
+            // Используем CancellationToken.None, т.к. stoppingToken уже отменён.
+            // Добавляем safety-net timeout 30 секунд, чтобы не зависнуть навсегда.
+            using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await CleanupAsync(marketDataProcessor, tickAggregator, clients, cleanupCts.Token);
         }
     }
 
@@ -119,7 +128,7 @@ public class Worker : BackgroundService
             _logger.LogError(ex, "Error stopping tick aggregator");
         }
 
-        // Stop TickAggregator channel first to prevent new data from being written
+        // Останавливаем процессор — он дочитает остатки из канала и выполнит финальный flush
         try
         {
             await marketDataProcessor.StopProcessingAsync(stoppingToken);
@@ -180,14 +189,21 @@ public class Worker : BackgroundService
             var clientDetails = string.Join(", ", clients.Select(c =>
                 $"{c.ExchangeName}_{c.Symbol}={c.GetMessagesPerSecond():F1}"));
 
+            // Заполненность канала (для мониторинга перегрузки)
+            var channelCount = marketDataProcessor.GetChannelCount();
+            var channelCapacity = 500_000; // дублируем из appsettings для метрики
+            var channelFillPercent = (double)channelCount / channelCapacity * 100.0;
+
             // Логи health-check с полной статистикой
             _logger.LogInformation(
                 "Health-check: {Connected} connected, {Disconnected} disconnected | " +
                 "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | " +
                 "Totals: WS_msgs={TotalWs}, Channel_in={TotalIn}, Channel_received={TotalReceived} | " +
+                "Channel fill: {ChannelFillPercent:F1}% ({ChannelCount}/{ChannelCapacity}) | " +
                 "Clients: {ClientDetails}",
                 connected, disconnected, incommingRps, processedRps,
-                totalWsMessages, totalChannelIncoming, totalChannelReceived, clientDetails);
+                totalWsMessages, totalChannelIncoming, totalChannelReceived,
+                channelFillPercent, channelCount, channelCapacity, clientDetails);
 
             // Предупреждение при расхождении счётчиков
             if (totalWsMessages > 0 && totalChannelIncoming > 0)

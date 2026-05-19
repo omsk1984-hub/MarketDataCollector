@@ -31,5 +31,10 @@ namespace MarketDataCollector.Core.Interfaces
         /// Общее количество тиков, успешно прочитанных из канала (после дедупликации на вставку).
         /// </summary>
         int GetTotalReceivedCount();
+
+        /// <summary>
+        /// Текущее количество тиков в очереди канала (для мониторинга заполненности).
+        /// </summary>
+        int GetChannelCount();
     }
 }

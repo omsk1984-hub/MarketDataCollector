@@ -167,14 +167,17 @@ namespace MarketDataCollector.Application.Services
             // Завершаем запись в канал
             _channel.Writer.TryComplete();
 
-            // Ждём завершения обработки оставшихся тиков
+            // Ждём завершения обработки оставшихся тиков.
+            // Используем внутренний timeout 15с вместо внешнего cancellationToken,
+            // т.к. внешний токен может быть уже отменён (например, при остановке Worker).
             try
             {
-                await _processingTask.WaitAsync(cancellationToken);
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await _processingTask.WaitAsync(timeoutCts.Token);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("TickAggregator: ожидание обработки отменено");
+                _logger.LogWarning("TickAggregator: превышен таймаут ожидания обработки (15с)");
             }
 
             // Финальный flush всех оставшихся свечей (включая незавершённые)
