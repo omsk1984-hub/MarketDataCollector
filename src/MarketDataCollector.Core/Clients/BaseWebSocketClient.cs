@@ -32,6 +32,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     private ISubscriptionManager? _subscriptionManager;
     private readonly WebSocketClientOptions _options;
     private readonly SlidingWindowCounter _msgRpsCounter = new();
+    private long _totalMessagesCount;   // общее количество полученных сообщений
     protected readonly ILogger<BaseWebSocketClient> _logger;
 
     private Task? _backgroundRecoveryTask;
@@ -67,6 +68,9 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     /// <inheritdoc />
     public double GetMessagesPerSecond() => _msgRpsCounter.GetRps();
+
+    /// <inheritdoc />
+    public long GetTotalMessagesCount() => Interlocked.Read(ref _totalMessagesCount);
 
     /// <summary>
     /// Создаёт экземпляр базового WebSocket-клиента.
@@ -364,6 +368,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     protected internal virtual void OnMessageReceived(string message)
     {
         _msgRpsCounter.Increment();
+        Interlocked.Increment(ref _totalMessagesCount);
         MessageReceived?.Invoke(this, message);
     }
 

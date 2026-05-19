@@ -21,5 +21,15 @@ namespace MarketDataCollector.Core.Interfaces
         /// Среднее количество обработанных тиков в секунду за последние 10 секунд.
         /// </summary>
         double GetProcessedRps();
+
+        /// <summary>
+        /// Общее количество тиков, поступивших в ProcessTickAsync (до Channel DropOldest).
+        /// </summary>
+        int GetTotalIncomingCount();
+
+        /// <summary>
+        /// Общее количество тиков, успешно прочитанных из канала (после дедупликации на вставку).
+        /// </summary>
+        int GetTotalReceivedCount();
     }
 }

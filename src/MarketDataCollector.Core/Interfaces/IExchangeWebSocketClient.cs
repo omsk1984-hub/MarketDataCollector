@@ -81,6 +81,11 @@ namespace MarketDataCollector.Core.Interfaces
         double GetMessagesPerSecond();
 
         /// <summary>
+        /// Общее количество полученных WebSocket-сообщений за всё время.
+        /// </summary>
+        long GetTotalMessagesCount();
+
+        /// <summary>
         /// Событие ошибки
         /// </summary>
         event EventHandler<Exception> ErrorOccurred;

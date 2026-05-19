@@ -30,6 +30,8 @@ namespace MarketDataCollector.Application.Services
         private Task _processingTask = null!;
         private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
+        private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync (до Channel DropOldest)
+        private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
         // Таймерный сброс частичных батчей
@@ -65,6 +67,7 @@ namespace MarketDataCollector.Application.Services
             _useSingleConsumer = options.UseSingleConsumer;
             _processedCount = 0;
             _totalReceivedCount = 0;
+            _totalIncomingCount = 0;
             _tickAggregator = tickAggregator;
 
             // Создаём сигнальный канал для таймерного сброса частичных батчей.
@@ -92,6 +95,10 @@ namespace MarketDataCollector.Application.Services
 
         public async Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
+            // Инкрементируем счётчик ДО записи в канал, чтобы можно было вычислить,
+            // сколько тиков дропнуто при переполнении (DropOldest).
+            Interlocked.Increment(ref _totalIncomingCount);
+
             await _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange));
 
             // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
@@ -139,8 +146,8 @@ namespace MarketDataCollector.Application.Services
                 _processingTask = ProcessBatchesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
-                    _batchSize, _channelCapacity);
+                    "Session={SessionId}: Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    _sessionId, _batchSize, _channelCapacity);
             }
             else
             {
@@ -160,8 +167,8 @@ namespace MarketDataCollector.Application.Services
                 _processingTask = Task.WhenAll(consumers);
 
                 _logger.LogInformation(
-                    "Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, ChannelCapacity={Capacity}",
-                    consumerCount, _batchSize, _channelCapacity);
+                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов, batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    _sessionId, consumerCount, _batchSize, _channelCapacity);
             }
 
             // Запускаем таймер для принудительного сброса частичных батчей при простое.
@@ -181,8 +188,8 @@ namespace MarketDataCollector.Application.Services
                     TimeSpan.FromSeconds(_flushIntervalSeconds));
 
                 _logger.LogInformation(
-                    "Таймер сброса частичных батчей запущен: каждые {FlushInterval}с, batchSize={BatchSize}",
-                    _flushIntervalSeconds, _batchSize);
+                    "Session={SessionId}: Таймер сброса частичных батчей запущен: каждые {FlushInterval}с, batchSize={BatchSize}",
+                    _sessionId, _flushIntervalSeconds, _batchSize);
             }
 
             return Task.CompletedTask;
@@ -194,7 +201,14 @@ namespace MarketDataCollector.Application.Services
             _flushTimer?.Dispose();
             _flushTimer = null;
 
-            // 2. Завершаем канал данных — это заставит ProcessBatchesAsync
+            // 2. Логируем остаток в канале перед TryComplete, чтобы оценить,
+            //    сколько тиков не успеет обработаться.
+            var remainingInChannel = _channel.Reader.Count;
+            _logger.LogInformation(
+                "Session={SessionId}: Остановка обработчика. Остаток в канале данных: {Remaining}, всего входящих: {Incoming}, получено из канала: {Received}, вставлено: {Inserted}",
+                _sessionId, remainingInChannel, _totalIncomingCount, _totalReceivedCount, _processedCount);
+
+            // 3. Завершаем канал данных — это заставит ProcessBatchesAsync
             //    выйти из цикла (readTask.Result == false → break).
             //    ВАЖНО: завершаем ДО сигнального канала, чтобы ProcessBatchesAsync
             //    корректно дочитал оставшиеся тики и выполнил финальный flush.
@@ -204,19 +218,30 @@ namespace MarketDataCollector.Application.Services
             {
                 try
                 {
-                    // 3. Ждём, пока ProcessBatchesAsync завершится (дочитает остатки и выйдет)
+                    // 4. Ждём, пока ProcessBatchesAsync завершится (дочитает остатки и выйдет)
                     await _processingTask.WaitAsync(cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Остановка обработки отменена");
+                    _logger.LogWarning("Session={SessionId}: Остановка обработки отменена", _sessionId);
                 }
             }
 
-            // 4. После остановки processing task — завершаем сигнальный канал
+            // 5. После остановки processing task — завершаем сигнальный канал
             _flushSignal.Writer.TryComplete();
 
-            _logger.LogInformation("Обработчик рыночных данных остановлен. Всего обработано: {Count}", _processedCount);
+            // 6. Расширенный финальный лог со всей статистикой потерь
+            var totalIncoming = _totalIncomingCount;
+            var totalReceived = _totalReceivedCount;
+            var totalInserted = _processedCount;
+            var droppedByChannel = totalIncoming - totalReceived;
+            var remainingAfterStop = _channel.Reader.Count;
+
+            _logger.LogInformation(
+                "Session={SessionId}: Обработчик рыночных данных остановлен. " +
+                "Входящих: {Incoming}, получено из канала: {Received}, вставлено в БД: {Inserted}, " +
+                "дропнуто каналом: {Dropped}, остаток в канале: {Remaining}",
+                _sessionId, totalIncoming, totalReceived, totalInserted, droppedByChannel, remainingAfterStop);
         }
 
         private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
@@ -353,8 +378,8 @@ namespace MarketDataCollector.Application.Services
                 if (totalInserted % 1000 < inserted)
                 {
                     _logger.LogInformation(
-                        "Всего обработано: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, вставлено={Inserted})",
-                        totalInserted, totalReceived, batchSize, uniqueTicks.Count, inserted);
+                        "Session={SessionId}: Всего обработано: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, вставлено={Inserted})",
+                        _sessionId, totalInserted, totalReceived, batchSize, uniqueTicks.Count, inserted);
                 }
 
                 _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено",
@@ -378,5 +403,15 @@ namespace MarketDataCollector.Application.Services
         {
             return Task.FromResult(_processedCount);
         }
+
+        /// <summary>
+        /// Возвращает общее количество тиков, поступивших в ProcessTickAsync.
+        /// </summary>
+        public int GetTotalIncomingCount() => _totalIncomingCount;
+
+        /// <summary>
+        /// Возвращает общее количество тиков, успешно прочитанных из канала.
+        /// </summary>
+        public int GetTotalReceivedCount() => _totalReceivedCount;
     }
 }

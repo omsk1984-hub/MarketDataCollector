@@ -171,14 +171,45 @@ public class Worker : BackgroundService
             var incommingRps = clients.Sum(c => c.GetMessagesPerSecond());
             var processedRps = marketDataProcessor.GetProcessedRps();
 
-            // Детальные RPS по каждому клиенту
+            // Total-счётчики для отслеживания потерь
+            var totalWsMessages = clients.Sum(c => c.GetTotalMessagesCount());
+            var totalChannelIncoming = marketDataProcessor.GetTotalIncomingCount();
+            var totalChannelReceived = marketDataProcessor.GetTotalReceivedCount();
+
+            // Детальные RPS + total по каждому клиенту
             var clientDetails = string.Join(", ", clients.Select(c =>
                 $"{c.ExchangeName}_{c.Symbol}={c.GetMessagesPerSecond():F1}"));
 
+            // Логи health-check с полной статистикой
             _logger.LogInformation(
                 "Health-check: {Connected} connected, {Disconnected} disconnected | " +
-                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | Clients: {ClientDetails}",
-                connected, disconnected, incommingRps, processedRps, clientDetails);
+                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | " +
+                "Totals: WS_msgs={TotalWs}, Channel_in={TotalIn}, Channel_received={TotalReceived} | " +
+                "Clients: {ClientDetails}",
+                connected, disconnected, incommingRps, processedRps,
+                totalWsMessages, totalChannelIncoming, totalChannelReceived, clientDetails);
+
+            // Предупреждение при расхождении счётчиков
+            if (totalWsMessages > 0 && totalChannelIncoming > 0)
+            {
+                var wsVsChannelDiff = totalWsMessages - totalChannelIncoming;
+                if (wsVsChannelDiff > 100)
+                {
+                    _logger.LogWarning(
+                        "Health-check: Расхождение счётчиков: WebSocket сообщений ({WsMsgs}) vs Channel incoming ({ChannelIn}) = {Diff}. " +
+                        "Возможна потеря на уровне WebSocket → MarketDataProcessor.",
+                        totalWsMessages, totalChannelIncoming, wsVsChannelDiff);
+                }
+
+                var channelDropped = totalChannelIncoming - totalChannelReceived;
+                if (channelDropped > 100)
+                {
+                    _logger.LogWarning(
+                        "Health-check: Channel DropOldest дропнул {Dropped} тиков (incoming={In}, received={Rec}). " +
+                        "Канал переполняется! Увеличьте ChannelCapacity или оптимизируйте скорость записи в БД.",
+                        channelDropped, totalChannelIncoming, totalChannelReceived);
+                }
+            }
 
             foreach (var client in clients.Where(c => !c.IsConnected))
             {
