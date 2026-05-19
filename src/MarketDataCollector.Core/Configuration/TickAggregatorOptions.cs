@@ -10,6 +10,11 @@ namespace MarketDataCollector.Core.Configuration
         public const int MaxCandleIntervalSeconds = 3600; // 1 час
 
         /// <summary>
+        /// Включить агрегацию тиков в свечи. По умолчанию true.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>
         /// Интервал свечи в секундах. По умолчанию 60 = 1m.
         /// </summary>
         [Range(MinCandleIntervalSeconds, MaxCandleIntervalSeconds)]

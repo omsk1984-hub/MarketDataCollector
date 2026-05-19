@@ -33,6 +33,7 @@ namespace MarketDataCollector.Application.Services
         private readonly KafkaCandleProducer? _kafkaCandleProducer;
         private readonly KafkaOptions _kafkaOptions;
         private readonly bool _useKafka;
+        private readonly bool _enabled;
 
         private Task _processingTask = Task.CompletedTask;
         private Timer _flushTimer = null!;
@@ -105,6 +106,14 @@ namespace MarketDataCollector.Application.Services
                 SingleWriter = false
             });
 
+            _enabled = options.Value.Enabled;
+
+            if (!_enabled)
+            {
+                _logger.LogInformation("TickAggregator отключён (Enabled=false). Тики будут игнорироваться.");
+                return;
+            }
+
             if (_useKafka)
             {
                 _logger.LogInformation(
@@ -119,11 +128,18 @@ namespace MarketDataCollector.Application.Services
 
         public Task OnTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
+            if (!_enabled) return Task.CompletedTask;
             return _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange)).AsTask();
         }
 
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
+            if (!_enabled)
+            {
+                _logger.LogInformation("TickAggregator.StartAsync пропущен (Enabled=false).");
+                return Task.CompletedTask;
+            }
+
             _processingTask = ProcessChannelAsync(_cts.Token);
 
             _flushTimer = new Timer(async _ => await FlushCompletedCandlesAsync(), null,
@@ -138,6 +154,12 @@ namespace MarketDataCollector.Application.Services
 
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
+            if (!_enabled)
+            {
+                _logger.LogInformation("TickAggregator.StopAsync пропущен (Enabled=false).");
+                return;
+            }
+
             _logger.LogInformation("TickAggregator: остановка...");
 
             _flushTimer?.Dispose();
