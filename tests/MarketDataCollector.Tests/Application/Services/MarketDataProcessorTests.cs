@@ -105,7 +105,7 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync(ticker, price, volume, timestamp, exchange);
 
         // Assert - проверяем, что тик попал в канал
-        var reader = processor.Channel.Reader;
+        var reader = processor.GetChannel(0).Reader;
         var readTask = reader.ReadAsync().AsTask();
         var completed = await Task.WhenAny(readTask, Task.Delay(1000));
         completed.Should().Be(readTask, "Тик должен быть доступен для чтения из канала");
@@ -265,12 +265,12 @@ public class MarketDataProcessorTests
         // Act
         await processor.StopProcessingAsync(cts.Token);
 
-        // Assert
+        // Assert — проверяем финальный лог остановки (есть при любом количестве тиков)
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Всего обработано")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Обработчик рыночных данных остановлен")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
@@ -303,7 +303,7 @@ public class MarketDataProcessorTests
         await processor.ProcessTickAsync("ETHUSDT", 2500.75m, 1.0m, DateTime.UtcNow, "Binance");
 
         // Assert - проверяем через канал
-        var reader = processor.Channel.Reader;
+        var reader = processor.GetChannel(0).Reader;
         var count = 0;
         while (reader.TryRead(out _))
         {
@@ -708,12 +708,12 @@ public class MarketDataProcessorTests
         // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
-        // Assert
+        // Assert — проверяем, что батчи логируются (всегда присутствует Debug лог "Батч сохранён")
         _loggerMock.Verify(
             x => x.Log(
-                LogLevel.Information,
+                LogLevel.Debug,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Всего обработано")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Батч сохранён")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
@@ -946,7 +946,7 @@ public class MarketDataProcessorTests
         });
 
         // Assert
-        processor.Channel.Should().NotBeNull();
+        processor.GetChannel(0).Should().NotBeNull();
     }
 
     [Fact(Timeout = 10000)]
@@ -1208,9 +1208,9 @@ public class MarketDataProcessorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task FlushTimer_WithFlushIntervalPositive_StartsTimer()
+    public async Task FlushTimer_WithFlushIntervalPositive_LogsCorrectMode()
     {
-        _output.WriteLine($"=== Running: {nameof(FlushTimer_WithFlushIntervalPositive_StartsTimer)} ===");
+        _output.WriteLine($"=== Running: {nameof(FlushTimer_WithFlushIntervalPositive_LogsCorrectMode)} ===");
         // Arrange
         var processor = CreateProcessor(new MarketDataProcessorOptions
         {
@@ -1225,12 +1225,14 @@ public class MarketDataProcessorTests
         // Act
         await processor.StartProcessingAsync(cts.Token);
 
-        // Assert — есть сообщение о запуске таймера
+        // Assert — таймер больше не запускается через System.Timers.Timer.
+        // Вместо этого каждый consumer использует Task.Delay внутри ProcessBatchesAsync.
+        // Проверяем, что процессор запустился в SingleConsumer mode с flushInterval.
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Таймер сброса частичных батчей запущен")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Single Consumer mode")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);

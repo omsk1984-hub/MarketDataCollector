@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -19,8 +20,7 @@ namespace MarketDataCollector.Application.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<MarketDataProcessor> _logger;
         private readonly ITimeService _timeService;
-        private Channel<TickData> _channel = null!;
-        public Channel<TickData> Channel => _channel;
+        private Channel<TickData>[] _channels = null!;
         private readonly int _batchSize;
         private readonly int _channelCapacity;
         private readonly int _flushIntervalSeconds;
@@ -35,10 +35,6 @@ namespace MarketDataCollector.Application.Services
         private int _totalDroppedCount;    // сколько тиков реально дропнуто каналом (TryWrite=false из-за DropOldest)
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
-
-        // Таймерный сброс частичных батчей
-        private readonly Channel<byte> _flushSignal;   // сигнальный канал для таймера
-        private Timer? _flushTimer;
 
         public event EventHandler<Exception>? OnError;
 
@@ -74,27 +70,36 @@ namespace MarketDataCollector.Application.Services
             _totalDroppedCount = 0;
             _tickAggregator = tickAggregator;
 
-            // Создаём сигнальный канал для таймерного сброса частичных батчей.
-            // Ёмкость 1, SingleReader=true (только ProcessBatchesAsync читает).
-            // DropOldest — если таймер сработал повторно до обработки сигнала,
-            // старый сигнал отбрасывается, что безопасно (сброс будет в следующем цикле).
-            _flushSignal = System.Threading.Channels.Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-                SingleWriter = false
-            });
-
-            // Создаём канал по умолчанию (режим multiple consumers), чтобы ProcessTickAsync
+            // Создаём канал по умолчанию (1 канал для SingleConsumer mode), чтобы ProcessTickAsync
             // мог безопасно писать до вызова StartProcessingAsync.
-            // В StartProcessingAsync канал будет пересоздан с правильными параметрами
-            // (SingleReader=true/false) перед запуском consumer'ов.
-            _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
+            // В StartProcessingAsync каналы будут пересозданы с правильными параметрами.
+            _channels = new Channel<TickData>[]
             {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = false,
-                SingleWriter = false
-            });
+                System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = false,
+                    SingleWriter = false
+                })
+            };
+        }
+
+        /// <summary>
+        /// Детерминированный хэш для строки (Ordinal), стабильный между запусками.
+        /// Используется для маршрутизации тиков по consumer'ам в multiple consumers mode.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetStableHashCode(string value)
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (char c in value)
+                {
+                    hash = hash * 31 + c;
+                }
+                return hash;
+            }
         }
 
         public Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
@@ -107,7 +112,26 @@ namespace MarketDataCollector.Application.Services
             // Это точнее, чем вычислять разницу incoming - received постфактум,
             // т.к. received обновляется с задержкой (после формирования и обработки батча).
             var tick = new TickData(ticker, price, volume, timestamp, exchange);
-            if (!_channel.Writer.TryWrite(tick))
+
+            // Определяем канал для записи:
+            // - SingleConsumer mode: всегда канал 0
+            // - Multiple consumers mode: по хэшу ticker'а, чтобы каждый consumer получал
+            //   disjoint набор тикеров (B-tree страницы unique-индекса не пересекаются →
+            //   deadlock'и невозможны → SemaphoreSlim в BulkCopyAsync не нужен)
+            var channels = _channels;
+            int channelIndex;
+            if (_useSingleConsumer || channels.Length == 1)
+            {
+                channelIndex = 0;
+            }
+            else
+            {
+                // Math.Abs может вернуть int.MinValue, что даёт отрицательное число.
+                // Используем & 0x7FFFFFFF для гарантии положительного значения.
+                channelIndex = (GetStableHashCode(ticker) & 0x7FFFFFFF) % channels.Length;
+            }
+
+            if (!channels[channelIndex].Writer.TryWrite(tick))
             {
                 Interlocked.Increment(ref _totalDroppedCount);
             }
@@ -138,37 +162,41 @@ namespace MarketDataCollector.Application.Services
                     "Предыдущая задача обработки завершилась ошибкой, перезапуск");
             }
 
-            // Диагностика: проверяем, не осталось ли данных от предыдущего channel
+            // Диагностика: проверяем, не осталось ли данных от предыдущих каналов
             // (например, если этот метод был вызван повторно, или клиенты начали
             // писать данные до старта процессора).
-            var oldChannelCount = _channel.Reader.Count;
-            if (oldChannelCount > 0)
+            for (int i = 0; i < _channels.Length; i++)
             {
-                _logger.LogWarning(
-                    "Session={SessionId}: Старый канал содержит {Count} необработанных тиков перед заменой. " +
-                    "Это указывает на ошибку порядка запуска — клиенты писали данные до старта процессора.",
-                    _sessionId, oldChannelCount);
+                var oldCount = _channels[i].Reader.Count;
+                if (oldCount > 0)
+                {
+                    _logger.LogWarning(
+                        "Session={SessionId}: Старый канал[{Index}] содержит {Count} необработанных тиков перед заменой. " +
+                        "Это указывает на ошибку порядка запуска — клиенты писали данные до старта процессора.",
+                        _sessionId, i, oldCount);
+                }
             }
 
             if (_useSingleConsumer)
             {
                 // ===== Single Consumer Mode =====
                 // Пересоздаём Channel с SingleReader=true — гарантия, что только один поток
-                // читает из канала. Полностью исключает конкуренцию за BulkCopyLock семафор
+                // читает из канала. Полностью исключает конкуренцию за индексные блокировки
                 // и deadlock'и (40P01) на уровне БД.
                 //
                 // По результатам бенчмарка: Sequential batch=700 даёт ~62 680 ticks/sec,
                 // что достаточно для текущей нагрузки.
-                // writer.TryComplete() на старом канале не требуется — он не использовался,
-                // т.к. StartProcessingAsync вызывается до ProcessTickAsync.
-                _channel = System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
+                _channels = new Channel<TickData>[]
                 {
-                    FullMode = BoundedChannelFullMode.DropOldest,
-                    SingleReader = true,
-                    SingleWriter = false
-                });
+                    System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
+                    {
+                        FullMode = BoundedChannelFullMode.DropOldest,
+                        SingleReader = true,
+                        SingleWriter = false
+                    })
+                };
 
-                _processingTask = ProcessBatchesAsync(cancellationToken);
+                _processingTask = ProcessBatchesAsync(channelIndex: 0, cancellationToken);
 
                 _logger.LogInformation(
                     "Session={SessionId}: Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
@@ -177,14 +205,14 @@ namespace MarketDataCollector.Application.Services
             else
             {
                 // ===== Multiple Consumers Mode (default) =====
-                // Канал уже создан в конструкторе с SingleReader=false.
-                // Запускаем несколько parallel consumer'ов, которые конкурентно читают из Channel.
+                // Создаём отдельные каналы для каждого consumer'а с SingleReader=true.
+                // Каждый consumer получает disjoint набор тикеров (по хэшу ticker'а в ProcessTickAsync),
+                // поэтому B-tree страницы unique-индекса (ticker, exchange, timestamp)
+                // физически не пересекаются — deadlock'и (40P01) невозможны,
+                // и SemaphoreSlim в BulkCopyAsync больше не нужен.
                 //
-                // Сама вставка в БД (BulkCopyAsync) сериализована через SemaphoreSlim(1,1)
-                // в RawTickRepository.
-                //
-                // По результатам бенчмарка: 4 consumer'а с чанком 800 дают
-                // ~50-55k ticks/sec.
+                // Ожидаемая производительность: ~3x прирост при 3 consumer'ах и 3+ тикерах
+                // против текущего SemaphoreSlim-режима (~55k → ~150k+ ticks/sec).
 
                 int consumerCount;
                 string countSource;
@@ -199,34 +227,32 @@ namespace MarketDataCollector.Application.Services
                     countSource = "auto";
                 }
 
-                var consumers = Enumerable.Range(0, consumerCount)
-                    .Select(_ => ProcessBatchesAsync(cancellationToken));
-                _processingTask = Task.WhenAll(consumers);
+                // Создаём N независимых каналов — по одному на consumer
+                _channels = new Channel<TickData>[consumerCount];
+                for (int i = 0; i < consumerCount; i++)
+                {
+                    _channels[i] = System.Threading.Channels.Channel.CreateBounded<TickData>(
+                        new BoundedChannelOptions(_channelCapacity)
+                        {
+                            FullMode = BoundedChannelFullMode.DropOldest,
+                            SingleReader = true,   // каждый канал — для одного consumer'а
+                            SingleWriter = false
+                        });
+                }
+
+                // Запускаем consumer'ов — каждый читает из своего канала
+                var tasks = new Task[consumerCount];
+                for (int i = 0; i < consumerCount; i++)
+                {
+                    var channelIndex = i; // capture for closure
+                    tasks[i] = ProcessBatchesAsync(channelIndex, cancellationToken);
+                }
+                _processingTask = Task.WhenAll(tasks);
 
                 _logger.LogInformation(
-                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов ({CountSource}), batchSize={BatchSize}, ChannelCapacity={Capacity}",
+                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов ({CountSource}), " +
+                    "batchSize={BatchSize}, ChannelCapacity={Capacity}, routing=tickerHash",
                     _sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
-            }
-
-            // Запускаем таймер для принудительного сброса частичных батчей при простое.
-            // Таймер пишет 1 байт в сигнальный канал _flushSignal.
-            // ProcessBatchesAsync через Task.WhenAny ждёт либо новые тики, либо сигнал сброса.
-            if (_flushIntervalSeconds > 0)
-            {
-                _flushTimer?.Dispose();
-                _flushTimer = new Timer(
-                    static state =>
-                    {
-                        var signal = (Channel<byte>)state!;
-                        signal.Writer.TryWrite(0);
-                    },
-                    _flushSignal,
-                    TimeSpan.FromSeconds(_flushIntervalSeconds),
-                    TimeSpan.FromSeconds(_flushIntervalSeconds));
-
-                _logger.LogInformation(
-                    "Session={SessionId}: Таймер сброса частичных батчей запущен: каждые {FlushInterval}с, batchSize={BatchSize}",
-                    _sessionId, _flushIntervalSeconds, _batchSize);
             }
 
             return Task.CompletedTask;
@@ -234,28 +260,30 @@ namespace MarketDataCollector.Application.Services
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
-            // 1. Останавливаем таймер — он больше не будет писать в сигнальный канал
-            _flushTimer?.Dispose();
-            _flushTimer = null;
-
-            // 2. Логируем остаток в канале перед TryComplete, чтобы оценить,
+            // 1. Логируем остаток во всех каналах перед TryComplete, чтобы оценить,
             //    сколько тиков не успеет обработаться.
-            var remainingInChannel = _channel.Reader.Count;
-            _logger.LogInformation(
-                "Session={SessionId}: Остановка обработчика. Остаток в канале данных: {Remaining}, всего входящих: {Incoming}, получено из канала: {Received}, вставлено: {Inserted}",
-                _sessionId, remainingInChannel, _totalIncomingCount, _totalReceivedCount, _processedCount);
+            var totalRemaining = 0;
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                totalRemaining += _channels[i].Reader.Count;
+            }
 
-            // 3. Завершаем канал данных — это заставит ProcessBatchesAsync
+            _logger.LogInformation(
+                "Session={SessionId}: Остановка обработчика. Остаток в каналах: {Remaining}, всего входящих: {Incoming}, получено из канала: {Received}, вставлено: {Inserted}",
+                _sessionId, totalRemaining, _totalIncomingCount, _totalReceivedCount, _processedCount);
+
+            // 2. Завершаем ВСЕ каналы данных — это заставит ProcessBatchesAsync
             //    выйти из цикла (readTask.Result == false → break).
-            //    ВАЖНО: завершаем ДО сигнального канала, чтобы ProcessBatchesAsync
-            //    корректно дочитал оставшиеся тики и выполнил финальный flush.
-            _channel.Writer.TryComplete();
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                _channels[i].Writer.TryComplete();
+            }
 
             if (_processingTask != null)
             {
                 try
                 {
-                    // 4. Ждём, пока ProcessBatchesAsync завершится (дочитает остатки и выйдет)
+                    // 3. Ждём, пока ВСЕ ProcessBatchesAsync завершатся (дочитают остатки и выйдут)
                     //    Используем внутренний timeout 15с вместо внешнего cancellationToken,
                     //    т.к. внешний токен может быть уже отменён (например, при остановке Worker).
                     using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -267,28 +295,33 @@ namespace MarketDataCollector.Application.Services
                 }
             }
 
-            // 5. После остановки processing task — завершаем сигнальный канал
-            _flushSignal.Writer.TryComplete();
-
-            // 6. Расширенный финальный лог со всей статистикой потерь
+            // 4. Расширенный финальный лог со всей статистикой потерь
             var totalIncoming = _totalIncomingCount;
             var totalReceived = _totalReceivedCount;
             var totalInserted = _processedCount;
             var totalDropped = _totalDroppedCount;           // реальные дропы через TryWrite
             var droppedByChannel = totalIncoming - totalReceived; // backlog (для сравнения)
-            var remainingAfterStop = _channel.Reader.Count;
+            var remainingAfterStop = 0;
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                remainingAfterStop += _channels[i].Reader.Count;
+            }
 
             _logger.LogInformation(
                 "Session={SessionId}: Обработчик рыночных данных остановлен. " +
                 "Входящих: {Incoming}, получено из канала: {Received}, вставлено в БД: {Inserted}, " +
-                "реально дропнуто: {DroppedReal}, backlog (incoming-received): {DroppedCalc}, остаток в канале: {Remaining}",
+                "реально дропнуто: {DroppedReal}, backlog (incoming-received): {DroppedCalc}, остаток в каналах: {Remaining}",
                 _sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
         }
 
-        private async Task ProcessBatchesAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// Основной цикл обработки для одного consumer'а.
+        /// Каждый consumer работает со своим каналом _channels[channelIndex].
+        /// </summary>
+        private async Task ProcessBatchesAsync(int channelIndex, CancellationToken cancellationToken)
         {
             var batch = new List<TickData>(_batchSize);
-            var flushReader = _flushSignal.Reader;
+            var channel = _channels[channelIndex];
 
             try
             {
@@ -296,72 +329,84 @@ namespace MarketDataCollector.Application.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // Ждём: либо новый тик в канале данных, либо сигнал от таймера сброса
-                    var readTask = _channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                    var flushTask = flushReader.WaitToReadAsync(cancellationToken).AsTask();
-                    var completed = await Task.WhenAny(readTask, flushTask);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var isReadCompleted = completed == readTask;
-                    var isFlushCompleted = completed == flushTask;
-
-                    // --- Обработка новых тиков ---
-                    if (isReadCompleted)
+                    // Ждём новый тик в канале данных.
+                    // Если настроен таймер сброса частичных батчей и батч непустой —
+                    // используем Task.Delay как таймер для принудительного сброса.
+                    // Это заменяет старый механизм с Timer + сигнальный канал _flushSignal,
+                    // который не масштабировался на N consumer'ов.
+                    Task<bool> readTask;
+                    if (_flushIntervalSeconds > 0 && batch.Count > 0)
                     {
-                        if (readTask.Result)
+                        var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                        var flushDelay = Task.Delay(TimeSpan.FromSeconds(_flushIntervalSeconds), cancellationToken);
+                        var completed = await Task.WhenAny(readTaskTyped, flushDelay).ConfigureAwait(false);
+
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (completed == flushDelay)
                         {
-                            // Вычитываем ВСЕ доступные тики из канала (non-blocking)
-                            while (_channel.Reader.TryRead(out var tick))
-                            {
-                                batch.Add(tick);
-                                if (batch.Count >= _batchSize)
-                                {
-                                    await ProcessBatchAsync(batch, cancellationToken);
-                                    batch.Clear();
-                                }
-                            }
+                            // --- Сброс частичного батча по таймеру ---
+                            _logger.LogDebug(
+                                "Session={SessionId}: Таймерный сброс частичного батча: {Count} тиков (batchSize={BatchSize}), channel={Channel}",
+                                _sessionId, batch.Count, _batchSize, channelIndex);
+
+                            await ProcessBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+                            batch.Clear();
+                            continue; // переходим к следующей итерации — снова ждём тики
+                        }
+
+                        // completed == readTask — проверяем результат
+                        if (readTaskTyped.Result)
+                        {
+                            goto readTicks;
                         }
                         else
                         {
-                            // Канал данных завершён (TryComplete) — выходим из цикла
-                            // Перед выходом сбросим частичный батч
-                            if (batch.Count > 0)
-                            {
-                                await ProcessBatchAsync(batch, cancellationToken);
-                                batch.Clear();
-                            }
-                            break;
+                            goto channelCompleted;
+                        }
+                    }
+                    else
+                    {
+                        readTask = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                        if (await readTask.ConfigureAwait(false))
+                        {
+                            goto readTicks;
+                        }
+                        else
+                        {
+                            goto channelCompleted;
                         }
                     }
 
-                    // --- Сброс частичного батча по сигналу таймера ---
-                    if (batch.Count > 0 && isFlushCompleted)
+                readTicks:
+                    // Вычитываем ВСЕ доступные тики из канала (non-blocking)
+                    while (channel.Reader.TryRead(out var tick))
                     {
-                        // Потребляем сигнал из канала
-                        while (flushReader.TryRead(out _)) { }
+                        batch.Add(tick);
+                        if (batch.Count >= _batchSize)
+                        {
+                            await ProcessBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+                            batch.Clear();
+                        }
+                    }
 
-                        _logger.LogDebug(
-                            "Таймерный сброс частичного батча: {Count} тиков (batchSize={BatchSize})",
-                            batch.Count, _batchSize);
+                    // Продолжаем цикл — ждём новые тики или сброс по таймеру
+                    continue;
 
-                        await ProcessBatchAsync(batch, cancellationToken);
+                channelCompleted:
+                    // Канал данных завершён (TryComplete) — выходим из цикла
+                    // Перед выходом сбросим частичный батч
+                    if (batch.Count > 0)
+                    {
+                        await ProcessBatchAsync(batch, cancellationToken).ConfigureAwait(false);
                         batch.Clear();
                     }
-
-                    // --- Потребляем "зависшие" сигналы из канала сброса ---
-                    // Это необходимо, если таймер успел сработать несколько раз до обработки,
-                    // а данные пришли раньше сигнала сброса (isReadCompleted=true, isFlushCompleted=false).
-                    // Если в канале сброса есть данные — потребляем их, чтобы не накапливались.
-                    if (isReadCompleted && !isFlushCompleted)
-                    {
-                        while (flushReader.TryRead(out _)) { }
-                    }
+                    break;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogInformation("Обработка отменена");
+                _logger.LogInformation("Session={SessionId}: channel={Channel} обработка отменена", _sessionId, channelIndex);
             }
             catch (ChannelClosedException)
             {
@@ -374,9 +419,9 @@ namespace MarketDataCollector.Application.Services
                 if (batch.Count > 0)
                 {
                     _logger.LogDebug(
-                        "Финальный сброс: {Count} тиков (batchSize={BatchSize})",
-                        batch.Count, _batchSize);
-                    await ProcessBatchAsync(batch, CancellationToken.None);
+                        "Session={SessionId}: Финальный сброс channel={Channel}: {Count} тиков (batchSize={BatchSize})",
+                        _sessionId, channelIndex, batch.Count, _batchSize);
+                    await ProcessBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
                 }
             }
         }
@@ -389,7 +434,7 @@ namespace MarketDataCollector.Application.Services
 
                 var batchSize = batch.Count;
 
-                // 1. Убираем дубликаты в памяти
+                // 1. Убираем дубликаты в памяти (внутри-батчевые дубли)
                 var uniqueTicks = batch
                     .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
                     .Select(g => g.First())
@@ -401,6 +446,9 @@ namespace MarketDataCollector.Application.Services
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
                 // 3. Bulk insert через Npgsql Binary COPY protocol (быстрее ExecuteSqlRaw в 10-100x)
+                //    SemaphoreSlim в BulkCopyAsync удалён — deadlock'и невозможны, т.к. каждый consumer
+                //    пишет disjoint наборы тикеров (per-ticker routing в ProcessTickAsync),
+                //    поэтому B-tree страницы unique-индекса не пересекаются.
                 var entities = uniqueTicks.Select(t => new RawTick(
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
@@ -451,24 +499,44 @@ namespace MarketDataCollector.Application.Services
         public int GetTotalIncomingCount() => _totalIncomingCount;
 
         /// <summary>
-        /// Возвращает общее количество тиков, успешно прочитанных из канала.
+        /// Возвращает общее количество тиков, успешно прочитанных из каналов.
         /// </summary>
         public int GetTotalReceivedCount() => _totalReceivedCount;
 
         /// <summary>
-        /// Количество тиков, реально дропнутых каналом из-за переполнения
+        /// Количество тиков, реально дропнутых каналами из-за переполнения
         /// (TryWrite вернул false при BoundedChannelFullMode.DropOldest).
         /// </summary>
         public int GetTotalDroppedCount() => _totalDroppedCount;
 
         /// <summary>
-        /// Текущее количество тиков в очереди канала (для мониторинга заполненности).
+        /// Суммарное количество тиков во всех каналах (для мониторинга заполненности).
         /// </summary>
-        public int GetChannelCount() => _channel.Reader.Count;
+        public int GetChannelCount()
+        {
+            int total = 0;
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                total += _channels[i].Reader.Count;
+            }
+            return total;
+        }
 
         /// <summary>
-        /// Ёмкость канала (ChannelCapacity из конфигурации).
+        /// Ёмкость каждого канала (ChannelCapacity из конфигурации).
         /// </summary>
         public int GetChannelCapacity() => _channelCapacity;
+
+        /// <summary>
+        /// Количество активных каналов (consumer'ов).
+        /// </summary>
+        public int GetConsumerCountChannels() => _channels.Length;
+
+        /// <summary>
+        /// Доступ к каналу по индексу (для тестов).
+        /// В production код не используется — routing происходит внутри ProcessTickAsync.
+        /// SingleConsumer mode: index=0.
+        /// </summary>
+        public Channel<TickData> GetChannel(int index = 0) => _channels[index];
     }
 }
