@@ -29,6 +29,10 @@ namespace MarketDataCollector.Application.Services
         private readonly ITickAggregator? _tickAggregator;
 
         private Task _processingTask = null!;
+        private CancellationTokenSource? _internalCts;  // внутренний CTS для graceful shutdown:
+                                                        // внешний stoppingToken отменяется хостом,
+                                                        // но consumer'ы должны дочитать backlog
+                                                        // перед остановкой.
         private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
         private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync
@@ -177,6 +181,24 @@ namespace MarketDataCollector.Application.Services
                 }
             }
 
+            // Создаём внутренний CancellationTokenSource, НЕ линкованный к внешнему cancellationToken.
+            // Consumer'ы (ProcessBatchesAsync) используют _internalCts.Token, а не внешний cancellationToken.
+            // Это гарантирует, что consumer'ы НЕ умрут по OperationCanceledException при остановке хоста,
+            // а дождутся TryComplete() каналов и дочитают backlog.
+            //
+            // В StopProcessingAsync порядок:
+            //   1. TryComplete() на всех каналах → consumer'ы дочитывают backlog по channelCompleted
+            //   2. await _processingTask → ожидание завершения consumer'ов
+            //   3. отмена _internalCts → освобождение ресурсов
+            //
+            // ВАЖНО: _internalCts НЕ линкован к внешнему cancellationToken! Иначе consumer'ы упадут
+            // по OperationCanceledException ещё до TryComplete(), когда хост отменит stoppingToken.
+            // Внешний токен управляет остановкой WebSocket-клиентов и выходом из health-check loop.
+            // Consumer'ы управляются только _internalCts.
+            _internalCts?.Dispose();
+            _internalCts = new CancellationTokenSource();
+            var internalToken = _internalCts.Token;
+
             if (_useSingleConsumer)
             {
                 // ===== Single Consumer Mode =====
@@ -196,7 +218,7 @@ namespace MarketDataCollector.Application.Services
                     })
                 };
 
-                _processingTask = ProcessBatchesAsync(channelIndex: 0, cancellationToken);
+                _processingTask = ProcessBatchesAsync(channelIndex: 0, internalToken);
 
                 _logger.LogInformation(
                     "Session={SessionId}: Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
@@ -240,12 +262,14 @@ namespace MarketDataCollector.Application.Services
                         });
                 }
 
-                // Запускаем consumer'ов — каждый читает из своего канала
+                // Запускаем consumer'ов — каждый читает из своего канала.
+                // Используем internalToken (линкован к внешнему cancellationToken),
+                // чтобы consumer'ы не умирали при отмене хоста до вызова TryComplete().
                 var tasks = new Task[consumerCount];
                 for (int i = 0; i < consumerCount; i++)
                 {
                     var channelIndex = i; // capture for closure
-                    tasks[i] = ProcessBatchesAsync(channelIndex, cancellationToken);
+                    tasks[i] = ProcessBatchesAsync(channelIndex, internalToken);
                 }
                 _processingTask = Task.WhenAll(tasks);
 
@@ -261,7 +285,7 @@ namespace MarketDataCollector.Application.Services
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
             // 1. Логируем остаток во всех каналах перед TryComplete, чтобы оценить,
-            //    сколько тиков не успеет обработаться.
+            //    сколько тиков будет дочитано.
             var totalRemaining = 0;
             for (int i = 0; i < _channels.Length; i++)
             {
@@ -273,7 +297,9 @@ namespace MarketDataCollector.Application.Services
                 _sessionId, totalRemaining, _totalIncomingCount, _totalReceivedCount, _processedCount);
 
             // 2. Завершаем ВСЕ каналы данных — это заставит ProcessBatchesAsync
-            //    выйти из цикла (readTask.Result == false → break).
+            //    выйти из цикла (readTask.Result == false → channelCompleted → break).
+            //    ВАЖНО: это делается ДО отмены _internalCts, чтобы consumer'ы
+            //    успели дочитать backlog и выполнить финальный flush.
             for (int i = 0; i < _channels.Length; i++)
             {
                 _channels[i].Writer.TryComplete();
@@ -283,19 +309,38 @@ namespace MarketDataCollector.Application.Services
             {
                 try
                 {
-                    // 3. Ждём, пока ВСЕ ProcessBatchesAsync завершатся (дочитают остатки и выйдут)
-                    //    Используем внутренний timeout 15с вместо внешнего cancellationToken,
-                    //    т.к. внешний токен может быть уже отменён (например, при остановке Worker).
-                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    // 3. Ждём, пока ВСЕ ProcessBatchesAsync завершатся.
+                    //    Consumer'ы используют _internalCts.Token, который ещё не отменён,
+                    //    поэтому они НЕ умрут по OperationCanceledException.
+                    //    После TryComplete() каналов consumer'ы дочитают остатки и выйдут
+                    //    по channelCompleted (readTask.Result == false).
+                    //    Используем CancellationToken.None + внутренний timeout 30с,
+                    //    т.к. внешний cancellationToken может быть уже отменён.
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                     await _processingTask.WaitAsync(timeoutCts.Token);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Session={SessionId}: Превышен таймаут ожидания обработки (15с)", _sessionId);
+                    _logger.LogWarning("Session={SessionId}: Превышен таймаут ожидания дочитывания backlog (30с). " +
+                        "Остаток в каналах будет потерян.", _sessionId);
                 }
             }
 
-            // 4. Расширенный финальный лог со всей статистикой потерь
+            // 4. Теперь consumer'ы завершены — безопасно отменяем _internalCts
+            //    (чтобы освободить ресурсы).
+            if (_internalCts != null)
+            {
+                try
+                {
+                    _internalCts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Ignore — может быть уже отменён
+                }
+            }
+
+            // 5. Расширенный финальный лог со всей статистикой потерь
             var totalIncoming = _totalIncomingCount;
             var totalReceived = _totalReceivedCount;
             var totalInserted = _processedCount;
