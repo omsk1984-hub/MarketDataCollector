@@ -2,6 +2,8 @@
 
 Система сбора, обработки и хранения ценовых данных с криптобирж в реальном времени.
 
+> **Результаты нагрузочного тестирования:** 3 WebSocket-клиента (BTCUSDT, ETHUSDT, SOLUSDT) + 3 параллельных consumer'а + Binary COPY protocol. Фактическая производительность записи в PostgreSQL: **~35 000 RPS** (processed ticks/sec) при входящем потоке ~50 000 msg/s. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
+
 ## Описание
 
 Система предназначена для непрерывного сбора тиковых данных (сделок) с криптобирж через WebSocket соединения, нормализации данных, удаления дубликатов и сохранения в базу данных PostgreSQL. Поддерживает параллельную работу с несколькими источниками данных и символами. Архитектура построена на принципах SOLID с чистыми зависимостями и делегированием ответственности специализированным компонентам.
@@ -17,23 +19,31 @@
 
 ### 2. Обработка потока данных
 - Нормализация к единому формату (тикер, цена, объём, timestamp, биржа)
-- Двухуровневая дедупликация: в памяти (batch, `GroupBy`) + проверка в БД по уникальному ключу `(Ticker, Exchange, Timestamp)`
-- Асинхронная обработка через `Channel<T>` с батчевой записью (batch size по умолчанию 100)
-- Bulk insert одним запросом (`AddRangeAsync` + `SaveChangesAsync`)
+- **Трёхуровневая дедупликация**: в памяти (batch, `GroupBy`) + `ON CONFLICT DO NOTHING` в PostgreSQL
+- Асинхронная обработка через **N независимых `Channel<T>`** — по одному на consumer (per-ticker routing через hash ticker'а)
+- **Bulk insert** через Binary COPY protocol (Npgsql) — в 10-100x быстрее `AddRangeAsync`
+- **Multiple Consumers Mode** (по умолчанию): каждый consumer получает disjoint набор тикеров → B-tree страницы unique-индекса не пересекаются → deadlock'и невозможны
+- **Single Consumer Mode**: ровно 1 consumer, Channel с `SingleReader=true` (~62k ticks/sec)
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
 ### 3. Хранение в БД
-- Сохранение сырых тиков в PostgreSQL через Entity Framework Core
-- Уникальный индекс `(Ticker, Exchange, Timestamp)` для защиты от дубликатов
+- Сохранение сырых тиков в PostgreSQL через **Binary COPY protocol** (Npgsql) + temp table + `INSERT ON CONFLICT DO NOTHING`
+- Уникальный индекс `(Ticker, Exchange, Timestamp)` — финальная защита от дубликатов на уровне БД
+- **Deadlock-free** параллельная запись: per-ticker routing гарантирует непересекающиеся B-tree страницы
+- Retry-логика (5 попыток, exponential backoff + jitter) как safety net
 - Поддержка сущности агрегированных данных (модель и таблица определены, запись — через расширение)
 - Логирование подключений (сущность `ConnectionLog`) — fire-and-forget запись через `MonitoringService`
 
 ### 4. Мониторинг
 - Логирование основных событий (подключение/отключение источника, ошибки)
 - Счётчик обработанных тиков по каждой бирже (через `MonitoringService`)
-- Периодический health-check статуса в лог (каждые 10 секунд)
-- Периодический статус мониторинга в лог (каждые 30 секунд) через `MonitoringService`
+- Периодический health-check статуса в лог (каждые 10 секунд) с метриками:
+  - RPS: входящие/обработанные (через `SlidingWindowCounter`)
+  - Channel fill % — заполненность канала (мониторинг перегрузки)
+  - Backlog backlog (incoming - received) — тики в очереди, не дропнуты
+  - Реальные дропы через DropOldest
 - События `OnError` для критических ошибок процессора
+- **Graceful shutdown** — consumer'ы дочитывают backlog перед остановкой через `_internalCts`
 
 ## Технологический стек
 
@@ -220,15 +230,17 @@ BinanceWebSocketClient.ProcessMessageAsync()
 IWebSocketMessageReceiver (цикл приёма)
     ↓ (вызов ProcessMessageAsync)
 IMarketDataProcessor.ProcessTickAsync()
-    ↓ (запись в Channel<TickData>)
-MarketDataProcessor (фоновый batch loop)
-    ↓ (накопление батча, _batchSize = 100)
-Двухуровневая дедупликация:
-    1. GroupBy в памяти (Ticker, Exchange, Timestamp)
-    2. Проверка в БД через ExistsAsync()
-    ↓ (только новые тики)
-IRawTickRepository.AddRangeAsync() → SaveChangesAsync()
+    ↓ (per-ticker routing: hash(ticker) % consumerCount)
+N независимых Channel<TickData> (SingleReader=true)
     ↓
+N Consumer'ов (каждый читает свой канал)
+    ↓ (накопление батча, _batchSize = 1000)
+Дедупликация:
+    1. GroupBy в памяти (Ticker, Exchange, Timestamp) — внутри батча
+    2. ON CONFLICT DO NOTHING — глобально, через unique-индекс БД
+    ↓
+RawTickRepository.BulkCopyAsync()
+    ↓ (Binary COPY → temp table → INSERT ON CONFLICT)
 PostgreSQL (RawTicks)
 ```
 
@@ -244,8 +256,9 @@ PostgreSQL (RawTicks)
 - **Factory** — для создания WebSocket клиентов (`WebSocketClientFactory`) с двухфазной инициализацией
 - **Observer** — события WebSocket (`MessageReceived`, `Connected`, `Disconnected`, `ErrorOccurred`)
 - **Strategy** — стратегия переподключения (`IReconnectStrategy`)
-- **Channel** — асинхронная очередь с backpressure для батчевой обработки
+- **Channel** — N независимых асинхронных очередей с backpressure (per-ticker routing через hash ticker'а)
 - **Bridge** — разделение монолитного клиента на связанные, но независимые иерархии (ConnectionManager, MessageReceiver, SubscriptionManager, ReconnectStrategy)
+- **Bulk Copy** — Binary COPY protocol (Npgsql) для массовой вставки (10-100x быстрее AddRangeAsync)
 
 ## Быстрый старт
 
@@ -329,9 +342,12 @@ dotnet build
     "MarketDataDb": "Host=localhost;Port=5433;Database=MarketDataDb;Username=marketdata_user;Password=StrongPassword123!"
   },
   "MarketDataProcessor": {
-    "BatchSize": 100,
-    "ChannelCapacity": 10000
-  },
+"BatchSize": 1000,
+"ChannelCapacity": 150000,
+"UseSingleConsumer": false,
+"ConsumerCount": 3,
+"FlushIntervalSeconds": 3
+},
   "ExchangeOptions": {
     "Exchanges": [
       {
@@ -359,10 +375,12 @@ dotnet build
 }
 ```
 
-**Параметры конфигурации:**
-- `ConnectionStrings.MarketDataDb` — строка подключения к PostgreSQL
-- `MarketDataProcessor.BatchSize` — размер батча для записи в БД (по умолчанию 100)
-- `MarketDataProcessor.ChannelCapacity` — ёмкость канала сообщений (по умолчанию 10000)
+**Параметры конфигурации MarketDataProcessor:**
+- `BatchSize` — размер батча для записи в БД через Binary COPY (по умолчанию 1000)
+- `ChannelCapacity` — ёмкость КАЖДОГО канала (150000). При N consumer'ов общая ёмкость = N × ChannelCapacity
+- `UseSingleConsumer` — `true`: 1 consumer, `false`: несколько consumer'ов (по умолчанию)
+- `ConsumerCount` — количество consumer'ов (0 = авто, Math.Clamp(CPU/2, 1, 4))
+- `FlushIntervalSeconds` — сброс частичных батчей по таймеру (3с)
 - `ExchangeOptions.Exchanges` — массив бирж с шаблонами WebSocket URL
 - `ExchangeOptions.Readers` — массив ридеров (пара биржа + символ для подписки)
 - `WebSocketClient.ReconnectDelay` — начальная задержка переподключения (5с)
@@ -474,13 +492,14 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 
 ### Модульные тесты (xUnit)
 
-Проект [`tests/MarketDataCollector.Tests/`](tests/MarketDataCollector.Tests/) содержит 12 файлов тестов:
+Проект [`tests/MarketDataCollector.Tests/`](tests/MarketDataCollector.Tests/) содержит 250+ модульных тестов:
 
 | Категория | Файлы | Описание |
 |-----------|-------|----------|
-| **Application** | `MarketDataProcessorTests.cs`, `DataStorageServiceTests.cs`, `MonitoringServiceTests.cs` | Бизнес-логика |
-| **Core Clients** | `BaseWebSocketClientTests.cs`, `ExponentialReconnectStrategyTests.cs`, `SubscriptionManagerTests.cs`, `WebSocketConnectionManagerTests.cs`, `WebSocketMessageReceiverTests.cs` | Базовые компоненты |
+| **Application** | `MarketDataProcessorTests.cs` (34 теста), `DataStorageServiceTests.cs`, `MonitoringServiceTests.cs` | Бизнес-логика |
+| **Core/Clients** | `BaseWebSocketClientTests.cs`, `ExponentialReconnectStrategyTests.cs`, `SubscriptionManagerTests.cs`, `WebSocketConnectionManagerTests.cs`, `WebSocketMessageReceiverTests.cs` | Базовые компоненты |
 | **Infrastructure** | `BinanceWebSocketClientTests.cs`, `WebSocketClientFactoryTests.cs`, `RawTickRepositoryTests.cs` | Реализации |
+| **Infrastructure/Kafka** | `KafkaIntegrationTests.cs`, `KafkaRealConnectionTests.cs` | Kafka + Testcontainers |
 
 **Запуск тестов:**
 
@@ -500,6 +519,7 @@ dotnet test
 - **Moq** — мокирование зависимостей
 - **FluentAssertions** — читаемые утверждения
 - **EF Core InMemory** — тестирование репозиториев без реальной БД
+- **Testcontainers** — интеграционные тесты с реальным Kafka/PostgreSQL в Docker
 - Таймауты: 5000ms для WebSocket/сетевых тестов, 10000ms для Repository/DataStorage
 
 ### Тестовые мониторы
