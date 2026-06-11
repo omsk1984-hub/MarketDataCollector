@@ -1357,4 +1357,101 @@ public class MarketDataProcessorTests
         // 2-й: сброс следующих 2 тиков по таймеру (или финальный flush)
         callCount.Should().BeGreaterThanOrEqualTo(2, "должно быть минимум 2 сброса (3 + 2)");
     }
+
+    // ========== Safety Net Tests (catch(Exception) in ProcessBatchesAsync) ==========
+
+    [Fact(Timeout = 15000)]
+    public async Task ProcessBatchesAsync_RepeatedErrors_OnErrorFiredAndTaskCompletes()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchesAsync_RepeatedErrors_OnErrorFiredAndTaskCompletes)} ===");
+        // Arrange
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Database connection lost"));
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 5,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true
+        });
+
+        var errorCount = 0;
+        processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем 20 тиков (batchSize=5 => 4 батча, все упадут)
+        for (int i = 0; i < 20; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        // Даём время на обработку
+        await Task.Delay(1000, cts.Token);
+
+        // Act — StopProcessingAsync вызывает _processingTask.WaitAsync() внутри.
+        // Если бы _processingTask был Faulted (без нашего catch), здесь было бы исключение.
+        // С новым catch(Exception) задача завершается нормально.
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert
+        errorCount.Should().BeGreaterThanOrEqualTo(1,
+            "OnError должен вызываться при каждой ошибке батча (сработал catch в ProcessBatchAsync)");
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce,
+            "Должен быть хотя бы один лог критической ошибки обработки батча");
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task ProcessBatchesAsync_NormalProcessing_WithNewCatchBlock()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchesAsync_NormalProcessing_WithNewCatchBlock)} ===");
+        // Arrange — регрессионный тест: новый catch(Exception) не должен
+        // мешать нормальной обработке данных.
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 3,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act
+        for (int i = 0; i < 9; i++)
+        {
+            await processor.ProcessTickAsync(
+                "BTCUSDT",
+                50000.00m + i,
+                0.5m,
+                new DateTime(2024, 1, 1, 10, 0, i, DateTimeKind.Utc),
+                "Binance");
+        }
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        var count = await processor.GetProcessedCountAsync();
+
+        // Assert
+        count.Should().Be(9, "все 9 тиков должны быть обработаны нормально");
+    }
 }

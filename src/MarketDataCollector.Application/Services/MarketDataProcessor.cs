@@ -457,6 +457,18 @@ namespace MarketDataCollector.Application.Services
             {
                 // Ожидаемо при завершении канала
             }
+            catch (Exception ex) when (ex is not OperationCanceledException && ex is not ChannelClosedException)
+            {
+                _logger.LogCritical(ex,
+                    "Session={SessionId}: Неожиданная ошибка в consumer channel={Channel}",
+                    _sessionId, channelIndex);
+                OnError?.Invoke(this, ex);
+                // Исключение уже выбросило нас из while-цикла → finally выполнит
+                // финальный flush с CancellationToken.None.
+                // _processingTask завершится успешно (не Faulted), т.к. catch перехватил
+                // исключение. Но OnError уже дёрнут, и Worker умрёт через
+                // processorErrorCts.Cancel() в Worker.cs.
+            }
             finally
             {
                 // Финальный flush (даже при ошибке — CancellationToken.None)
