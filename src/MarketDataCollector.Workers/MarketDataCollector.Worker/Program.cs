@@ -9,8 +9,36 @@ using MarketDataCollector.Infrastructure.Repositories;
 using MarketDataCollector.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// ===== OpenTelemetry Configuration =====
+var otelOptions = builder.Configuration.GetSection("OpenTelemetry");
+var otlpEndpoint = otelOptions["OtlpEndpoint"] ?? "http://localhost:4317";
+var serviceName = otelOptions["ServiceName"] ?? "MarketDataCollector.Worker";
+
+// ===== OpenTelemetry Metrics & Tracing =====
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(serviceName))
+    .WithMetrics(metrics => metrics
+        .AddRuntimeInstrumentation()
+        .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)))
+    .WithTracing(tracing => tracing
+        .AddEntityFrameworkCoreInstrumentation()
+        .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)));
+
+// ===== OpenTelemetry Logging =====
+builder.Logging.AddOpenTelemetry(logging =>
+{
+    logging.IncludeFormattedMessage = true;
+    logging.IncludeScopes = true;
+    logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName));
+    logging.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
+});
 
 // Database
 builder.Services.AddDbContext<MarketDataDbContext>(options =>
