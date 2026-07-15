@@ -281,6 +281,7 @@ docker-compose up -d
 | **PostgreSQL 16** | База данных для хранения тиков | `localhost:5433` |
 | **Kafka (KRaft)** | Брокер сообщений для развязки компонентов | `localhost:9092` (внутренний) / `localhost:9094` (внешний) |
 | **Kafdrop** | Веб-интерфейс для просмотра Kafka | `http://localhost:9000` |
+| **Aspire Dashboard** | OpenTelemetry Dashboard (метрики, трейсинг, логи) | OTLP gRPC: `localhost:18889`, UI: `http://localhost:19000` |
 
 Проверьте, что все контейнеры запущены:
 ```bash
@@ -308,6 +309,11 @@ ghi789         obsidiandynamics/kafdrop:latest 0.0.0.0:9000->9000/tcp          m
 **Доступ к Kafdrop (веб-интерфейс Kafka):**
 - Откройте в браузере: http://localhost:9000
 - Просматривайте топики, сообщения и consumer groups
+
+**Доступ к Aspire Dashboard (OpenTelemetry):**
+- Откройте в браузере: http://localhost:19000
+- Просматривайте **Traces** (трейсинг EF Core), **Metrics** (метрики .NET Runtime, RPS) и **Logs** (структурированные логи приложения)
+- Данные поступают через OTLP gRPC на порт `localhost:18889`
 
 ### Топики Kafka
 

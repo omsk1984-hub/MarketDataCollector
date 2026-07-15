@@ -103,6 +103,18 @@ services:
       - kafka
     restart: unless-stopped
 
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.1
+    container_name: marketdata-aspire-dashboard
+    ports:
+      - "18889:18889"  # OTLP gRPC
+      - "19000:18888"  # Dashboard Web UI (18888 внутренний → 19000 внешний)
+    environment:
+      - DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true
+    networks:
+      - marketdata-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   kafka_data:
