@@ -1,5 +1,6 @@
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Core.Utilities;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -111,6 +113,9 @@ namespace MarketDataCollector.Application.Services
             // Инкрементируем счётчик ДО записи в канал — общее количество попыток записи.
             Interlocked.Increment(ref _totalIncomingCount);
 
+            // OpenTelemetry: счётчик входящих тиков
+            MarketDataTelemetry.TicksIncoming.Add(1, new KeyValuePair<string, object?>("exchange", exchange));
+
             // TryWrite — неблокирующая запись. При переполнении канала (BoundedChannelFullMode.DropOldest)
             // возвращает false без исключения. Считаем такие случаи как реальные дропы.
             // Это точнее, чем вычислять разницу incoming - received постфактум,
@@ -138,6 +143,8 @@ namespace MarketDataCollector.Application.Services
             if (!channels[channelIndex].Writer.TryWrite(tick))
             {
                 Interlocked.Increment(ref _totalDroppedCount);
+                // OpenTelemetry: счётчик дропнутых тиков
+                MarketDataTelemetry.TicksDropped.Add(1, new KeyValuePair<string, object?>("exchange", exchange));
             }
 
             // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
@@ -156,6 +163,14 @@ namespace MarketDataCollector.Application.Services
 
         public Task StartProcessingAsync(CancellationToken cancellationToken = default)
         {
+            // OpenTelemetry: записываем fill-метрики каналов при старте
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                MarketDataTelemetry.ChannelFill.Record(
+                    _channels[i].Reader.Count,
+                    new KeyValuePair<string, object?>("channel_index", i));
+            }
+
             if (_processingTask != null && !_processingTask.IsCompleted)
                 return Task.CompletedTask;
 
@@ -284,6 +299,14 @@ namespace MarketDataCollector.Application.Services
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
+            // OpenTelemetry: финальная запись fill-метрик перед остановкой
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                MarketDataTelemetry.ChannelFill.Record(
+                    _channels[i].Reader.Count,
+                    new KeyValuePair<string, object?>("channel_index", i));
+            }
+
             // 1. Логируем остаток во всех каналах перед TryComplete, чтобы оценить,
             //    сколько тиков будет дочитано.
             var totalRemaining = 0;
@@ -485,17 +508,26 @@ namespace MarketDataCollector.Application.Services
 
         private async Task ProcessBatchAsync(List<TickData> batch, CancellationToken cancellationToken)
         {
+            // OpenTelemetry: трейсинг обработки батча
+            using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
+            activity?.SetTag("batch.size", batch.Count);
+
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var batchSize = batch.Count;
 
+                // OpenTelemetry: гистограмма размера батча
+                MarketDataTelemetry.BatchSize.Record(batchSize);
+
                 // 1. Убираем дубликаты в памяти (внутри-батчевые дубли)
                 var uniqueTicks = batch
                     .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
                     .Select(g => g.First())
                     .ToList();
+
+                activity?.SetTag("unique.count", uniqueTicks.Count);
 
                 // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
                 //    чтобы избежать InvalidOperationException при параллельном доступе из нескольких потоков
@@ -512,8 +544,19 @@ namespace MarketDataCollector.Application.Services
 
                 var inserted = await repository.BulkCopyAsync(entities, cancellationToken);
 
+                activity?.SetTag("inserted.count", inserted);
+
                 var totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
                 var totalInserted = Interlocked.Add(ref _processedCount, inserted);
+
+                // OpenTelemetry: счётчики полученных и обработанных тиков
+                MarketDataTelemetry.TicksReceived.Add(
+                    batchSize,
+                    new KeyValuePair<string, object?>("channel_index", 0));
+
+                MarketDataTelemetry.TicksProcessed.Add(
+                    inserted,
+                    new KeyValuePair<string, object?>("exchange", batch.Count > 0 ? batch[0].Exchange : "unknown"));
 
                 // Инкрементируем RPS-счётчик для каждого сохранённого тика
                 for (int i = 0; i < inserted; i++)
@@ -533,11 +576,14 @@ namespace MarketDataCollector.Application.Services
             }
             catch (OperationCanceledException)
             {
+                activity?.SetStatus(ActivityStatusCode.Error, "Cancelled");
                 _logger.LogWarning("Обработка батча отменена");
                 throw;
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                activity?.SetTag("exception", ex.Message);
                 _logger.LogError(ex, "Критическая ошибка при обработке батча из {Count} тиков", batch.Count);
                 OnError?.Invoke(this, ex);
             }

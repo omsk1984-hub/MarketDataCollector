@@ -1,5 +1,6 @@
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -369,6 +370,12 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     {
         _msgRpsCounter.Increment();
         Interlocked.Increment(ref _totalMessagesCount);
+
+        // OpenTelemetry: счётчик входящих WebSocket-сообщений
+        MarketDataTelemetry.WsMessagesReceived.Add(1,
+            new KeyValuePair<string, object?>("exchange", ExchangeName),
+            new KeyValuePair<string, object?>("symbol", Symbol));
+
         MessageReceived?.Invoke(this, message);
     }
 
@@ -378,6 +385,11 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     protected internal virtual void OnConnected()
     {
         _logger.LogInformation("{Name}: Подключено.", Name);
+
+        // OpenTelemetry: увеличиваем счётчик активных соединений
+        MarketDataTelemetry.ActiveConnections.Add(1,
+            new KeyValuePair<string, object?>("exchange", ExchangeName));
+
         Connected?.Invoke(this, EventArgs.Empty);
     }
 
@@ -387,6 +399,11 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     protected internal virtual void OnDisconnected()
     {
         _logger.LogInformation("{Name}: Отключено.", Name);
+
+        // OpenTelemetry: уменьшаем счётчик активных соединений
+        MarketDataTelemetry.ActiveConnections.Add(-1,
+            new KeyValuePair<string, object?>("exchange", ExchangeName));
+
         Disconnected?.Invoke(this, EventArgs.Empty);
     }
 

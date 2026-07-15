@@ -26,9 +26,11 @@ builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService(serviceName))
     .WithMetrics(metrics => metrics
         .AddRuntimeInstrumentation()
+        .AddMeter(MarketDataCollector.Core.Telemetry.MarketDataTelemetry.MeterName)
         .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)))
     .WithTracing(tracing => tracing
         .AddEntityFrameworkCoreInstrumentation()
+        .AddSource(MarketDataCollector.Core.Telemetry.MarketDataTelemetry.ActivitySourceName)
         .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)));
 
 // ===== OpenTelemetry Logging =====
