@@ -47,7 +47,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_KRAFT_CLUSTER_ID: marketdata-kafka-cluster
+      KAFKA_CLUSTER_ID: marketdata-kafka-cluster
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       # Увеличенные таймауты для стабильности KRaft heartbeat
       KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: 500
