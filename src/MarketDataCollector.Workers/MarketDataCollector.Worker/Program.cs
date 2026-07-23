@@ -9,12 +9,13 @@ using MarketDataCollector.Infrastructure.Repositories;
 using MarketDataCollector.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Builder;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 // ===== OpenTelemetry Configuration =====
 var otelOptions = builder.Configuration.GetSection("OpenTelemetry");
@@ -27,6 +28,7 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics
         .AddRuntimeInstrumentation()
         .AddMeter(MarketDataCollector.Core.Telemetry.MarketDataTelemetry.MeterName)
+        .AddPrometheusExporter()
         .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)))
     .WithTracing(tracing => tracing
         .AddEntityFrameworkCoreInstrumentation()
@@ -126,5 +128,9 @@ builder.Services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
 // Worker
 builder.Services.AddHostedService<MarketDataCollector.Worker.Worker>();
 
-var host = builder.Build();
-host.Run();
+var app = builder.Build();
+
+// ===== Prometheus scrape endpoint =====
+app.MapPrometheusScrapingEndpoint("/metrics");
+
+app.Run();

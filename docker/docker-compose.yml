@@ -103,6 +103,21 @@ services:
       - kafka
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: marketdata-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - marketdata-network
+    restart: unless-stopped
+
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:9.1
     container_name: marketdata-aspire-dashboard
@@ -118,6 +133,7 @@ services:
 volumes:
   postgres_data:
   kafka_data:
+  prometheus_data:
 
 networks:
   marketdata-network:

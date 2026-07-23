@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'marketdata-worker'
+    static_configs:
+      # Worker запущен на хосте (не в Docker) — используем host.docker.internal
+      # Если Worker тоже в Docker — заменить на имя сервиса
+      - targets: ['host.docker.internal:5000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
