@@ -31,6 +31,17 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 cd tests/FakeTickServer
+
+Write-Host "Компиляция FakeTickServer..." -ForegroundColor Yellow
+dotnet build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ОШИБКА КОМПИЛЯЦИИ! Запуск отменён." -ForegroundColor Red
+    Read-Host -Prompt "Нажмите любую клавишу для выхода"
+    exit 1
+}
+Write-Host "Компиляция успешна." -ForegroundColor Green
+Write-Host ""
+
 dotnet run -- --port $Port --rps $Rps --symbols $Symbols --base-price $BasePrice --max-ticks $MaxTicks --dup-percent $DupPercent
 
 Read-Host -Prompt "Нажмите любую клавишу для выхода"
