@@ -283,17 +283,26 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Сохранение списка свечей: через Kafka (если включено) или напрямую в БД.
+        /// При ошибке Kafka выполняется fallback на прямую запись в БД.
         /// </summary>
         private async Task SaveCandlesAsync(List<InMemoryCandle> candles)
         {
             if (_useKafka && _kafkaCandleProducer != null)
             {
-                await SaveCandlesViaKafkaAsync(candles);
+                try
+                {
+                    await SaveCandlesViaKafkaAsync(candles);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Kafka publish failed for {Count} candles, falling back to direct DB write",
+                        candles.Count);
+                }
             }
-            else
-            {
-                await SaveCandlesViaDatabaseAsync(candles);
-            }
+
+            await SaveCandlesViaDatabaseAsync(candles);
         }
 
         /// <summary>

@@ -27,6 +27,13 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private Task? _consumingTask;
 
+    /// Минимальная задержка между повторными попытками (при ошибке broker).
+    private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(1);
+    /// Максимальная задержка между повторными попытками.
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(30);
+    /// Счётчик последовательных ошибок для экспоненциального backoff.
+    private int _consecutiveErrors;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -139,6 +146,7 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
     /// Основной цикл потребления сообщений из Kafka.
     /// Каждое сообщение (свеча) десериализуется и записывается в БД.
     /// Offset коммитится после успешной записи.
+    /// При ошибках broker используется экспоненциальный backoff.
     /// </summary>
     private async Task ConsumeLoopAsync(CancellationToken ct)
     {
@@ -172,18 +180,34 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
                     // Ручной commit offset'а — только после успешной записи в БД
                     _consumer.Commit(consumeResult);
 
+                    // Сброс счётчика ошибок при успешном потреблении
+                    Interlocked.Exchange(ref _consecutiveErrors, 0);
+
                     _logger.LogTrace(
                         "Candle consumed and saved. Offset={Offset}, Partition={Partition}, Key={Key}",
                         consumeResult.Offset, consumeResult.Partition, consumeResult.Message.Key);
                 }
                 catch (ConsumeException ex)
                 {
-                    _logger.LogError(ex,
-                        "Kafka consume error. Topic={Topic}, ErrorCode={ErrorCode}",
-                        _options.AggregatedDataTopic, ex.Error.Code);
+                    var errorCount = Interlocked.Increment(ref _consecutiveErrors);
+                    var delay = CalculateBackoff(errorCount);
 
-                    // Пауза перед повторной попыткой, чтобы избежать spin loop
-                    await Task.Delay(1000, ct);
+                    _logger.LogError(ex,
+                        "Kafka consume error (attempt #{Attempt}, next retry in {Delay}s). Topic={Topic}, ErrorCode={ErrorCode}",
+                        errorCount, (int)delay.TotalSeconds, _options.AggregatedDataTopic, ex.Error.Code);
+
+                    await Task.Delay(delay, ct);
+                }
+                catch (Exception ex)
+                {
+                    var errorCount = Interlocked.Increment(ref _consecutiveErrors);
+                    var delay = CalculateBackoff(errorCount);
+
+                    _logger.LogError(ex,
+                        "Unexpected error in consumer loop (attempt #{Attempt}, next retry in {Delay}s)",
+                        errorCount, (int)delay.TotalSeconds);
+
+                    await Task.Delay(delay, ct);
                 }
             }
         }
@@ -195,6 +219,15 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
         {
             _logger.LogCritical(ex, "Unexpected error in Kafka consumer loop");
         }
+    }
+
+    /// <summary>
+    /// Вычисляет задержку с экспоненциальным backoff: 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+    /// </summary>
+    private static TimeSpan CalculateBackoff(int attempt)
+    {
+        var seconds = Math.Min(InitialBackoff.TotalSeconds * Math.Pow(2, attempt - 1), MaxBackoff.TotalSeconds);
+        return TimeSpan.FromSeconds(seconds);
     }
 
     /// <summary>

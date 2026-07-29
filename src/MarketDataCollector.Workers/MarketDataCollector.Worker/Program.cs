@@ -4,6 +4,7 @@ using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Infrastructure.Data;
 using MarketDataCollector.Infrastructure.Factories;
+using Confluent.Kafka;
 using MarketDataCollector.Infrastructure.Kafka;
 using MarketDataCollector.Infrastructure.Repositories;
 using MarketDataCollector.Infrastructure.Services;
@@ -58,6 +59,26 @@ builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaO
 var kafkaConfig = builder.Configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
 if (kafkaConfig?.Enabled == true)
 {
+    // Проверка доступности Kafka при старте
+    try
+    {
+        var testConfig = new Confluent.Kafka.AdminClientConfig { BootstrapServers = kafkaConfig.BootstrapServers };
+        using var adminClient = new Confluent.Kafka.AdminClientBuilder(testConfig).Build();
+        var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
+        if (metadata.Brokers.Count > 0)
+        {
+            Console.WriteLine($"[Kafka] Broker(s) available: {string.Join(", ", metadata.Brokers.Select(b => $"{b.Host}:{b.Port}"))}");
+        }
+        else
+        {
+            Console.WriteLine($"[Kafka] WARNING: No brokers found at {kafkaConfig.BootstrapServers}. Candles will fall back to direct DB write until Kafka becomes available.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Kafka] WARNING: Cannot reach Kafka at {kafkaConfig.BootstrapServers}: {ex.Message}. Candles will fall back to direct DB write until Kafka becomes available.");
+    }
+
     // Kafka producer (singleton — пул соединений)
     builder.Services.AddSingleton<IKafkaProducer<string, string>>(sp =>
     {
@@ -129,6 +150,77 @@ builder.Services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
 builder.Services.AddHostedService<MarketDataCollector.Worker.Worker>();
 
 var app = builder.Build();
+
+// ===== Health check endpoint =====
+app.MapGet("/health", async (HttpContext ctx) =>
+{
+    var healthChecks = new Dictionary<string, object>();
+
+    // Kafka health check
+    if (kafkaConfig?.Enabled == true)
+    {
+        try
+        {
+            var kafkaOptions = ctx.RequestServices.GetRequiredService<IOptions<KafkaOptions>>().Value;
+            var testConfig = new Confluent.Kafka.AdminClientConfig { BootstrapServers = kafkaOptions.BootstrapServers };
+            using var adminClient = new Confluent.Kafka.AdminClientBuilder(testConfig).Build();
+            var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(3));
+            healthChecks["kafka"] = new
+            {
+                status = metadata.Brokers.Count > 0 ? "healthy" : "unhealthy",
+                brokers = metadata.Brokers.Count,
+                bootstrapServers = kafkaOptions.BootstrapServers
+            };
+        }
+        catch (Exception ex)
+        {
+            healthChecks["kafka"] = new
+            {
+                status = "unhealthy",
+                error = ex.Message,
+                bootstrapServers = kafkaConfig.BootstrapServers
+            };
+        }
+    }
+    else
+    {
+        healthChecks["kafka"] = new { status = "disabled" };
+    }
+
+    // PostgreSQL health check
+    try
+    {
+        using var scope = ctx.RequestServices.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarketDataDbContext>();
+        var canConnect = await db.Database.CanConnectAsync();
+        healthChecks["postgresql"] = new
+        {
+            status = canConnect ? "healthy" : "unhealthy"
+        };
+    }
+    catch (Exception ex)
+    {
+        healthChecks["postgresql"] = new
+        {
+            status = "unhealthy",
+            error = ex.Message
+        };
+    }
+
+    var allHealthy = healthChecks.Values.All(h =>
+    {
+        var status = h.GetType().GetProperty("status")?.GetValue(h)?.ToString();
+        return status == "healthy" || status == "disabled";
+    });
+
+    ctx.Response.StatusCode = allHealthy ? 200 : 503;
+    await ctx.Response.WriteAsJsonAsync(new
+    {
+        status = allHealthy ? "healthy" : "degraded",
+        checks = healthChecks,
+        timestamp = DateTime.UtcNow
+    });
+});
 
 // ===== Prometheus scrape endpoint =====
 app.MapPrometheusScrapingEndpoint("/metrics");
