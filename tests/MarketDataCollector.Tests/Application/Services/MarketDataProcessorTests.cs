@@ -1454,4 +1454,84 @@ public class MarketDataProcessorTests
         // Assert
         count.Should().Be(9, "все 9 тиков должны быть обработаны нормально");
     }
+
+    [Fact(Timeout = 10000)]
+    public async Task ProcessBatchAsync_WithDedupCache_SkipsDuplicateTicks()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithDedupCache_SkipsDuplicateTicks)} ===");
+        // Arrange — кэш размером 100. Отправляем один и тот же тик дважды.
+        // Первый батч: тик вставлен (1), добавлен в кэш.
+        // Второй батч: тик отфильтрован кэшем → 0 entities → BulkCopyAsync вернул 0.
+        var insertedCounts = new List<int>();
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<RawTick> entities, CancellationToken _) =>
+            {
+                var count = entities.Count();
+                insertedCounts.Add(count);
+                return count;
+            });
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 1,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true,
+            DeduplicationCacheMaxSize = 100
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем один и тот же тик дважды (с одним ключом)
+        var timestamp = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        await processor.ProcessTickAsync("BTCUSDT", 50000.00m, 0.5m, timestamp, "Binance");
+        await processor.ProcessTickAsync("BTCUSDT", 50000.00m, 0.5m, timestamp, "Binance");
+
+        // Даём время на обработку
+        await Task.Delay(500);
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        // Assert — BulkCopyAsync вызывается дважды (по разу на каждый батч),
+        // но во втором вызове 0 entities (кэш отфильтровал дубликат).
+        insertedCounts.Should().HaveCount(2, "BulkCopyAsync вызывается для каждого батча");
+        insertedCounts[0].Should().Be(1, "первый тик должен быть вставлен");
+        insertedCounts[1].Should().Be(0, "второй тик отфильтрован кэшем");
+
+        var count = await processor.GetProcessedCountAsync();
+        count.Should().Be(1, "только 1 тик должен быть вставлен (второй отсечён кэшем)");
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task ProcessBatchAsync_WithDedupCacheDisabled_ProcessesAllTicks()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WithDedupCacheDisabled_ProcessesAllTicks)} ===");
+        // Arrange — DeduplicationCacheMaxSize = 0 → кэш отключён, все тики проходят
+        _repositoryMock
+            .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+
+        var processor = CreateProcessor(new MarketDataProcessorOptions
+        {
+            BatchSize = 2,
+            ChannelCapacity = 100,
+            UseSingleConsumer = true,
+            DeduplicationCacheMaxSize = 0 // кэш отключён
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await processor.StartProcessingAsync(cts.Token);
+
+        // Act — отправляем один и тот же тик дважды
+        var timestamp = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+        await processor.ProcessTickAsync("BTCUSDT", 50000.00m, 0.5m, timestamp, "Binance");
+        await processor.ProcessTickAsync("BTCUSDT", 50000.00m, 0.5m, timestamp, "Binance");
+
+        await processor.StopProcessingAsync(CancellationToken.None);
+
+        var count = await processor.GetProcessedCountAsync();
+
+        // Assert — оба тика отправлены в БД (кэш не фильтрует)
+        count.Should().Be(2, "без кэша оба тика должны попасть в БД");
+    }
 }

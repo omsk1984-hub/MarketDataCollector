@@ -47,5 +47,14 @@ namespace MarketDataCollector.Core.Configuration
         /// Значение больше 0 — фиксированное количество consumer'ов.
         /// </summary>
         public int ConsumerCount { get; set; } = 0;
+
+        /// <summary>
+        /// Максимальный размер кэша дедупликации (количество записей).
+        /// Тики с ключом (ticker, exchange, timestamp), попавшие в кэш,
+        /// пропускаются перед BulkCopyAsync — экономят COPY + INSERT.
+        /// FIFO-эвикция: при превышении лимита самая старая запись удаляется.
+        /// 0 = кэш отключён.
+        /// </summary>
+        public int DeduplicationCacheMaxSize { get; set; } = 6000;
     }
 }
