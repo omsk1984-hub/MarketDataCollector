@@ -7,6 +7,6 @@ scrape_configs:
     static_configs:
       # Worker запущен на хосте (не в Docker) — используем host.docker.internal
       # Если Worker тоже в Docker — заменить на имя сервиса
-      - targets: ['host.docker.internal:5000']
+      - targets: ['host.docker.internal:5010']
     metrics_path: '/metrics'
     scrape_interval: 5s

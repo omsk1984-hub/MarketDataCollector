@@ -154,7 +154,15 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
             {
                 try
                 {
-                    var consumeResult = _consumer.Consume(ct);
+                    // Используем Consume с таймаутом вместо CancellationToken,
+                    // чтобы избежать Access Violation при закрытии consumer:
+                    // нативный rd_kafka_consumer_poll не реагирует на .NET CancellationToken,
+                    // и вызов _consumer.Close() во время активного poll приводит к
+                    // crash (gc handle уничтожается пока ещё используется).
+                    // С таймаутом poll завершается максимум за pollTimeout секунд,
+                    // после чего безопасно проверяем токен отмены.
+                    var pollTimeout = TimeSpan.FromSeconds(1);
+                    var consumeResult = _consumer.Consume(pollTimeout);
 
                     if (consumeResult == null || consumeResult.IsPartitionEOF)
                         continue;
