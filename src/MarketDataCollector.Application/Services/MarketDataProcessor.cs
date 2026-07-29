@@ -527,35 +527,42 @@ namespace MarketDataCollector.Application.Services
                 // OpenTelemetry: гистограмма размера батча
                 MarketDataTelemetry.BatchSize.Record(batchSize);
 
-                // 1. Убираем дубликаты в памяти (внутри-батчевые дубли)
-                var uniqueTicks = batch
-                    .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
-                    .Select(g => g.First())
-                    .ToList();
-
-                activity?.SetTag("unique.count", uniqueTicks.Count);
-
-                // 1.5. Фильтрация через кэш дедупликации (cross-batch дубли).
-                //      Кэш хранит ключи последних вставленных тиков — если ключ уже есть,
-                //      тик пропускается (экономит COPY + INSERT в БД).
+                // 1. Единый проход: фильтрация через кэш дедупликации.
+                //    Кэш заполняется РАНЬШЕ DB-вставки — поэтому ловит
+                //    и intra-batch дубли (те же ключи в одном батче),
+                //    и cross-batch дубли (ключи из предыдущих батчей).
+                //    Это заменяет GroupBy + отдельный cache loop на один проход.
+                //
+                //    При отключённом кэше (maxSize=0) используется GroupBy как fallback —
+                //    дубли не фильтруются кэшем, но ON CONFLICT DO NOTHING в БД их отсечёт.
                 List<TickData> filteredTicks;
                 int cachedCount = 0;
                 if (dedupCache != null)
                 {
-                    filteredTicks = new List<TickData>(uniqueTicks.Count);
-                    foreach (var t in uniqueTicks)
+                    filteredTicks = new List<TickData>(batch.Count);
+                    foreach (var t in batch)
                     {
                         if (dedupCache.Contains(t.Ticker, t.Exchange, t.Timestamp))
+                        {
                             cachedCount++;
+                        }
                         else
+                        {
                             filteredTicks.Add(t);
+                            dedupCache.Add(t.Ticker, t.Exchange, t.Timestamp);
+                        }
                     }
                 }
                 else
                 {
-                    filteredTicks = uniqueTicks;
+                    // Кэш отключён — GroupBy как fallback для intra-batch дедупликации
+                    filteredTicks = batch
+                        .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
+                        .Select(g => g.First())
+                        .ToList();
                 }
 
+                activity?.SetTag("filtered.count", filteredTicks.Count);
                 activity?.SetTag("cached.count", cachedCount);
 
                 // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
@@ -587,16 +594,6 @@ namespace MarketDataCollector.Application.Services
                     inserted,
                     new KeyValuePair<string, object?>("exchange", batch.Count > 0 ? batch[0].Exchange : "unknown"));
 
-                // Добавляем вставленные тики в кэш дедупликации — чтобы следующие батчи
-                // с теми же ключами были отфильтрованы до обращения к БД.
-                if (dedupCache != null && inserted > 0)
-                {
-                    foreach (var t in filteredTicks)
-                    {
-                        dedupCache.Add(t.Ticker, t.Exchange, t.Timestamp);
-                    }
-                }
-
                 // Инкрементируем RPS-счётчик для каждого сохранённого тика
                 for (int i = 0; i < inserted; i++)
                 {
@@ -606,8 +603,8 @@ namespace MarketDataCollector.Application.Services
                 if (totalInserted % 10000 < inserted)
                 {
                     _logger.LogInformation(
-                        "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, cached={Cached}, вставлено={Inserted})",
-                        totalInserted, totalReceived, batchSize, uniqueTicks.Count, cachedCount, inserted);
+                        "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, filtered={Filtered}, cached={Cached}, вставлено={Inserted})",
+                        totalInserted, totalReceived, batchSize, filteredTicks.Count, cachedCount, inserted);
                 }
 
                 _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено (внутрибатчевых), {Cached} отсечено кэшем",
