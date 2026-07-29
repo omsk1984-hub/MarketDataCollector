@@ -39,7 +39,7 @@ Production-пути записи:
 #### 1.4 Увеличить объём данных
 Файл: [`BenchmarkConfig.cs`](tests/TickWriteBenchmark/BenchmarkConfig.cs)
 
-- Увеличить `TotalTicks` с 20000 до **200000** (200k)
+- Увеличить `TotalTicks` с 20000 до **500000** (500k)
 - Добавить chunk sizes: 500, 1000, 2000, 5000
 
 #### 1.5 Запустить WRITE-бенчмарк и получить baseline
@@ -53,6 +53,8 @@ pwsh run_benchmark.ps1
 Файл: `docker/init-partitioned.sql` (новый файл)
 
 Создать партиционированную версию таблицы `RawTicks`:
+
+**Вариант А: Ручное управление партициями** (без доп. зависимостей)
 - **Стратегия**: RANGE по `Timestamp` (по дням)
 - **Parent table**: `RawTicks` с `PARTITION BY RANGE (Timestamp)`
 - **Дочерние партиции**: `rawticks_yyyy_mm_dd` по дням
@@ -72,15 +74,57 @@ CREATE TABLE RawTicks (
     PRIMARY KEY (Id, Timestamp)
 ) PARTITION BY RANGE (Timestamp);
 
--- Автоматическое создание партиций
+-- Ручное создание партиций
 CREATE TABLE rawticks_2026_07_29 PARTITION OF RawTicks
     FOR VALUES FROM ('2026-07-29') TO ('2026-07-30');
 ```
 
+**Вариант Б: Автоматическое управление через pg_partman**
+- Расширение `pg_partman` автоматически создаёт и удаляет партиции по расписанию
+- Подходит для production, где нужно автоматическое управление жизненным циклом партиций
+
+```sql
+-- Требует расширение pg_partman
+CREATE EXTENSION IF NOT EXISTS pg_partman;
+
+-- Создание parent-таблицы
+CREATE TABLE rawticks_partitioned (
+    Id UUID NOT NULL,
+    Ticker VARCHAR(20) NOT NULL,
+    Price DECIMAL(18,8) NOT NULL,
+    Volume DECIMAL(18,8) NOT NULL,
+    Timestamp TIMESTAMPTZ NOT NULL,
+    Exchange VARCHAR(50) NOT NULL,
+    ReceivedAt TIMESTAMPTZ DEFAULT NOW(),
+    Normalized BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (Id, Timestamp)
+) PARTITION BY RANGE (Timestamp);
+
+-- Регистрация в pg_partman с автоматическим созданием партиций по дням
+SELECT partman.create_parent(
+    p_parent_table := 'public.rawticks_partitioned',
+    p_control := 'timestamp',
+    p_type := 'native',
+    p_interval := '1 day',
+    p_premake := 7  -- создавать партиции на 7 дней вперёд
+);
+
+-- Настройка автоматического создания партиций (cron или pg_partman.run_maintenance)
+-- pg_partman.run_maintenance() должен вызываться периодически (например, раз в день)
+```
+
+Сравнение вариантов:
+| Критерий | Ручное управление | pg_partman |
+|----------|-------------------|------------|
+| Зависимости | Нет | Расширение pg_partman |
+| Автоматизация | Нет (нужен cron/скрипт) | Да (run_maintenance) |
+| Удаление старых партиций | Ручное DROP | Автоматическое retention |
+| Production-ready | Простой | Рекомендуется |
+
 #### 2.2 Добавить READ-тесты в бенчмарк
 Файл: `tests/TickWriteBenchmark/ReadBenchmarkRunner.cs` (новый файл)
 
-Тесты SELECT по времени на **200k+ записях**:
+Тесты SELECT по времени на **500k+ записях**:
 1. **Full scan** — `SELECT * FROM RawTicks WHERE Ticker = 'X'` (без фильтра по времени)
 2. **Time-range query** — `SELECT * FROM RawTicks WHERE Ticker = 'X' AND Timestamp BETWEEN ...` (1 день)
 3. **EXPLAIN ANALYZE** — логирование плана запроса для анализа partition pruning

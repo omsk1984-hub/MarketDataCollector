@@ -1,0 +1,62 @@
+[
+  {
+    "Table": "rawticks",
+    "Label": "Regular",
+    "TestName": "FullScan",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 127.37338,
+    "MinMs": 103.9654,
+    "MaxMs": 136.9704,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Bitmap Heap Scan on rawticks  (cost=1814.35..10065.42 rows=165926 width=57) (actual time=2.716..15.379 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks",
+    "Label": "Regular",
+    "TestName": "TimeRange_1day",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 156.96833999999998,
+    "MinMs": 135.8413,
+    "MaxMs": 192.9072,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Bitmap Heap Scan on rawticks  (cost=1814.35..10895.05 rows=165926 width=57) (actual time=4.245..24.866 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks",
+    "Label": "Regular",
+    "TestName": "TimeRange_1hour",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 189.92966,
+    "MinMs": 167.7312,
+    "MaxMs": 239.9249,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Bitmap Heap Scan on rawticks  (cost=1814.35..10895.05 rows=165926 width=57) (actual time=6.610..36.882 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks",
+    "Label": "Regular",
+    "TestName": "Count_TimeRange",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 28.465980000000002,
+    "MinMs": 22.8027,
+    "MaxMs": 44.2471,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Finalize Aggregate  (cost=10374.28..10374.29 rows=1 width=8) (actual time=42.879..49.638 rows=1 loops=1)"
+  },
+  {
+    "Table": "rawticks",
+    "Label": "Regular",
+    "TestName": "TopN_Limit1000",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 2.6384599999999994,
+    "MinMs": 1.9995,
+    "MaxMs": 3.4073,
+    "RowsReturned": 1000,
+    "ExplainPlan": "Limit  (cost=0.42..123.55 rows=1000 width=57) (actual time=0.018..0.508 rows=1000 loops=1)"
+  }
+]

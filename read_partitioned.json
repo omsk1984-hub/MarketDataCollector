@@ -1,0 +1,62 @@
+[
+  {
+    "Table": "rawticks_partitioned",
+    "Label": "Partitioned",
+    "TestName": "FullScan",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 132.70293999999998,
+    "MinMs": 101.5699,
+    "MaxMs": 146.4561,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Append  (cost=0.15..2547.76 rows=907 width=249) (actual time=4.502..29.471 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks_partitioned",
+    "Label": "Partitioned",
+    "TestName": "TimeRange_1day",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 164.47136,
+    "MinMs": 155.9204,
+    "MaxMs": 175.6767,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Index Scan using rawticks_2026_07_29_ticker_exchange_timestamp_idx on rawticks_2026_07_29 rawticks_partitioned  (cost=0.42..107.65 rows=4 width=249) (actual time=0.029..35.491 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks_partitioned",
+    "Label": "Partitioned",
+    "TestName": "TimeRange_1hour",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 154.8852,
+    "MinMs": 144.4023,
+    "MaxMs": 158.3867,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Index Scan using rawticks_2026_07_29_ticker_exchange_timestamp_idx on rawticks_2026_07_29 rawticks_partitioned  (cost=0.42..107.65 rows=4 width=249) (actual time=0.025..28.544 rows=166667 loops=1)"
+  },
+  {
+    "Table": "rawticks_partitioned",
+    "Label": "Partitioned",
+    "TestName": "Count_TimeRange",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 26.318419999999996,
+    "MinMs": 24.5108,
+    "MaxMs": 29.1869,
+    "RowsReturned": 166667,
+    "ExplainPlan": "Aggregate  (cost=107.66..107.67 rows=1 width=8) (actual time=42.324..42.326 rows=1 loops=1)"
+  },
+  {
+    "Table": "rawticks_partitioned",
+    "Label": "Partitioned",
+    "TestName": "TopN_Limit1000",
+    "Ticker": "BTCUSDT",
+    "Iterations": 5,
+    "AvgMs": 33.91486,
+    "MinMs": 33.5269,
+    "MaxMs": 34.2305,
+    "RowsReturned": 1000,
+    "ExplainPlan": "Limit  (cost=2592.31..2594.58 rows=907 width=249) (actual time=43.874..43.944 rows=1000 loops=1)"
+  }
+]

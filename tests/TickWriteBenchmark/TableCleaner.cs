@@ -12,14 +12,15 @@ public sealed class TableCleaner
     }
 
     /// <summary>
-    /// Очищает таблицу rawticks через TRUNCATE.
+    /// Очищает таблицу через TRUNCATE.
     /// </summary>
-    public async Task TruncateAsync()
+    /// <param name="tableName">Имя таблицы (по умолчанию rawticks).</param>
+    public async Task TruncateAsync(string tableName = "rawticks")
     {
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "TRUNCATE TABLE rawticks;";
+        cmd.CommandText = $"TRUNCATE TABLE {tableName};";
         await cmd.ExecuteNonQueryAsync();
     }
 }

@@ -8,10 +8,25 @@ public sealed class BenchmarkConfig
     /// <summary>
     /// Размеры чанков для тестирования.
     /// </summary>
-    public int[] ChunkSizes { get; init; } = [ 500, 700, 800, 900, 1000];
+    public int[] ChunkSizes { get; init; } = [ 500, 1000, 2000, 5000];
 
     /// <summary>
     /// Фиксированное общее количество тиков на каждый тест.
     /// </summary>
-    public int TotalTicks { get; init; } = 20000;
+    public int TotalTicks { get; init; } = 500000;
+
+    /// <summary>
+    /// Тикеры для генерации данных (мульти-тикери как в реальности).
+    /// </summary>
+    public string[] Tickers { get; init; } = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+
+    /// <summary>
+    /// Биржа для генерации данных.
+    /// </summary>
+    public string Exchange { get; init; } = "BENCH";
+
+    /// <summary>
+    /// Количество итераций для READ-бенчмарка (усреднение результатов).
+    /// </summary>
+    public int ReadBenchmarkIterations { get; init; } = 5;
 }

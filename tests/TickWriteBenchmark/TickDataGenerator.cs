@@ -9,9 +9,11 @@ public sealed class TickDataGenerator
 
     /// <summary>
     /// Генерирует указанное количество тиков с уникальными timestamp.
+    /// Тикеры ротируются из переданного списка (как в реальности — каждый consumer пишет свой тикер).
     /// </summary>
-    public List<RawTick> Generate(int count)
+    public List<RawTick> Generate(int count, string[]? tickers = null, string exchange = "BENCH")
     {
+        var tickerArray = tickers ?? ["BENCHTEST"];
         var ticks = new List<RawTick>(count);
         var baseTimestamp = DateTime.UtcNow;
 
@@ -21,18 +23,38 @@ public sealed class TickDataGenerator
             // (PostgreSQL TIMESTAMPTZ хранит микросекунды, шаг 100 нс = 1 tick приводит к коллизиям)
             var tickTimestamp = baseTimestamp.AddMilliseconds(i);
 
+            // Ротация тикеров — имитирует реальную нагрузку с несколькими символами
+            var ticker = tickerArray[i % tickerArray.Length];
+
+            // Базовая цена зависит от тикера (имитация разных ценовых уровней)
+            var basePrice = ticker switch
+            {
+                "BTCUSDT" => 50000.00m,
+                "ETHUSDT" => 3000.00m,
+                "SOLUSDT" => 150.00m,
+                _ => 50000.00m
+            };
+
             var tick = new RawTick(
-                ticker: "BENCHTEST",
-                price: 50000.00m + (i % 100),
+                ticker: ticker,
+                price: basePrice + (i % 100),
                 volume: 0.1m + (i % 10) * 0.01m,
                 timestamp: tickTimestamp,
-                exchange: "BENCH",
+                exchange: exchange,
                 timeService: TimeService);
 
             ticks.Add(tick);
         }
 
         return ticks;
+    }
+
+    /// <summary>
+    /// Генерирует указанное количество тиков с уникальными timestamp (обратная совместимость).
+    /// </summary>
+    public List<RawTick> Generate(int count)
+    {
+        return Generate(count, ["BENCHTEST"], "BENCH");
     }
 
     /// <summary>
