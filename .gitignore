@@ -2,3 +2,4 @@
 **/obj/
 *.gcdump
 gc_metrics.csv
+$null

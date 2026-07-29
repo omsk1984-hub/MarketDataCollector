@@ -361,7 +361,11 @@ public class TickGeneratorService : BackgroundService
                 var maxIndex = Math.Min(20, snapshot.Length);
                 if (maxIndex > 0)
                 {
-                    var dupJson = snapshot[random.Next(maxIndex)];
+                    // Берём из ПОСЛЕДНИХ 20 записей (самых свежих), а не из первых.
+                    // Это гарантирует, что дубль попадёт в in-memory кэш дедупликации
+                    // (размером ~1.2 сек данных), что экономит COPY + INSERT в БД.
+                    var startIndex = snapshot.Length - maxIndex;
+                    var dupJson = snapshot[startIndex + random.Next(maxIndex)];
                     Interlocked.Increment(ref _duplicateTicksSent);
                     return dupJson; // полная копия JSON — тот же tradeId, timestamp, цена, объём
                 }
