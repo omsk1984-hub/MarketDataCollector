@@ -564,11 +564,11 @@ namespace MarketDataCollector.Application.Services
                     _processedRpsCounter.Increment();
                 }
                 
-                if (totalInserted % 1000 < inserted)
+                if (totalInserted % 10000 < inserted)
                 {
                     _logger.LogInformation(
-                        "Session={SessionId}: Всего обработано: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, вставлено={Inserted})",
-                        _sessionId, totalInserted, totalReceived, batchSize, uniqueTicks.Count, inserted);
+                        "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, uniq={Unique}, вставлено={Inserted})",
+                        totalInserted, totalReceived, batchSize, uniqueTicks.Count, inserted);
                 }
 
                 _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено",

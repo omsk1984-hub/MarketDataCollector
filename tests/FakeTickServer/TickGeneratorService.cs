@@ -204,8 +204,9 @@ public class TickGeneratorService : BackgroundService
                     {
                         _isLimitReached = true;
                         _logger.LogInformation(
-                            "Достигнут лимит тиков: {MaxTicks}. Генерация остановлена, сервис продолжает работу.",
-                            _settings.MaxTicks);
+                            "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
+                            "Генерация остановлена, сервис продолжает работу.",
+                            _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
                     }
                     await Task.Delay(1000, stoppingToken);
                     continue;
@@ -223,6 +224,18 @@ public class TickGeneratorService : BackgroundService
                 var elapsedMs = stopwatch.Elapsed.TotalMilliseconds;
                 var newExpected = (long)(elapsedMs * _settings.Rps / 1000.0);
                 var need = (int)(newExpected - expectedTotal);
+
+                // Ограничиваем need, чтобы не превысить MaxTicks
+                if (_settings.MaxTicks > 0 && need > 0)
+                {
+                    var remaining = _settings.MaxTicks - Interlocked.Read(ref _totalTicks);
+                    if (remaining <= 0)
+                    {
+                        // Лимит уже достигнут — перейти к проверке в начале цикла
+                        continue;
+                    }
+                    need = (int)Math.Min(need, remaining);
+                }
 
                 if (need > 0)
                 {
@@ -267,6 +280,13 @@ public class TickGeneratorService : BackgroundService
 
                                 Interlocked.Increment(ref _sentCount);
                                 Interlocked.Increment(ref _totalTicks);
+
+                                // Проверка лимита внутри пакета — прерываем отправку
+                                if (_settings.MaxTicks > 0 &&
+                                    Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks)
+                                {
+                                    break;
+                                }
                             }
                             catch (WebSocketException ex) when (
                                 ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely ||
@@ -287,6 +307,22 @@ public class TickGeneratorService : BackgroundService
                                 RemoveClient(clientId);
                                 break; // прерываем inner loop для этого клиента
                             }
+                        }
+
+                        // Если лимит достигнут — прерываем итерацию по клиентам
+                        if (_isLimitReached ||
+                            (_settings.MaxTicks > 0 &&
+                             Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks))
+                        {
+                            if (!_isLimitReached)
+                            {
+                                _isLimitReached = true;
+                                _logger.LogInformation(
+                                    "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
+                                    "Генерация остановлена, сервис продолжает работу.",
+                                    _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
+                            }
+                            break;
                         }
                     }
                 }
