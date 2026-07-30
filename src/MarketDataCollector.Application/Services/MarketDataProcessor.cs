@@ -45,6 +45,7 @@ namespace MarketDataCollector.Application.Services
         private readonly int _backlogLowThreshold;
         private readonly int _backlogHighThreshold;
         private readonly double _writeDurationWarningMs;
+        private readonly int _minPartialBatchSize;
 
         // Shared between Collector (reads) and Writer (writes) for adaptive batch size
         private long _lastWriteDurationMs;
@@ -117,6 +118,7 @@ namespace MarketDataCollector.Application.Services
             _backlogLowThreshold = options.BacklogLowThreshold;
             _backlogHighThreshold = options.BacklogHighThreshold;
             _writeDurationWarningMs = options.WriteDurationWarningMs;
+            _minPartialBatchSize = options.MinPartialBatchSize;
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
@@ -429,7 +431,16 @@ namespace MarketDataCollector.Application.Services
 
                         if (completed == flushDelay)
                         {
-                            // Timer flush — send partial batch
+                            // Timer flush — skip if partial batch is too small (micro-batch prevention)
+                            if (_minPartialBatchSize > 0 && batchCount < _minPartialBatchSize)
+                            {
+                                LogTimerFlushSkipped(_sessionId, batchCount, _minPartialBatchSize, channelIndex);
+                                flushTimerCts.TryReset();
+                                flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
+                                continue;
+                            }
+
+                            // Send partial batch
                             LogTimerFlush(_sessionId, batchCount, adaptiveBatchSize, channelIndex);
 
                             var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
@@ -893,6 +904,8 @@ namespace MarketDataCollector.Application.Services
                 activity?.SetStatus(ActivityStatusCode.Error, pgEx.Message);
                 activity?.SetTag("exception.type", "PostgresException");
                 activity?.SetTag("exception.sql_state", pgEx.SqlState);
+                activity?.SetTag("exception.message", pgEx.Message);
+                activity?.SetTag("batch.size", batchCount);
                 LogPostgresError(pgEx, pgEx.SqlState, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
                     ExceptionTypePostgresTag,
@@ -902,6 +915,8 @@ namespace MarketDataCollector.Application.Services
             {
                 activity?.SetStatus(ActivityStatusCode.Error, npgEx.Message);
                 activity?.SetTag("exception.type", "NpgsqlException");
+                activity?.SetTag("exception.message", npgEx.Message);
+                activity?.SetTag("batch.size", batchCount);
                 LogNpgsqlError(npgEx, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
                     ExceptionTypeNpgsqlTag,
@@ -911,6 +926,8 @@ namespace MarketDataCollector.Application.Services
             {
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 activity?.SetTag("exception.type", ex.GetType().Name);
+                activity?.SetTag("exception.message", ex.Message);
+                activity?.SetTag("batch.size", batchCount);
                 LogUnexpectedBatchError(ex, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
                     new KeyValuePair<string, object?>("exception_type", ex.GetType().Name),

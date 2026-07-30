@@ -75,4 +75,8 @@ public partial class MarketDataProcessor
     [LoggerMessage(EventId = 17, Level = LogLevel.Debug,
         Message = "Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}")]
     partial void LogProcessTickDebug(string ticker, decimal price, decimal volume, string exchange);
+
+    [LoggerMessage(EventId = 18, Level = LogLevel.Debug,
+        Message = "Session={SessionId}: Flush timer skip — partial batch too small: {Count} < {MinSize} ticks (channel={Channel})")]
+    partial void LogTimerFlushSkipped(Guid sessionId, int count, int minSize, int channel);
 }

@@ -3,8 +3,8 @@ using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
 using System.Globalization;
+using System.Text.Json;
 
 namespace MarketDataCollector.Infrastructure.Clients;
 
@@ -71,14 +71,21 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     {
         try
         {
-            var json = JObject.Parse(message);
-            //_logger.LogInformation("Received message: {Message}", message);
-            if (json["e"]?.ToString() == "trade")
+            using var doc = JsonDocument.Parse(message);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("e", out var eventType) && eventType.GetString() == "trade")
             {
-                var ticker = json["s"]?.ToString();
-                var price = decimal.Parse(json["p"]?.ToString() ?? "0", CultureInfo.InvariantCulture);
-                var volume = decimal.Parse(json["q"]?.ToString() ?? "0", CultureInfo.InvariantCulture);
-                var timeMs = long.Parse(json["T"]?.ToString() ?? "0");
+                var ticker = root.TryGetProperty("s", out var s) ? s.GetString() : null;
+                var price = root.TryGetProperty("p", out var p)
+                    ? decimal.Parse(p.GetString() ?? "0", CultureInfo.InvariantCulture)
+                    : 0m;
+                var volume = root.TryGetProperty("q", out var q)
+                    ? decimal.Parse(q.GetString() ?? "0", CultureInfo.InvariantCulture)
+                    : 0m;
+                var timeMs = root.TryGetProperty("T", out var T)
+                    ? T.GetInt64()
+                    : 0L;
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime;
 
                 if (ticker != null)
@@ -86,6 +93,10 @@ public class BinanceWebSocketClient : BaseWebSocketClient
                     await _dataProcessor.ProcessTickAsync(ticker, price, volume, timestamp, ExchangeName);
                 }
             }
+        }
+        catch (JsonException ex)
+        {
+            OnErrorOccurred(ex);
         }
         catch (Exception ex)
         {

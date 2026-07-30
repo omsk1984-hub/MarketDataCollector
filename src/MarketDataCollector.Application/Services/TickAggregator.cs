@@ -60,12 +60,11 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Внутреннее представление свечи в памяти.
+        /// Value-type — избегает heap-аллокаций.
+        /// Ticker/Exchange/Interval хранятся в ключе словаря или вычисляются.
         /// </summary>
-        private class InMemoryCandle
+        private struct InMemoryCandle
         {
-            public string Ticker = null!;
-            public string Exchange = null!;
-            public string Interval = null!;
             public DateTime StartTime;
             public DateTime EndTime;
             public decimal Open;
@@ -74,19 +73,13 @@ namespace MarketDataCollector.Application.Services
             public decimal Close;
             public decimal Volume;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Update(decimal price, decimal volume)
             {
                 if (price > High) High = price;
                 if (price < Low) Low = price;
                 Close = price;
                 Volume += volume;
-            }
-
-            public AggregatedData ToAggregatedData(ITimeService timeService)
-            {
-                return new AggregatedData(
-                    Ticker, Interval, Open, High, Low, Close, Volume,
-                    StartTime, EndTime, timeService);
             }
         }
 
@@ -199,6 +192,7 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Фоновая задача: читает тики из Channel и обновляет in-memory свечи.
+        /// Использует AddOrUpdate вместо GetOrAdd, т.к. struct возвращается по значению.
         /// </summary>
         private async Task ProcessChannelAsync(CancellationToken ct)
         {
@@ -208,22 +202,30 @@ namespace MarketDataCollector.Application.Services
                 {
                     var bucketStart = RoundDown(tick.Timestamp, _candleInterval);
                     var key = new AggregatorKey(tick.Ticker, tick.Exchange, bucketStart.Ticks);
+                    var endTime = bucketStart + _candleInterval;
 
-                    var candle = _activeCandles.GetOrAdd(key, _ => new InMemoryCandle
-                    {
-                        Ticker = tick.Ticker,
-                        Exchange = tick.Exchange,
-                        Interval = FormatInterval(_candleInterval),
-                        StartTime = bucketStart,
-                        EndTime = bucketStart + _candleInterval,
-                        Open = tick.Price,
-                        High = tick.Price,
-                        Low = tick.Price,
-                        Close = tick.Price,
-                        Volume = 0m
-                    });
-
-                    candle.Update(tick.Price, tick.Volume);
+                    _activeCandles.AddOrUpdate(
+                        key,
+                        addValueFactory: key =>
+                        {
+                            var c = new InMemoryCandle
+                            {
+                                StartTime = bucketStart,
+                                EndTime = endTime,
+                                Open = tick.Price,
+                                High = tick.Price,
+                                Low = tick.Price,
+                                Close = tick.Price,
+                                Volume = 0m
+                            };
+                            c.Update(tick.Price, tick.Volume);
+                            return c;
+                        },
+                        updateValueFactory: (key, existing) =>
+                        {
+                            existing.Update(tick.Price, tick.Volume);
+                            return existing;
+                        });
                 }
             }
             catch (OperationCanceledException)
@@ -241,27 +243,25 @@ namespace MarketDataCollector.Application.Services
             try
             {
                 var now = _timeService.UtcNow;
-                var completedKeys = new List<AggregatorKey>();
-                var completedCandles = new List<InMemoryCandle>();
+                var completedPairs = new List<KeyValuePair<AggregatorKey, InMemoryCandle>>();
 
                 foreach (var kvp in _activeCandles)
                 {
                     if (kvp.Value.EndTime <= now)
                     {
-                        completedKeys.Add(kvp.Key);
-                        completedCandles.Add(kvp.Value);
+                        completedPairs.Add(kvp);
                     }
                 }
 
-                foreach (var key in completedKeys)
+                foreach (var pair in completedPairs)
                 {
-                    _activeCandles.TryRemove(key, out _);
+                    _activeCandles.TryRemove(pair.Key, out _);
                 }
 
-                if (completedCandles.Count > 0)
+                if (completedPairs.Count > 0)
                 {
-                    await SaveCandlesAsync(completedCandles);
-                    _logger.LogDebug("Сброшено {Count} завершённых свечей", completedCandles.Count);
+                    await SaveCandlesAsync(completedPairs);
+                    _logger.LogDebug("Сброшено {Count} завершённых свечей", completedPairs.Count);
                 }
             }
             catch (Exception ex)
@@ -277,13 +277,13 @@ namespace MarketDataCollector.Application.Services
         {
             try
             {
-                var candles = _activeCandles.Values.ToList();
+                var pairs = _activeCandles.ToList();
                 _activeCandles.Clear();
 
-                if (candles.Count > 0)
+                if (pairs.Count > 0)
                 {
-                    await SaveCandlesAsync(candles);
-                    _logger.LogInformation("Финальный flush: сохранено {Count} свечей", candles.Count);
+                    await SaveCandlesAsync(pairs);
+                    _logger.LogInformation("Финальный flush: сохранено {Count} свечей", pairs.Count);
                 }
             }
             catch (Exception ex)
@@ -296,7 +296,7 @@ namespace MarketDataCollector.Application.Services
         /// Сохранение списка свечей: через Kafka (если включено) или напрямую в БД.
         /// При ошибке Kafka выполняется fallback на прямую запись в БД.
         /// </summary>
-        private async Task SaveCandlesAsync(List<InMemoryCandle> candles)
+        private async Task SaveCandlesAsync(List<KeyValuePair<AggregatorKey, InMemoryCandle>> candles)
         {
             if (_useKafka && _kafkaCandleProducer != null)
             {
@@ -318,14 +318,18 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Публикация свечей в Kafka topic aggregated-data.
+        /// Ticker/Exchange берутся из ключа словаря, Interval вычисляется.
         /// </summary>
-        private async Task SaveCandlesViaKafkaAsync(List<InMemoryCandle> candles)
+        private async Task SaveCandlesViaKafkaAsync(List<KeyValuePair<AggregatorKey, InMemoryCandle>> candles)
         {
-            foreach (var candle in candles)
+            var interval = FormatInterval(_candleInterval);
+
+            foreach (var pair in candles)
             {
+                var (key, candle) = pair;
                 await _kafkaCandleProducer!.ProduceAsync(
-                    candle.Ticker,
-                    candle.Interval,
+                    key.Ticker,
+                    interval,
                     candle.Open,
                     candle.High,
                     candle.Low,
@@ -333,7 +337,7 @@ namespace MarketDataCollector.Application.Services
                     candle.Volume,
                     candle.StartTime,
                     candle.EndTime,
-                    candle.Exchange,
+                    key.Exchange,
                     CancellationToken.None);
             }
 
@@ -344,13 +348,23 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Сохранение списка свечей напрямую в БД через репозиторий (fallback).
+        /// Ticker/Exchange берутся из ключа словаря, Interval вычисляется.
         /// </summary>
-        private async Task SaveCandlesViaDatabaseAsync(List<InMemoryCandle> candles)
+        private async Task SaveCandlesViaDatabaseAsync(List<KeyValuePair<AggregatorKey, InMemoryCandle>> candles)
         {
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IAggregatedDataRepository>();
+            var interval = FormatInterval(_candleInterval);
 
-            var entities = candles.Select(c => c.ToAggregatedData(_timeService)).ToList();
+            var entities = candles.Select(pair =>
+            {
+                var (key, candle) = pair;
+                return new AggregatedData(
+                    key.Ticker, interval, candle.Open, candle.High,
+                    candle.Low, candle.Close, candle.Volume,
+                    candle.StartTime, candle.EndTime, _timeService);
+            }).ToList();
+
             await repository.AddRangeAsync(entities);
             await repository.SaveChangesAsync();
         }

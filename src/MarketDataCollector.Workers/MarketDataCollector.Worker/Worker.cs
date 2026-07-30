@@ -63,11 +63,16 @@ public class Worker : BackgroundService
             // Запускаем агрегатор свечей
             var aggregatorTask = tickAggregator.StartAsync(stoppingToken);
 
-            // Теперь запускаем WebSocket-клиентов — все их тики пойдут
-            // в уже готовый канал процессора, ничего не потеряется.
-            _logger.LogInformation("Starting {Count} WebSocket clients...", clients.Count);
-            var tasks = clients.Select(client => client.StartAsync(stoppingToken));
-            await Task.WhenAll(tasks);
+            // Теперь запускаем WebSocket-клиентов — staggered startup с интервалом 2с
+            // чтобы предотвратить стартовый пик backlog (36,243) и дропы (33,456).
+            // Каждый клиент начинает с ~6,400 msg/s, stagger даёт consumer'у фору.
+            _logger.LogInformation("Starting {Count} WebSocket clients with staggered startup (2s interval)...", clients.Count);
+            for (int i = 0; i < clients.Count; i++)
+            {
+                _ = clients[i].StartAsync(stoppingToken); // fire-and-forget — фоновая задача recovery loop
+                if (i < clients.Count - 1)
+                    await Task.Delay(2000, stoppingToken); // 2s stagger между стартами
+            }
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
             await RunHealthCheckAsync(clients, marketDataProcessor, stoppingToken);

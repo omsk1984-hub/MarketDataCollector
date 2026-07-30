@@ -3,8 +3,8 @@ using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Infrastructure.Clients;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using System.Globalization;
+using System.Text.Json;
 using Xunit.Abstractions;
 
 namespace MarketDataCollector.Tests.Infrastructure.Clients;
@@ -260,7 +260,7 @@ public class BinanceWebSocketClientTests
         // Assert
         errorOccurred.Should().BeTrue();
         capturedException.Should().NotBeNull();
-        capturedException.Should().BeOfType<Newtonsoft.Json.JsonReaderException>();
+        capturedException.Should().BeOfType<JsonException>();
     }
 
     [Fact(Timeout = 5000)]

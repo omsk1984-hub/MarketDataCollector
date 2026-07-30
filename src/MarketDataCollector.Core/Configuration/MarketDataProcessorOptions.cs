@@ -71,6 +71,15 @@ namespace MarketDataCollector.Core.Configuration
         public int FlushIntervalSeconds { get; set; } = 0;
 
         /// <summary>
+        /// Минимальный размер частичного батча при flush по таймеру.
+        /// Если batchCount меньше этого значения, flush timer ждёт дальше,
+        /// позволяя накопить больше тиков перед записью.
+        /// Предотвращает микробатчи (1-5 тиков), которые составляют 35.4% батчей.
+        /// Рекомендуемое значение: 100-250 (эмпирически).
+        /// </summary>
+        public int MinPartialBatchSize { get; set; } = 250;
+
+        /// <summary>
         /// Режим Single Consumer: использует ровно 1 consumer вместо N параллельных.
         ///
         /// Когда true (рекомендовано):
