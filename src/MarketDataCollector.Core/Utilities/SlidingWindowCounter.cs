@@ -42,6 +42,29 @@ public sealed class SlidingWindowCounter
     }
 
     /// <summary>
+    /// Batch-инкремент: атомарно добавляет указанное количество к bucket'у текущей секунды.
+    /// Позволяет избежать N вызовов Interlocked.Increment при массовых операциях.
+    /// </summary>
+    public void IncrementBatch(long count)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var idx = (int)(now % WindowSize);
+
+        var storedTime = Interlocked.Read(ref _bucketTimes[idx]);
+        if (storedTime != now)
+        {
+            var prevTime = Interlocked.Exchange(ref _bucketTimes[idx], now);
+            if (prevTime != now)
+            {
+                Interlocked.Exchange(ref _buckets[idx], count);
+                return;
+            }
+        }
+
+        Interlocked.Add(ref _buckets[idx], count);
+    }
+
+    /// <summary>
     /// Возвращает средний RPS за последние <paramref name="lastSeconds"/> секунд.
     /// </summary>
     /// <param name="lastSeconds">Количество секунд для усреднения (по умолчанию 10, макс. 60).</param>

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -18,13 +19,30 @@ using TickData = MarketDataCollector.Domain.Entities.TickData;
 namespace MarketDataCollector.Application.Services
 {
     /// <summary>
+    /// Композитный ключ для _activeCandles.
+    /// Value-type, избегает аллокации строки при каждом тике.
+    /// </summary>
+    internal readonly record struct AggregatorKey(string Ticker, string Exchange, long BucketTicks)
+        : IEquatable<AggregatorKey>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(
+                Ticker?.GetHashCode(StringComparison.Ordinal) ?? 0,
+                Exchange?.GetHashCode(StringComparison.Ordinal) ?? 0,
+                BucketTicks);
+        }
+    }
+
+    /// <summary>
     /// Агрегатор тиковых данных в OHLCV-свечи заданного интервала.
     /// Работает независимо от основного пайплайна записи RawTicks.
     /// </summary>
     public class TickAggregator : ITickAggregator
     {
         private readonly Channel<TickData> _channel;
-        private readonly ConcurrentDictionary<string, InMemoryCandle> _activeCandles = new();
+        private readonly ConcurrentDictionary<AggregatorKey, InMemoryCandle> _activeCandles = new();
         private readonly TimeSpan _candleInterval;
         private readonly ITimeService _timeService;
         private readonly ILogger<TickAggregator> _logger;
@@ -189,7 +207,7 @@ namespace MarketDataCollector.Application.Services
                 await foreach (var tick in _channel.Reader.ReadAllAsync(ct))
                 {
                     var bucketStart = RoundDown(tick.Timestamp, _candleInterval);
-                    var key = $"{tick.Ticker}|{tick.Exchange}|{bucketStart:O}";
+                    var key = new AggregatorKey(tick.Ticker, tick.Exchange, bucketStart.Ticks);
 
                     var candle = _activeCandles.GetOrAdd(key, _ => new InMemoryCandle
                     {
@@ -223,7 +241,7 @@ namespace MarketDataCollector.Application.Services
             try
             {
                 var now = _timeService.UtcNow;
-                var completedKeys = new List<string>();
+                var completedKeys = new List<AggregatorKey>();
                 var completedCandles = new List<InMemoryCandle>();
 
                 foreach (var kvp in _activeCandles)

@@ -152,8 +152,6 @@ namespace MarketDataCollector.Application.Services
                 _ = _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
             }
 
-            _logger.LogDebug("Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}", ticker, price, volume, exchange);
-
             return Task.CompletedTask;
         }
 
@@ -545,10 +543,6 @@ namespace MarketDataCollector.Application.Services
                 //    Кэш заполняется РАНЬШЕ DB-вставки — поэтому ловит
                 //    и intra-batch дубли (те же ключи в одном батче),
                 //    и cross-batch дубли (ключи из предыдущих батчей).
-                //    Это заменяет GroupBy + отдельный cache loop на один проход.
-                //
-                //    При отключённом кэше (maxSize=0) используется GroupBy как fallback —
-                //    дубли не фильтруются кэшем, но ON CONFLICT DO NOTHING в БД их отсечёт.
                 List<TickData> filteredTicks;
                 int cachedCount = 0;
                 if (dedupCache != null)
@@ -585,7 +579,6 @@ namespace MarketDataCollector.Application.Services
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
                 // 3. Bulk insert напрямую из filteredTicks (без промежуточного List<RawTick>)
-                //    — устраняет двойную итерацию и лишние аллокации объектов.
                 var sw = Stopwatch.StartNew();
                 var inserted = await repository.BulkCopyAsync(filteredTicks, _timeService, cancellationToken);
                 sw.Stop();
@@ -624,11 +617,8 @@ namespace MarketDataCollector.Application.Services
                     inserted,
                     new KeyValuePair<string, object?>("exchange", batch.Count > 0 ? batch[0].Exchange : "unknown"));
 
-                // Инкрементируем RPS-счётчик для каждого сохранённого тика
-                for (int i = 0; i < inserted; i++)
-                {
-                    _processedRpsCounter.Increment();
-                }
+                // Batch increment: один Interlocked.Add вместо N Interlocked.Increment
+                _processedRpsCounter.IncrementBatch(inserted);
                 
                 if (totalInserted % 10000 < inserted)
                 {
@@ -636,9 +626,6 @@ namespace MarketDataCollector.Application.Services
                         "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, filtered={Filtered}, cached={Cached}, вставлено={Inserted})",
                         totalInserted, totalReceived, batchSize, filteredTicks.Count, cachedCount, inserted);
                 }
-
-                _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено (внутрибатчевых), {Cached} отсечено кэшем",
-                    inserted, filteredTicks.Count - inserted, cachedCount);
             }
             catch (OperationCanceledException)
             {

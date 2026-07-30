@@ -304,11 +304,11 @@ namespace MarketDataCollector.Infrastructure.Repositories
         }
 
         /// <summary>
-        /// Bulk insert напрямую из List<TickData> без промежуточного List<RawTick>.
+        /// Bulk insert напрямую из IReadOnlyList<TickData> без промежуточного List<RawTick>.
         /// Создаёт RawTick в одном проходе — устраняет двойную итерацию и лишние аллокации.
-        /// Price/Volume передаются как text[] с кастом ::numeric (как в базовом BulkCopyAsync).
+        /// Price/Volume передаются как numeric[] (было text[], теперь decimal[] без string аллокаций).
         /// </summary>
-        public async Task<int> BulkCopyAsync(List<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
+        public async Task<int> BulkCopyAsync(IReadOnlyList<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
         {
             if (ticks.Count == 0)
                 return 0;
@@ -316,8 +316,8 @@ namespace MarketDataCollector.Infrastructure.Repositories
             var count = ticks.Count;
             var ids = new Guid[count];
             var tickers = new string[count];
-            var prices = new string[count];
-            var volumes = new string[count];
+            var prices = new decimal[count];
+            var volumes = new decimal[count];
             var timestamps = new DateTime[count];
             var exchanges = new string[count];
             var receivedAts = new DateTime[count];
@@ -330,8 +330,8 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 var t = ticks[i];
                 ids[i] = Guid.NewGuid();
                 tickers[i] = t.Ticker;
-                prices[i] = t.Price.ToString(CultureInfo.InvariantCulture);
-                volumes[i] = t.Volume.ToString(CultureInfo.InvariantCulture);
+                prices[i] = t.Price;
+                volumes[i] = t.Volume;
                 timestamps[i] = t.Timestamp;
                 exchanges[i] = t.Exchange;
                 receivedAts[i] = now;
@@ -340,7 +340,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
             const string sql = @"
                 INSERT INTO rawticks (""id"", ""ticker"", ""price"", ""volume"", ""timestamp"", ""exchange"", ""receivedat"", ""normalized"")
-                SELECT unnest(@ids), unnest(@tickers), unnest(@prices::text[])::numeric, unnest(@volumes::text[])::numeric,
+                SELECT unnest(@ids), unnest(@tickers), unnest(@prices), unnest(@volumes),
                        unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
                 ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
 
@@ -348,8 +348,8 @@ namespace MarketDataCollector.Infrastructure.Repositories
             {
                 new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = ids },
                 new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = tickers },
-                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = prices },
-                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = volumes },
+                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = prices },
+                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = volumes },
                 new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = timestamps },
                 new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = exchanges },
                 new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = receivedAts },
