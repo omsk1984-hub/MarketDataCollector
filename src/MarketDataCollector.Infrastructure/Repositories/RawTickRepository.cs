@@ -34,6 +34,19 @@ namespace MarketDataCollector.Infrastructure.Repositories
                    unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
             ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
 
+        // Reusable arrays for BulkCopyAsync(TickData) — zero per-batch allocations on steady state.
+        // Safe because RawTickRepository is Scoped + consumer processes batches sequentially.
+        // Cannot use ArrayPool directly because Npgsql requires precise Array.Length,
+        // and Rent() may return a larger array.
+        private Guid[]? _idsCache;
+        private string[]? _tickersCache;
+        private decimal[]? _pricesCache;
+        private decimal[]? _volumesCache;
+        private DateTime[]? _timestampsCache;
+        private string[]? _exchangesCache;
+        private DateTime[]? _receivedAtsCache;
+        private bool[]? _normalizedsCache;
+
         public RawTickRepository(MarketDataDbContext context, ILogger<RawTickRepository> logger)
         {
             _context = context;
@@ -178,6 +191,19 @@ namespace MarketDataCollector.Infrastructure.Repositories
             return (ex is PostgresException pg && pg.SqlState is "40P01" or "57014" or "08006" or "08001" or "08003")
                 || ex is NpgsqlException
                 || ex is TimeoutException;
+        }
+
+        /// <summary>
+        /// Returns a reusable array of exactly <paramref name="count"/> elements.
+        /// Allocates a new array only when <paramref name="count"/> changes (rare).
+        /// Thread-safe only when called sequentially (Scoped repository, single consumer).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static T[] RentOrCreate<T>([MaybeNull] ref T[]? cache, int count)
+        {
+            if (cache == null || cache.Length != count)
+                cache = new T[count];
+            return cache;
         }
 
         [Obsolete("Use BulkCopyAsync (UNNEST-based) instead. This method uses per-row VALUES and is ~10-50x slower.")]
@@ -382,17 +408,19 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 return 0;
 
             var count = ticks.Count;
-            // Используем прямые new[] для Npgsql — массивы <85 KB, не LOH.
-            // ArrayPool не подходит: Npgsql требует точного размера массива (Array.Length),
-            // а Rent() может вернуть массив больше запрошенного размера.
-            var ids = new Guid[count];
-            var tickers = new string[count];
-            var prices = new decimal[count];
-            var volumes = new decimal[count];
-            var timestamps = new DateTime[count];
-            var exchanges = new string[count];
-            var receivedAts = new DateTime[count];
-            var normalizeds = new bool[count];
+
+            // Reusable cached buffers — zero per-batch allocations on steady state.
+            // ArrayPool.Rent() may return a larger array than requested, which breaks
+            // Npgsql because it uses Array.Length as element count. Instead, we cache
+            // arrays and reallocate only when batch size changes (rare).
+            var ids = RentOrCreate(ref _idsCache, count);
+            var tickers = RentOrCreate(ref _tickersCache, count);
+            var prices = RentOrCreate(ref _pricesCache, count);
+            var volumes = RentOrCreate(ref _volumesCache, count);
+            var timestamps = RentOrCreate(ref _timestampsCache, count);
+            var exchanges = RentOrCreate(ref _exchangesCache, count);
+            var receivedAts = RentOrCreate(ref _receivedAtsCache, count);
+            var normalizeds = RentOrCreate(ref _normalizedsCache, count);
 
             var now = timeService.UtcNow;
 

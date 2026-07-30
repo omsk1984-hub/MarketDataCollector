@@ -27,13 +27,27 @@ namespace MarketDataCollector.Application.Services
         private readonly ILogger<MarketDataProcessor> _logger;
         private readonly ITimeService _timeService;
         private Channel<TickData>[] _channels = null!;
-        private readonly int _batchSize;
+        private Channel<CollectedBatch> _batchChannel = null!;
+        private readonly int _batchChannelCapacity;
         private readonly int _channelCapacity;
         private readonly int _flushIntervalSeconds;
         private readonly bool _useSingleConsumer;
         private readonly int _consumerCount;
         private readonly int _deduplicationCacheMaxSize;
         private readonly ITickAggregator? _tickAggregator;
+
+        // Async Writer — Collector отправляет батчи Writer'у через отдельный канал
+        private Task _writerTask = null!;
+
+        // Adaptive batch size
+        private readonly int _minBatchSize;
+        private readonly int _maxBatchSize;
+        private readonly int _backlogLowThreshold;
+        private readonly int _backlogHighThreshold;
+        private readonly double _writeDurationWarningMs;
+
+        // Shared between Collector (reads) and Writer (writes) for adaptive batch size
+        private long _lastWriteDurationMs;
 
         // ========================================================================
         // Cached OTel tags — avoid KeyValuePair allocation per call in hot path
@@ -67,15 +81,12 @@ namespace MarketDataCollector.Application.Services
         private static readonly KeyValuePair<string, object?> SqlStateNoneTag = new("sql_state", "none");
 
         private Task _processingTask = null!;
-        private CancellationTokenSource? _internalCts;  // внутренний CTS для graceful shutdown:
-                                                        // внешний stoppingToken отменяется хостом,
-                                                        // но consumer'ы должны дочитать backlog
-                                                        // перед остановкой.
-        private int _processedCount;       // сколько реально вставлено в БД (после ON CONFLICT DO NOTHING)
-        private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
-        private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync
-        private int _totalDroppedCount;    // сколько тиков реально дропнуто каналом (TryWrite=false из-за DropOldest)
-        private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
+        private CancellationTokenSource? _internalCts;
+        private int _processedCount;
+        private int _totalReceivedCount;
+        private int _totalIncomingCount;
+        private int _totalDroppedCount;
+        private readonly Guid _sessionId = Guid.NewGuid();
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
 
@@ -92,21 +103,27 @@ namespace MarketDataCollector.Application.Services
             _scopeFactory = scopeFactory;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
-            _batchSize = options.BatchSize;
+            _minBatchSize = options.MinBatchSize;
+            _maxBatchSize = options.MaxBatchSize > 0 ? options.MaxBatchSize : options.BatchSize;
+            // Clamp: min не может быть больше max (защита от тестов с маленьким BatchSize)
+            if (_minBatchSize > _maxBatchSize)
+                _minBatchSize = _maxBatchSize;
+            _batchChannelCapacity = options.BatchChannelCapacity;
             _channelCapacity = options.ChannelCapacity;
             _flushIntervalSeconds = options.FlushIntervalSeconds;
             _useSingleConsumer = options.UseSingleConsumer;
             _consumerCount = options.ConsumerCount;
             _deduplicationCacheMaxSize = options.DeduplicationCacheMaxSize;
+            _backlogLowThreshold = options.BacklogLowThreshold;
+            _backlogHighThreshold = options.BacklogHighThreshold;
+            _writeDurationWarningMs = options.WriteDurationWarningMs;
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
             _totalDroppedCount = 0;
             _tickAggregator = tickAggregator;
 
-            // Создаём канал по умолчанию (1 канал для SingleConsumer mode), чтобы ProcessTickAsync
-            // мог безопасно писать до вызова StartProcessingAsync.
-            // В StartProcessingAsync каналы будут пересозданы с правильными параметрами.
+            // Default channel for ProcessTickAsync before StartProcessingAsync
             _channels = new Channel<TickData>[]
             {
                 System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
@@ -138,24 +155,14 @@ namespace MarketDataCollector.Application.Services
 
         public Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
-            // Инкрементируем счётчик ДО записи в канал — общее количество попыток записи.
             Interlocked.Increment(ref _totalIncomingCount);
 
-            // OpenTelemetry: счётчик входящих тиков
             MarketDataTelemetry.TicksIncoming.Add(1, GetExchangeTag(exchange));
 
-            // TryWrite — неблокирующая запись. При переполнении канала (BoundedChannelFullMode.DropOldest)
-            // возвращает false без исключения. Считаем такие случаи как реальные дропы.
-            // Это точнее, чем вычислять разницу incoming - received постфактум,
-            // т.к. received обновляется с задержкой (после формирования и обработки батча).
+            LogProcessTickDebug(ticker, price, volume, exchange);
+
             var tick = new TickData(ticker, price, volume, timestamp, exchange);
 
-            // Определяем канал для записи:
-            // - SingleConsumer mode: всегда канал 0
-            // - Multiple consumers mode: round-robin по атомарному счётчику,
-            //   чтобы нагрузка распределялась равномерно между всеми consumer'ами.
-            //   Это решает проблему хэш-коллизий, когда несколько быстрых тикеров
-            //   попадают в один канал, вызывая переполнение и DropOldest.
             var channels = _channels;
             int channelIndex;
             if (_useSingleConsumer || channels.Length == 1)
@@ -164,29 +171,15 @@ namespace MarketDataCollector.Application.Services
             }
             else
             {
-                // Per-ticker routing: детерминированный хэш от ticker'а.
-                // Гарантирует, что все тики одного тикера попадают в один канал,
-                // а разные consumer'ы работают с disjoint наборами тикеров.
-                // Это исключает deadlock'и (40P01) при ON CONFLICT DO NOTHING,
-                // т.к. два consumer'а никогда не конкурируют за один unique index.
-                //
-                // При 3 тикерах и 3 consumer'ах нагрузка распределяется идеально.
-                // При асимметричной нагрузке (один тикер быстрее других)
-                // DropOldest защищает от переполнения канала.
                 channelIndex = (GetStableHashCode(ticker) & int.MaxValue) % channels.Length;
             }
 
             if (!channels[channelIndex].Writer.TryWrite(tick))
             {
                 Interlocked.Increment(ref _totalDroppedCount);
-                // OpenTelemetry: счётчик дропнутых тиков
                 MarketDataTelemetry.TicksDropped.Add(1, GetExchangeTag(exchange));
             }
 
-            // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
-            // чтобы агрегатор не блокировал основной пайплайн.
-            // Канал агрегатора использует DropOldest, поэтому при перегрузке
-            // старые тики отбрасываются, а не блокируется producer.
             if (_tickAggregator != null)
             {
                 _ = _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
@@ -197,7 +190,6 @@ namespace MarketDataCollector.Application.Services
 
         public Task StartProcessingAsync(CancellationToken cancellationToken = default)
         {
-            // OpenTelemetry: записываем fill-метрики каналов при старте
             for (int i = 0; i < _channels.Length; i++)
             {
                 MarketDataTelemetry.ChannelFill.Record(
@@ -208,15 +200,11 @@ namespace MarketDataCollector.Application.Services
             if (_processingTask != null && !_processingTask.IsCompleted)
                 return _processingTask;
 
-            // Логируем ошибку предыдущей задачи, если она завершилась с ошибкой
             if (_processingTask?.IsFaulted == true)
             {
                 LogPreviousTaskFailed();
             }
 
-            // Диагностика: проверяем, не осталось ли данных от предыдущих каналов
-            // (например, если этот метод был вызван повторно, или клиенты начали
-            // писать данные до старта процессора).
             for (int i = 0; i < _channels.Length; i++)
             {
                 var oldCount = _channels[i].Reader.Count;
@@ -226,33 +214,13 @@ namespace MarketDataCollector.Application.Services
                 }
             }
 
-            // Создаём внутренний CancellationTokenSource, НЕ линкованный к внешнему cancellationToken.
-            // Consumer'ы (ProcessBatchesAsync) используют _internalCts.Token, а не внешний cancellationToken.
-            // Это гарантирует, что consumer'ы НЕ умрут по OperationCanceledException при остановке хоста,
-            // а дождутся TryComplete() каналов и дочитают backlog.
-            //
-            // В StopProcessingAsync порядок:
-            //   1. TryComplete() на всех каналах → consumer'ы дочитывают backlog по channelCompleted
-            //   2. await _processingTask → ожидание завершения consumer'ов
-            //   3. отмена _internalCts → освобождение ресурсов
-            //
-            // ВАЖНО: _internalCts НЕ линкован к внешнему cancellationToken! Иначе consumer'ы упадут
-            // по OperationCanceledException ещё до TryComplete(), когда хост отменит stoppingToken.
-            // Внешний токен управляет остановкой WebSocket-клиентов и выходом из health-check loop.
-            // Consumer'ы управляются только _internalCts.
             _internalCts?.Dispose();
             _internalCts = new CancellationTokenSource();
             var internalToken = _internalCts.Token;
 
             if (_useSingleConsumer)
             {
-                // ===== Single Consumer Mode =====
-                // Пересоздаём Channel с SingleReader=true — гарантия, что только один поток
-                // читает из канала. Полностью исключает конкуренцию за индексные блокировки
-                // и deadlock'и (40P01) на уровне БД.
-                //
-                // По результатам бенчмарка: Sequential batch=700 даёт ~62 680 ticks/sec,
-                // что достаточно для текущей нагрузки.
+                // ===== Single Consumer Mode (Async Writer) =====
                 _channels = new Channel<TickData>[]
                 {
                     System.Threading.Channels.Channel.CreateBounded<TickData>(new BoundedChannelOptions(_channelCapacity)
@@ -263,19 +231,24 @@ namespace MarketDataCollector.Application.Services
                     })
                 };
 
-                _processingTask = ProcessBatchesAsync(channelIndex: 0, internalToken, _deduplicationCacheMaxSize);
+                // Batch channel between Collector and Writer
+                _batchChannel = System.Threading.Channels.Channel.CreateBounded<CollectedBatch>(
+                    new BoundedChannelOptions(_batchChannelCapacity)
+                    {
+                        FullMode = BoundedChannelFullMode.Wait,
+                        SingleReader = true,
+                        SingleWriter = false
+                    });
 
-                LogSingleConsumerStart(_sessionId, _batchSize, _channelCapacity);
+                // Writer (DB writes) + Collector (reads input, sends batches)
+                _writerTask = WriterLoopAsync(channelIndex: 0, internalToken, _deduplicationCacheMaxSize);
+                _processingTask = CollectorLoopAsync(channelIndex: 0, internalToken);
+
+                LogSingleConsumerStart(_sessionId, _maxBatchSize, _channelCapacity);
             }
             else
             {
-                // ===== Multiple Consumers Mode =====
-                // Создаём отдельные каналы для каждого consumer'а с SingleReader=true.
-                // Per-ticker routing в ProcessTickAsync гарантирует, что каждый consumer
-                // получает disjoint набор тикеров (детерминированный хэш ticker'а).
-                // B-tree страницы unique-индекса (ticker, exchange, timestamp)
-                // физически не пересекаются — deadlock'и (40P01) невозможны.
-
+                // ===== Multiple Consumers Mode (legacy, unchanged) =====
                 int consumerCount;
                 string countSource;
                 if (_consumerCount > 0)
@@ -289,7 +262,6 @@ namespace MarketDataCollector.Application.Services
                     countSource = "auto";
                 }
 
-                // Создаём N независимых каналов — по одному на consumer
                 _channels = new Channel<TickData>[consumerCount];
                 for (int i = 0; i < consumerCount; i++)
                 {
@@ -297,23 +269,20 @@ namespace MarketDataCollector.Application.Services
                         new BoundedChannelOptions(_channelCapacity)
                         {
                             FullMode = BoundedChannelFullMode.DropOldest,
-                            SingleReader = true,   // каждый канал — для одного consumer'а
+                            SingleReader = true,
                             SingleWriter = false
                         });
                 }
 
-                // Запускаем consumer'ов — каждый читает из своего канала.
-                // Используем internalToken (линкован к внешнему cancellationToken),
-                // чтобы consumer'ы не умирали при отмене хоста до вызова TryComplete().
                 var tasks = new Task[consumerCount];
                 for (int i = 0; i < consumerCount; i++)
                 {
-                    var channelIndex = i; // capture for closure
+                    var channelIndex = i;
                     tasks[i] = ProcessBatchesAsync(channelIndex, internalToken, _deduplicationCacheMaxSize);
                 }
                 _processingTask = Task.WhenAll(tasks);
 
-                LogMultiConsumerStart(_sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
+                LogMultiConsumerStart(_sessionId, consumerCount, countSource, _maxBatchSize, _channelCapacity);
             }
 
             return _processingTask;
@@ -321,7 +290,6 @@ namespace MarketDataCollector.Application.Services
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
-            // OpenTelemetry: финальная запись fill-метрик перед остановкой
             for (int i = 0; i < _channels.Length; i++)
             {
                 MarketDataTelemetry.ChannelFill.Record(
@@ -329,8 +297,6 @@ namespace MarketDataCollector.Application.Services
                     ChannelTag(i));
             }
 
-            // 1. Логируем остаток во всех каналах перед TryComplete, чтобы оценить,
-            //    сколько тиков будет дочитано.
             var totalRemaining = 0;
             for (int i = 0; i < _channels.Length; i++)
             {
@@ -339,37 +305,62 @@ namespace MarketDataCollector.Application.Services
 
             LogStopStatistics(_sessionId, totalRemaining, _totalIncomingCount, _totalReceivedCount, _processedCount);
 
-            // 2. Завершаем ВСЕ каналы данных — это заставит ProcessBatchesAsync
-            //    выйти из цикла (readTask.Result == false → channelCompleted → break).
-            //    ВАЖНО: это делается ДО отмены _internalCts, чтобы consumer'ы
-            //    успели дочитать backlog и выполнить финальный flush.
-            for (int i = 0; i < _channels.Length; i++)
+            if (_useSingleConsumer)
             {
-                _channels[i].Writer.TryComplete();
+                // ===== Two-phase shutdown for Async Writer architecture =====
+                // Phase 1: Complete input channel → Collector drains remaining ticks,
+                //          sends any partial batch to batch channel → completes batch channel
+                _channels[0].Writer.TryComplete();
+
+                if (_processingTask != null)
+                {
+                    try
+                    {
+                        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                        await _processingTask.WaitAsync(timeoutCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        LogShutdownTimeout(_sessionId);
+                    }
+                }
+
+                // Phase 2: Wait for Writer to finish all pending batches
+                if (_writerTask != null)
+                {
+                    try
+                    {
+                        using var writerTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                        await _writerTask.WaitAsync(writerTimeoutCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        LogShutdownTimeout(_sessionId);
+                    }
+                }
+            }
+            else
+            {
+                // ===== Legacy shutdown for multi-consumer mode =====
+                for (int i = 0; i < _channels.Length; i++)
+                {
+                    _channels[i].Writer.TryComplete();
+                }
+
+                if (_processingTask != null)
+                {
+                    try
+                    {
+                        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                        await _processingTask.WaitAsync(timeoutCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        LogShutdownTimeout(_sessionId);
+                    }
+                }
             }
 
-            if (_processingTask != null)
-            {
-                try
-                {
-                    // 3. Ждём, пока ВСЕ ProcessBatchesAsync завершатся.
-                    //    Consumer'ы используют _internalCts.Token, который ещё не отменён,
-                    //    поэтому они НЕ умрут по OperationCanceledException.
-                    //    После TryComplete() каналов consumer'ы дочитают остатки и выйдут
-                    //    по channelCompleted (readTask.Result == false).
-                    //    Используем CancellationToken.None + внутренний timeout 30с,
-                    //    т.к. внешний cancellationToken может быть уже отменён.
-                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                    await _processingTask.WaitAsync(timeoutCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    LogShutdownTimeout(_sessionId);
-                }
-            }
-
-            // 4. Теперь consumer'ы завершены — безопасно отменяем _internalCts
-            //    (чтобы освободить ресурсы).
             if (_internalCts != null)
             {
                 try
@@ -378,16 +369,14 @@ namespace MarketDataCollector.Application.Services
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Ignore — может быть уже отменён
                 }
             }
 
-            // 5. Расширенный финальный лог со всей статистикой потерь
             var totalIncoming = _totalIncomingCount;
             var totalReceived = _totalReceivedCount;
             var totalInserted = _processedCount;
-            var totalDropped = _totalDroppedCount;           // реальные дропы через TryWrite
-            var droppedByChannel = totalIncoming - totalReceived; // backlog (для сравнения)
+            var totalDropped = _totalDroppedCount;
+            var droppedByChannel = totalIncoming - totalReceived;
             var remainingAfterStop = 0;
             for (int i = 0; i < _channels.Length; i++)
             {
@@ -397,29 +386,22 @@ namespace MarketDataCollector.Application.Services
             LogFinalStopStatistics(_sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
         }
 
-        /// <summary>
-        /// Основной цикл обработки для одного consumer'а.
-        /// Каждый consumer работает со своим каналом _channels[channelIndex].
-        /// </summary>
-        private async Task ProcessBatchesAsync(int channelIndex, CancellationToken cancellationToken, int deduplicationCacheMaxSize)
+        // ========================================================================
+        // Collector — читает тики из input channel, отправляет батчи Writer'у
+        // Никогда не блокируется на БД
+        // ========================================================================
+        private async Task CollectorLoopAsync(int channelIndex, CancellationToken cancellationToken)
         {
-            // Use ArrayPool instead of List<TickData> — eliminates List allocation per consumer
-            var batchArray = ArrayPool<TickData>.Shared.Rent(Math.Max(_batchSize, 1));
-            // Reusable wrapper for filtered ticks — zero extra allocations after first use
-            var filteredSlice = new FilteredTickSlice();
-            int batchCount = 0;
             var channel = _channels[channelIndex];
+            var adaptiveBatchSize = _minBatchSize;
+            var batchArray = ArrayPool<TickData>.Shared.Rent(_maxBatchSize);
+            int batchCount = 0;
 
-            // Per-consumer кэш дедупликации — каждый consumer обрабатывает disjoint набор тикеров,
-            // поэтому синхронизация не нужна.
-            var dedupCache = deduplicationCacheMaxSize > 0 ? new DeduplicationCache(deduplicationCacheMaxSize) : null;
+            long lastWriteDurationMs = 0;
 
-            // Для периодической записи fill level (раз в ~10 сек)
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
 
-            // Timer для принудительного сброса частичных батчей (переиспользуется вместо Task.Delay).
-            // Создаётся один раз на весь lifecycle consumer'а — устраняет ~600+ internal timer creations.
             using var flushTimerCts = new CancellationTokenSource();
             Timer? flushTimer = null;
             if (_flushIntervalSeconds > 0)
@@ -434,14 +416,10 @@ namespace MarketDataCollector.Application.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // Ждём новый тик в канале данных.
-                    // Если настроен таймер сброса частичных батчей и батч непустой —
-                    // используем Timer для принудительного сброса (без создания Task.Delay per iteration).
                     Task<bool> readTask;
                     if (_flushIntervalSeconds > 0 && batchCount > 0)
                     {
                         var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        // Переиспользуем один Timer: сбрасываем предыдущее состояние и ставим новый таймаут
                         flushTimerCts.TryReset();
                         flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
                         var flushDelay = Task.Delay(Timeout.Infinite, flushTimerCts.Token);
@@ -451,15 +429,18 @@ namespace MarketDataCollector.Application.Services
 
                         if (completed == flushDelay)
                         {
-                            // --- Сброс частичного батча по таймеру ---
-                            LogTimerFlush(_sessionId, batchCount, _batchSize, channelIndex);
+                            // Timer flush — send partial batch
+                            LogTimerFlush(_sessionId, batchCount, adaptiveBatchSize, channelIndex);
 
-                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
+                            await _batchChannel.Writer.WriteAsync(batch, cancellationToken);
+                            batchArray = ArrayPool<TickData>.Shared.Rent(_maxBatchSize);
                             batchCount = 0;
-                            continue; // переходим к следующей итерации — снова ждём тики
+
+                            adaptiveBatchSize = CalculateAdaptiveBatchSize(channel.Reader.Count, lastWriteDurationMs);
+                            continue;
                         }
 
-                        // completed == readTask — проверяем результат
                         if (readTaskTyped.Result)
                         {
                             goto readTicks;
@@ -483,16 +464,22 @@ namespace MarketDataCollector.Application.Services
                     }
 
                 readTicks:
-                    // Вычитываем ВСЕ доступные тики из канала (non-blocking)
                     while (channel.Reader.TryRead(out var tick))
                     {
                         batchArray[batchCount++] = tick;
-                        if (batchCount >= _batchSize)
+                        if (batchCount >= adaptiveBatchSize)
                         {
-                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            // Send full batch to Writer
+                            var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
+                            await _batchChannel.Writer.WriteAsync(batch, cancellationToken);
+
+                            // Rent new array, reset counter
+                            batchArray = ArrayPool<TickData>.Shared.Rent(_maxBatchSize);
                             batchCount = 0;
 
-                            // Периодическая запись fill level (раз в ~10 сек)
+                            // Recalculate adaptive batch size based on backlog
+                            adaptiveBatchSize = CalculateAdaptiveBatchSize(channel.Reader.Count, _lastWriteDurationMs);
+
                             if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
                             {
                                 MarketDataTelemetry.ChannelFill.Record(
@@ -503,18 +490,16 @@ namespace MarketDataCollector.Application.Services
                         }
                     }
 
-                    // Продолжаем цикл — ждём новые тики или сброс по таймеру
                     continue;
 
                 channelCompleted:
-                    // Канал данных завершён (TryComplete) — выходим из цикла
-                    // Перед выходом сбросим частичный батч
                     if (batchCount > 0)
                     {
-                        await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                        var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
+                        await _batchChannel.Writer.WriteAsync(batch, CancellationToken.None);
+                        batchArray = ArrayPool<TickData>.Shared.Rent(0); // dummy, not used
                         batchCount = 0;
 
-                        // Периодическая запись fill level (раз в ~10 сек)
                         if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
                         {
                             MarketDataTelemetry.ChannelFill.Record(
@@ -532,35 +517,243 @@ namespace MarketDataCollector.Application.Services
             }
             catch (ChannelClosedException)
             {
-                // Ожидаемо при завершении канала
             }
             catch (Exception ex) when (ex is not OperationCanceledException && ex is not ChannelClosedException)
             {
                 LogConsumerCriticalError(ex, _sessionId, channelIndex);
-                // finally выполнит финальный flush с CancellationToken.None,
-                // затем исключение пробросится → _processingTask станет Faulted.
-                // Worker observe'ит IsFaulted и инициирует graceful shutdown.
                 throw;
             }
             finally
             {
-                // Финальный flush (даже при ошибке — CancellationToken.None)
-                // Важно: не вызываем ProcessBatchAsync повторно, если уже сбросили выше
+                // If batchArray wasn't sent, return it to pool
+                if (batchArray != null && batchArray.Length > 0)
+                {
+                    ArrayPool<TickData>.Shared.Return(batchArray, clearArray: false);
+                }
+
+                // Signal Writer that no more batches will be produced
+                _batchChannel.Writer.TryComplete();
+            }
+        }
+
+        // ========================================================================
+        // Writer — читает батчи из batch channel, выполняет дедупликацию и BulkCopy в БД
+        // ========================================================================
+        private async Task WriterLoopAsync(int channelIndex, CancellationToken cancellationToken, int deduplicationCacheMaxSize)
+        {
+            var filteredSlice = new FilteredTickSlice(); // reusable
+            var dedupCache = deduplicationCacheMaxSize > 0 ? new DeduplicationCache(deduplicationCacheMaxSize) : null;
+            var fillLevelTimer = Stopwatch.StartNew();
+            const int fillLevelIntervalMs = 10_000;
+
+            try
+            {
+                await foreach (var batch in _batchChannel.Reader.ReadAllAsync(cancellationToken))
+                {
+                    var sw = Stopwatch.StartNew();
+                    await ProcessBatchAsync(batch.Items, batch.Count, filteredSlice, dedupCache, cancellationToken, channelIndex);
+                    sw.Stop();
+
+                    // Track last write duration for adaptive batch size
+                    _lastWriteDurationMs = (long)(sw.Elapsed.TotalMilliseconds * 1000); // store as microseconds
+
+                    // Return array to pool — Writer owns it after receiving from Collector
+                    ArrayPool<TickData>.Shared.Return(batch.Items, clearArray: false);
+
+                    if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
+                    {
+                        MarketDataTelemetry.BatchChannelFill.Record(
+                            _batchChannel.Reader.Count,
+                            ChannelTag(channelIndex));
+                        fillLevelTimer.Restart();
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                LogChannelCancelled(_sessionId, channelIndex);
+            }
+            catch (ChannelClosedException)
+            {
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && ex is not ChannelClosedException)
+            {
+                LogConsumerCriticalError(ex, _sessionId, channelIndex);
+                // Worker observes Faulted writer and initiates shutdown
+                throw;
+            }
+        }
+
+
+        // ========================================================================
+        // Адаптивный BatchSize
+        // ========================================================================
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int CalculateAdaptiveBatchSize(int backlog, long lastWriteDurationUs)
+        {
+            int baseSize;
+
+            if (backlog <= _backlogLowThreshold)
+            {
+                baseSize = _minBatchSize;
+            }
+            else if (backlog >= _backlogHighThreshold)
+            {
+                baseSize = _maxBatchSize;
+            }
+            else
+            {
+                var ratio = (backlog - _backlogLowThreshold) / (double)(_backlogHighThreshold - _backlogLowThreshold);
+                baseSize = _minBatchSize + (int)(ratio * (_maxBatchSize - _minBatchSize));
+            }
+
+            // Reduce batch size if last write was too slow (prevent cascading backlog)
+            if (_writeDurationWarningMs > 0 && lastWriteDurationUs > _writeDurationWarningMs * 1000)
+            {
+                baseSize = Math.Max(_minBatchSize, (int)(baseSize * 0.8));
+            }
+
+            MarketDataTelemetry.AdaptiveBatchSize.Record(baseSize);
+            return baseSize;
+        }
+
+        /// <summary>
+        /// Основной цикл обработки для одного consumer'а (Multi-Consumer mode, legacy).
+        /// Каждый consumer работает со своим каналом _channels[channelIndex].
+        /// </summary>
+        private async Task ProcessBatchesAsync(int channelIndex, CancellationToken cancellationToken, int deduplicationCacheMaxSize)
+        {
+            var batchArray = ArrayPool<TickData>.Shared.Rent(Math.Max(_maxBatchSize, 1));
+            var filteredSlice = new FilteredTickSlice();
+            int batchCount = 0;
+            var channel = _channels[channelIndex];
+
+            var dedupCache = deduplicationCacheMaxSize > 0 ? new DeduplicationCache(deduplicationCacheMaxSize) : null;
+
+            var fillLevelTimer = Stopwatch.StartNew();
+            const int fillLevelIntervalMs = 10_000;
+
+            using var flushTimerCts = new CancellationTokenSource();
+            Timer? flushTimer = null;
+            if (_flushIntervalSeconds > 0)
+            {
+                flushTimer = new Timer(_ => flushTimerCts.Cancel(),
+                    null, Timeout.Infinite, Timeout.Infinite);
+            }
+
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    Task<bool> readTask;
+                    if (_flushIntervalSeconds > 0 && batchCount > 0)
+                    {
+                        var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                        flushTimerCts.TryReset();
+                        flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
+                        var flushDelay = Task.Delay(Timeout.Infinite, flushTimerCts.Token);
+                        var completed = await Task.WhenAny(readTaskTyped, flushDelay).ConfigureAwait(false);
+
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (completed == flushDelay)
+                        {
+                            LogTimerFlush(_sessionId, batchCount, _maxBatchSize, channelIndex);
+
+                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            batchCount = 0;
+                            continue;
+                        }
+
+                        if (readTaskTyped.Result)
+                        {
+                            goto readTicks;
+                        }
+                        else
+                        {
+                            goto channelCompleted;
+                        }
+                    }
+                    else
+                    {
+                        readTask = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                        if (await readTask.ConfigureAwait(false))
+                        {
+                            goto readTicks;
+                        }
+                        else
+                        {
+                            goto channelCompleted;
+                        }
+                    }
+
+                readTicks:
+                    while (channel.Reader.TryRead(out var tick))
+                    {
+                        batchArray[batchCount++] = tick;
+                        if (batchCount >= _maxBatchSize)
+                        {
+                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            batchCount = 0;
+
+                            if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
+                            {
+                                MarketDataTelemetry.ChannelFill.Record(
+                                    channel.Reader.Count,
+                                    ChannelTag(channelIndex));
+                                fillLevelTimer.Restart();
+                            }
+                        }
+                    }
+
+                    continue;
+
+                channelCompleted:
+                    if (batchCount > 0)
+                    {
+                        await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                        batchCount = 0;
+
+                        if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
+                        {
+                            MarketDataTelemetry.ChannelFill.Record(
+                                channel.Reader.Count,
+                                ChannelTag(channelIndex));
+                            fillLevelTimer.Restart();
+                        }
+                    }
+                    break;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                LogChannelCancelled(_sessionId, channelIndex);
+            }
+            catch (ChannelClosedException)
+            {
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && ex is not ChannelClosedException)
+            {
+                LogConsumerCriticalError(ex, _sessionId, channelIndex);
+                throw;
+            }
+            finally
+            {
                 if (batchCount > 0)
                 {
-                    LogFinalFlush(_sessionId, channelIndex, batchCount, _batchSize);
+                    LogFinalFlush(_sessionId, channelIndex, batchCount, _maxBatchSize);
                     await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
                 }
             }
 
-            // Return batchArray to pool after consumer completes
             ArrayPool<TickData>.Shared.Return(batchArray, clearArray: false);
         }
 
         /// <summary>
         /// Reusable IReadOnlyList<TickData> wrapper over an array slice.
         /// Eliminates List<TickData> allocation per batch in the hot path.
-        /// Not thread-safe — designed for single-consumer sequential use.
         /// </summary>
         private sealed class FilteredTickSlice : IReadOnlyList<TickData>
         {
@@ -592,17 +785,20 @@ namespace MarketDataCollector.Application.Services
         }
 
         /// <summary>
+        /// Batch data transfer object between Collector and Writer.
+        /// Collector fills from ArrayPool, sends to Writer, Writer processes and returns to pool.
+        /// </summary>
+        internal sealed class CollectedBatch
+        {
+            public TickData[] Items { get; set; } = null!;
+            public int Count { get; set; }
+        }
+
+        /// <summary>
         /// Обрабатывает один батч тиков: дедупликация in-place + bulk insert.
         /// </summary>
-        /// <param name="batchArray">Массив тиков из ArrayPool (может быть больше batchCount).</param>
-        /// <param name="batchCount">Количество валидных тиков в batchArray.</param>
-        /// <param name="filteredSlice">Reusable wrapper для передачи отфильтрованных тиков в BulkCopyAsync без аллокации List.</param>
-        /// <param name="dedupCache">Кэш дедупликации (nullable).</param>
-        /// <param name="cancellationToken">Токен отмены.</param>
-        /// <param name="channelIndex">Индекс канала (для логирования/метрик).</param>
         private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
-            // OpenTelemetry: трейсинг обработки батча
             using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
             activity?.SetTag("batch.size", batchCount);
 
@@ -612,14 +808,8 @@ namespace MarketDataCollector.Application.Services
 
                 var batchSize = batchCount;
 
-                // OpenTelemetry: гистограмма размера батча
                 MarketDataTelemetry.BatchSize.Record(batchSize);
 
-                // 1. Единый проход in-place: фильтрация через кэш дедупликации + сжатие batchArray.
-                //    Кэш заполняется РАНЬШЕ DB-вставки — поэтому ловит
-                //    и intra-batch дубли (те же ключи в одном батче),
-                //    и cross-batch дубли (ключи из предыдущих батчей).
-                //    In-place filtering устраняет new List<TickData>(batchCount) + internal array (~40KB).
                 int cachedCount = 0;
                 int writeIdx = 0;
                 if (dedupCache != null)
@@ -640,39 +830,29 @@ namespace MarketDataCollector.Application.Services
                 }
                 else
                 {
-                    // Кэш отключён — все тики проходят, но без выделения новой коллекции.
-                    // Просто используем batchArray как есть — writeIdx = batchCount.
                     writeIdx = batchCount;
                 }
 
-                // Reuse filteredSlice wrapper — no allocation
                 filteredSlice.Set(batchArray, writeIdx);
 
                 activity?.SetTag("filtered.count", writeIdx);
                 activity?.SetTag("cached.count", cachedCount);
 
-                // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
-                //    чтобы избежать InvalidOperationException при параллельном доступе из нескольких потоков
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert напрямую из filteredSlice (без промежуточного List<RawTick>)
                 var sw = Stopwatch.StartNew();
                 var inserted = await repository.BulkCopyAsync(filteredSlice, _timeService, cancellationToken);
                 sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
 
-                // OpenTelemetry: гистограмма времени записи батча
-                // (batch_size и inserted_count варьируются — не кэшируются)
                 MarketDataTelemetry.BatchWriteDuration.Record(
                     sw.Elapsed.TotalMilliseconds,
                     ChannelTag(channelIndex),
                     new KeyValuePair<string, object?>("batch_size", batchSize),
                     new KeyValuePair<string, object?>("inserted_count", inserted));
 
-                // Single Consumer mode: гонки нет — обычные присваивания быстрее Interlocked.
-                // Multiple Consumers mode: Interlocked гарантирует атомарность.
                 int totalReceived, totalInserted;
                 if (_useSingleConsumer)
                 {
@@ -687,7 +867,6 @@ namespace MarketDataCollector.Application.Services
                     totalInserted = Interlocked.Add(ref _processedCount, inserted);
                 }
 
-                // OpenTelemetry: счётчики полученных и обработанных тиков
                 MarketDataTelemetry.TicksReceived.Add(
                     batchSize,
                     ChannelTag(channelIndex));
@@ -696,7 +875,6 @@ namespace MarketDataCollector.Application.Services
                     inserted,
                     batchCount > 0 ? GetExchangeTag(batchArray[0].Exchange) : ExchangeUnknownTag);
 
-                // Batch increment: один Interlocked.Add вместо N Interlocked.Increment
                 _processedRpsCounter.IncrementBatch(inserted);
                 
                 if (totalInserted % 10000 < inserted)
@@ -737,8 +915,6 @@ namespace MarketDataCollector.Application.Services
                 MarketDataTelemetry.ExceptionsByType.Add(1,
                     new KeyValuePair<string, object?>("exception_type", ex.GetType().Name),
                     SqlStateNoneTag);
-                // Временная ошибка (БД, сеть и т.д.) — consumer продолжает работать.
-                // Исключение НЕ пробрасывается, чтобы следующие батчи обрабатывались.
             }
         }
 
@@ -749,25 +925,12 @@ namespace MarketDataCollector.Application.Services
             return Task.FromResult(_processedCount);
         }
 
-        /// <summary>
-        /// Возвращает общее количество тиков, поступивших в ProcessTick.
-        /// </summary>
         public int GetTotalIncomingCount() => _totalIncomingCount;
 
-        /// <summary>
-        /// Возвращает общее количество тиков, успешно прочитанных из каналов.
-        /// </summary>
         public int GetTotalReceivedCount() => _totalReceivedCount;
 
-        /// <summary>
-        /// Количество тиков, реально дропнутых каналами из-за переполнения
-        /// (TryWrite вернул false при BoundedChannelFullMode.DropOldest).
-        /// </summary>
         public int GetTotalDroppedCount() => _totalDroppedCount;
 
-        /// <summary>
-        /// Суммарное количество тиков во всех каналах (для мониторинга заполненности).
-        /// </summary>
         public int GetChannelCount()
         {
             int total = 0;
@@ -778,19 +941,10 @@ namespace MarketDataCollector.Application.Services
             return total;
         }
 
-        /// <summary>
-        /// Ёмкость каждого канала (ChannelCapacity из конфигурации).
-        /// </summary>
         public int GetChannelCapacity() => _channelCapacity;
 
-        /// <summary>
-        /// Количество активных каналов (consumer'ов).
-        /// </summary>
         public int GetConsumerCountChannels() => _channels.Length;
 
-        /// <summary>
-        /// Заполненность каждого канала: (Count, Capacity) по каждому consumer'у.
-        /// </summary>
         public (int Count, int Capacity)[] GetChannelFillLevels()
         {
             var result = new (int Count, int Capacity)[_channels.Length];
@@ -801,21 +955,12 @@ namespace MarketDataCollector.Application.Services
             return result;
         }
 
-        /// <summary>
-        /// Оценка реально дропнутых тиков через DropOldest.
-        /// Считается как max(0, incoming - received - channelCount).
-        /// </summary>
         public int GetEstimatedDroppedCount()
         {
             int droppedByChannel = _totalIncomingCount - _totalReceivedCount - GetChannelCount();
             return Math.Max(0, droppedByChannel);
         }
 
-        /// <summary>
-        /// Доступ к каналу по индексу (для тестов).
-        /// В production код не используется — routing происходит внутри ProcessTickAsync.
-        /// SingleConsumer mode: index=0.
-        /// </summary>
         public Channel<TickData> GetChannel(int index = 0) => _channels[index];
     }
 }

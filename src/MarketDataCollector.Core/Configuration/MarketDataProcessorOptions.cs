@@ -5,28 +5,68 @@ namespace MarketDataCollector.Core.Configuration
         public const string SectionName = "MarketDataProcessor";
         
         /// <summary>
-        /// Размер батча для записи в БД через Binary COPY protocol.
+        /// Размер батча для записи в БД через Binary COPY protocol (legacy).
+        /// Используется как значение по умолчанию для MaxBatchSize, если MaxBatchSize = 0.
         /// По результатам бенчмарка: chunk=800 даёт ~53 775 ticks/sec
         /// при 8 parallel consumer'ах через BulkCopyAsync.
         /// </summary>
         public int BatchSize { get; set; } = 5000;
+
+        /// <summary>
+        /// Минимальный размер батча при адаптивном режиме.
+        /// При низком backlog Collector использует MinBatchSize — снижает GC pressure.
+        /// </summary>
+        public int MinBatchSize { get; set; } = 1000;
+
+        /// <summary>
+        /// Максимальный размер батча при адаптивном режиме.
+        /// При высоком backlog Collector увеличивает BatchSize до MaxBatchSize.
+        /// Если 0 — используется BatchSize как MaxBatchSize.
+        /// </summary>
+        public int MaxBatchSize { get; set; } = 0;
+
         /// <summary>
         /// Ёмкость bounded-канала System.Threading.Channels.Channel<TickData>
         /// для буферизации входящих тиков перед обработкой.
         /// При превышении лимита новые тики вытесняют старые (DropOldest),
         /// что защищает потребителя от перегрузки при всплесках.
-        /// 10000 — эмпирическое значение, достаточное для сглаживания пиков
-        /// без чрезмерного потребления памяти.
+        /// 150000 — эмпирическое значение для ~20K msg/sec с учётом backlog.
         /// </summary>
-        public int ChannelCapacity { get; set; } = 10000;
+        public int ChannelCapacity { get; set; } = 150000;
+
+        /// <summary>
+        /// Ёмкость bounded-канала между Collector и Writer (Channel<CollectedBatch>).
+        /// Каждый элемент — один batch (до MaxBatchSize тиков).
+        /// При capacity=20 максимальный буфер = 20 × 2500 = 50 000 тиков.
+        /// FullMode=Wait: при переполнении Collector блокируется → backpressure
+        /// на input channel → DropOldest на входе.
+        /// </summary>
+        public int BatchChannelCapacity { get; set; } = 20;
+
+        /// <summary>
+        /// Порог backlog (количество тиков в input channel), при котором
+        /// Collector использует MinBatchSize.
+        /// </summary>
+        public int BacklogLowThreshold { get; set; } = 2000;
+
+        /// <summary>
+        /// Порог backlog, при котором Collector использует MaxBatchSize.
+        /// Между low и high — линейная интерполяция.
+        /// </summary>
+        public int BacklogHighThreshold { get; set; } = 5000;
+
+        /// <summary>
+        /// Если последняя запись батча заняла больше этого значения (ms),
+        /// BatchSize временно снижается на 20% для предотвращения каскадного роста backlog.
+        /// 0 = отключено.
+        /// </summary>
+        public double WriteDurationWarningMs { get; set; } = 200.0;
 
         /// <summary>
         /// Интервал принудительного сброса неполных батчей в БД (в секундах).
-        /// Если за это время не набрался полный батч (BatchSize),
+        /// Если за это время не набрался полный батч (MinBatchSize),
         /// частичный батч сбрасывается принудительно.
         /// 0 = отключено (только полные батчи).
-        /// Значение по умолчанию 0 — включается через конфигурацию (appsettings.json),
-        /// где установлено 5 секунд.
         /// </summary>
         public int FlushIntervalSeconds { get; set; } = 0;
 
@@ -35,7 +75,7 @@ namespace MarketDataCollector.Core.Configuration
         ///
         /// Когда true (рекомендовано):
         /// - Channel создаётся с SingleReader=true (гарантия однопоточного чтения)
-        /// - Запускается ровно 1 consumer, который последовательно читает тики и пишет батчи
+        /// - Запускается ровно 1 Collector + 1 Writer
         /// - Полностью исключает deadlock'и (40P01) за счёт отсутствия конкуренции потоков
         /// - Меньше GC-давления и lock contention
         ///

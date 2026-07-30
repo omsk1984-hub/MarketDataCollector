@@ -71,4 +71,8 @@ public partial class MarketDataProcessor
     [LoggerMessage(EventId = 16, Level = LogLevel.Error,
         Message = "Неожиданная ошибка при обработке батча из {Count} тиков (channel={Channel})")]
     partial void LogUnexpectedBatchError(Exception ex, int count, int channel);
+
+    [LoggerMessage(EventId = 17, Level = LogLevel.Debug,
+        Message = "Тик добавлен в очередь: {Ticker} {Price} {Volume} {Exchange}")]
+    partial void LogProcessTickDebug(string ticker, decimal price, decimal volume, string exchange);
 }

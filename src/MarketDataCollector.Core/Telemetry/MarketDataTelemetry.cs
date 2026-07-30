@@ -157,6 +157,26 @@ public static class MarketDataTelemetry
         description: "Channel backlog (incoming - received)");
 
     // ========================================================================
+    // Metrics — Async Writer / Adaptive Batch (new)
+    // ========================================================================
+
+    /// <summary>
+    /// Fill level batch channel (количество батчей в очереди на запись).
+    /// </summary>
+    public static readonly Histogram<long> BatchChannelFill = Instance.CreateHistogram<long>(
+        name: "processor.batch_channel.fill",
+        unit: "count",
+        description: "Batch channel fill level (batches pending write)");
+
+    /// <summary>
+    /// Адаптивный batch size (текущее значение).
+    /// </summary>
+    public static readonly Histogram<long> AdaptiveBatchSize = Instance.CreateHistogram<long>(
+        name: "ticks.batch.adaptive_size",
+        unit: "count",
+        description: "Current adaptive batch size value");
+
+    // ========================================================================
     // Metrics — Exception tracking (new)
     // ========================================================================
 
@@ -168,4 +188,4 @@ public static class MarketDataTelemetry
     public static readonly Counter<double> ExceptionsByType = Instance.CreateCounter<double>(
         name: "exceptions_total",
         description: "Total exceptions by type");
-}
+    }
