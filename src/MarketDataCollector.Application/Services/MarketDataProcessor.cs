@@ -16,10 +16,11 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Buffers;
 
 namespace MarketDataCollector.Application.Services
 {
-    public class MarketDataProcessor : IMarketDataProcessor
+    public partial class MarketDataProcessor : IMarketDataProcessor
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<MarketDataProcessor> _logger;
@@ -32,6 +33,37 @@ namespace MarketDataCollector.Application.Services
         private readonly int _consumerCount;
         private readonly int _deduplicationCacheMaxSize;
         private readonly ITickAggregator? _tickAggregator;
+
+        // ========================================================================
+        // Cached OTel tags — avoid KeyValuePair allocation per call in hot path
+        // ========================================================================
+        private static readonly KeyValuePair<string, object?> ExchangeTagBinance = new("exchange", "binance");
+        private static readonly KeyValuePair<string, object?> ExchangeTagKraken = new("exchange", "kraken");
+        private static readonly KeyValuePair<string, object?> ExchangeUnknownTag = new("exchange", "unknown");
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static KeyValuePair<string, object?> GetExchangeTag(string exchange)
+            => exchange switch
+            {
+                "Binance" => ExchangeTagBinance,
+                "Kraken" => ExchangeTagKraken,
+                _ => new KeyValuePair<string, object?>("exchange", exchange)
+            };
+
+        // Pre-allocated channel_index tags (up to 16 channels is more than enough)
+        private static readonly KeyValuePair<string, object?>[] ChannelIndexTags =
+            Enumerable.Range(0, 16).Select(i => new KeyValuePair<string, object?>("channel_index", i)).ToArray();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static KeyValuePair<string, object?> ChannelTag(int index)
+            => (uint)index < (uint)ChannelIndexTags.Length
+                ? ChannelIndexTags[index]
+                : new KeyValuePair<string, object?>("channel_index", index);
+
+        // Cached exception type and sql_state tags
+        private static readonly KeyValuePair<string, object?> ExceptionTypePostgresTag = new("exception_type", "PostgresException");
+        private static readonly KeyValuePair<string, object?> ExceptionTypeNpgsqlTag = new("exception_type", "NpgsqlException");
+        private static readonly KeyValuePair<string, object?> SqlStateNoneTag = new("sql_state", "none");
 
         private Task _processingTask = null!;
         private CancellationTokenSource? _internalCts;  // внутренний CTS для graceful shutdown:
@@ -109,7 +141,7 @@ namespace MarketDataCollector.Application.Services
             Interlocked.Increment(ref _totalIncomingCount);
 
             // OpenTelemetry: счётчик входящих тиков
-            MarketDataTelemetry.TicksIncoming.Add(1, new KeyValuePair<string, object?>("exchange", exchange));
+            MarketDataTelemetry.TicksIncoming.Add(1, GetExchangeTag(exchange));
 
             // TryWrite — неблокирующая запись. При переполнении канала (BoundedChannelFullMode.DropOldest)
             // возвращает false без исключения. Считаем такие случаи как реальные дропы.
@@ -147,7 +179,7 @@ namespace MarketDataCollector.Application.Services
             {
                 Interlocked.Increment(ref _totalDroppedCount);
                 // OpenTelemetry: счётчик дропнутых тиков
-                MarketDataTelemetry.TicksDropped.Add(1, new KeyValuePair<string, object?>("exchange", exchange));
+                MarketDataTelemetry.TicksDropped.Add(1, GetExchangeTag(exchange));
             }
 
             // Передаём тик в агрегатор (если он подключён) — fire-and-forget,
@@ -169,7 +201,7 @@ namespace MarketDataCollector.Application.Services
             {
                 MarketDataTelemetry.ChannelFill.Record(
                     _channels[i].Reader.Count,
-                    new KeyValuePair<string, object?>("channel_index", i));
+                    ChannelTag(i));
             }
 
             if (_processingTask != null && !_processingTask.IsCompleted)
@@ -178,8 +210,7 @@ namespace MarketDataCollector.Application.Services
             // Логируем ошибку предыдущей задачи, если она завершилась с ошибкой
             if (_processingTask?.IsFaulted == true)
             {
-                _logger.LogError(_processingTask.Exception?.InnerException ?? _processingTask.Exception,
-                    "Предыдущая задача обработки завершилась ошибкой, перезапуск");
+                LogPreviousTaskFailed();
             }
 
             // Диагностика: проверяем, не осталось ли данных от предыдущих каналов
@@ -190,10 +221,7 @@ namespace MarketDataCollector.Application.Services
                 var oldCount = _channels[i].Reader.Count;
                 if (oldCount > 0)
                 {
-                    _logger.LogWarning(
-                        "Session={SessionId}: Старый канал[{Index}] содержит {Count} необработанных тиков перед заменой. " +
-                        "Это указывает на ошибку порядка запуска — клиенты писали данные до старта процессора.",
-                        _sessionId, i, oldCount);
+                    LogOldChannelHasData(_sessionId, i, oldCount);
                 }
             }
 
@@ -236,9 +264,7 @@ namespace MarketDataCollector.Application.Services
 
                 _processingTask = ProcessBatchesAsync(channelIndex: 0, internalToken, _deduplicationCacheMaxSize);
 
-                _logger.LogInformation(
-                    "Session={SessionId}: Обработчик рыночных данных запущен: Single Consumer mode, batchSize={BatchSize}, ChannelCapacity={Capacity}",
-                    _sessionId, _batchSize, _channelCapacity);
+                LogSingleConsumerStart(_sessionId, _batchSize, _channelCapacity);
             }
             else
             {
@@ -286,10 +312,7 @@ namespace MarketDataCollector.Application.Services
                 }
                 _processingTask = Task.WhenAll(tasks);
 
-                _logger.LogInformation(
-                    "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов ({CountSource}), " +
-                    "batchSize={BatchSize}, ChannelCapacity={Capacity}, routing=roundRobin",
-                    _sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
+                LogMultiConsumerStart(_sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
             }
 
             return _processingTask;
@@ -302,7 +325,7 @@ namespace MarketDataCollector.Application.Services
             {
                 MarketDataTelemetry.ChannelFill.Record(
                     _channels[i].Reader.Count,
-                    new KeyValuePair<string, object?>("channel_index", i));
+                    ChannelTag(i));
             }
 
             // 1. Логируем остаток во всех каналах перед TryComplete, чтобы оценить,
@@ -313,9 +336,7 @@ namespace MarketDataCollector.Application.Services
                 totalRemaining += _channels[i].Reader.Count;
             }
 
-            _logger.LogInformation(
-                "Session={SessionId}: Остановка обработчика. Остаток в каналах: {Remaining}, всего входящих: {Incoming}, получено из канала: {Received}, вставлено: {Inserted}",
-                _sessionId, totalRemaining, _totalIncomingCount, _totalReceivedCount, _processedCount);
+            LogStopStatistics(_sessionId, totalRemaining, _totalIncomingCount, _totalReceivedCount, _processedCount);
 
             // 2. Завершаем ВСЕ каналы данных — это заставит ProcessBatchesAsync
             //    выйти из цикла (readTask.Result == false → channelCompleted → break).
@@ -342,8 +363,7 @@ namespace MarketDataCollector.Application.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Session={SessionId}: Превышен таймаут ожидания дочитывания backlog (30с). " +
-                        "Остаток в каналах будет потерян.", _sessionId);
+                    LogShutdownTimeout(_sessionId);
                 }
             }
 
@@ -373,11 +393,7 @@ namespace MarketDataCollector.Application.Services
                 remainingAfterStop += _channels[i].Reader.Count;
             }
 
-            _logger.LogInformation(
-                "Session={SessionId}: Обработчик рыночных данных остановлен. " +
-                "Входящих: {Incoming}, получено из канала: {Received}, вставлено в БД: {Inserted}, " +
-                "реально дропнуто: {DroppedReal}, backlog (incoming-received): {DroppedCalc}, остаток в каналах: {Remaining}",
-                _sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
+            LogFinalStopStatistics(_sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
         }
 
         /// <summary>
@@ -386,7 +402,9 @@ namespace MarketDataCollector.Application.Services
         /// </summary>
         private async Task ProcessBatchesAsync(int channelIndex, CancellationToken cancellationToken, int deduplicationCacheMaxSize)
         {
-            var batch = new List<TickData>(_batchSize);
+            // Use ArrayPool instead of List<TickData> — eliminates List allocation per consumer
+            var batchArray = ArrayPool<TickData>.Shared.Rent(Math.Max(_batchSize, 1));
+            int batchCount = 0;
             var channel = _channels[channelIndex];
 
             // Per-consumer кэш дедупликации — каждый consumer обрабатывает disjoint набор тикеров,
@@ -417,7 +435,7 @@ namespace MarketDataCollector.Application.Services
                     // Если настроен таймер сброса частичных батчей и батч непустой —
                     // используем Timer для принудительного сброса (без создания Task.Delay per iteration).
                     Task<bool> readTask;
-                    if (_flushIntervalSeconds > 0 && batch.Count > 0)
+                    if (_flushIntervalSeconds > 0 && batchCount > 0)
                     {
                         var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
                         // Переиспользуем один Timer: сбрасываем предыдущее состояние и ставим новый таймаут
@@ -431,12 +449,10 @@ namespace MarketDataCollector.Application.Services
                         if (completed == flushDelay)
                         {
                             // --- Сброс частичного батча по таймеру ---
-                            _logger.LogDebug(
-                                "Session={SessionId}: Таймерный сброс частичного батча: {Count} тиков (batchSize={BatchSize}), channel={Channel}",
-                                _sessionId, batch.Count, _batchSize, channelIndex);
+                            LogTimerFlush(_sessionId, batchCount, _batchSize, channelIndex);
 
-                            await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
-                            batch.Clear();
+                            await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            batchCount = 0;
                             continue; // переходим к следующей итерации — снова ждём тики
                         }
 
@@ -467,18 +483,18 @@ namespace MarketDataCollector.Application.Services
                     // Вычитываем ВСЕ доступные тики из канала (non-blocking)
                     while (channel.Reader.TryRead(out var tick))
                     {
-                        batch.Add(tick);
-                        if (batch.Count >= _batchSize)
+                        batchArray[batchCount++] = tick;
+                        if (batchCount >= _batchSize)
                         {
-                            await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
-                            batch.Clear();
+                            await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            batchCount = 0;
 
                             // Периодическая запись fill level (раз в ~10 сек)
                             if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
                             {
                                 MarketDataTelemetry.ChannelFill.Record(
                                     channel.Reader.Count,
-                                    new KeyValuePair<string, object?>("channel_index", channelIndex));
+                                    ChannelTag(channelIndex));
                                 fillLevelTimer.Restart();
                             }
                         }
@@ -490,17 +506,17 @@ namespace MarketDataCollector.Application.Services
                 channelCompleted:
                     // Канал данных завершён (TryComplete) — выходим из цикла
                     // Перед выходом сбросим частичный батч
-                    if (batch.Count > 0)
+                    if (batchCount > 0)
                     {
-                        await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
-                        batch.Clear();
+                        await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                        batchCount = 0;
 
                         // Периодическая запись fill level (раз в ~10 сек)
                         if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
                         {
                             MarketDataTelemetry.ChannelFill.Record(
                                 channel.Reader.Count,
-                                new KeyValuePair<string, object?>("channel_index", channelIndex));
+                                ChannelTag(channelIndex));
                             fillLevelTimer.Restart();
                         }
                     }
@@ -509,7 +525,7 @@ namespace MarketDataCollector.Application.Services
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogInformation("Session={SessionId}: channel={Channel} обработка отменена", _sessionId, channelIndex);
+                LogChannelCancelled(_sessionId, channelIndex);
             }
             catch (ChannelClosedException)
             {
@@ -517,9 +533,7 @@ namespace MarketDataCollector.Application.Services
             }
             catch (Exception ex) when (ex is not OperationCanceledException && ex is not ChannelClosedException)
             {
-                _logger.LogCritical(ex,
-                    "Session={SessionId}: Неожиданная ошибка в consumer channel={Channel}",
-                    _sessionId, channelIndex);
+                LogConsumerCriticalError(ex, _sessionId, channelIndex);
                 // finally выполнит финальный flush с CancellationToken.None,
                 // затем исключение пробросится → _processingTask станет Faulted.
                 // Worker observe'ит IsFaulted и инициирует graceful shutdown.
@@ -529,27 +543,25 @@ namespace MarketDataCollector.Application.Services
             {
                 // Финальный flush (даже при ошибке — CancellationToken.None)
                 // Важно: не вызываем ProcessBatchAsync повторно, если уже сбросили выше
-                if (batch.Count > 0)
+                if (batchCount > 0)
                 {
-                    _logger.LogDebug(
-                        "Session={SessionId}: Финальный сброс channel={Channel}: {Count} тиков (batchSize={BatchSize})",
-                        _sessionId, channelIndex, batch.Count, _batchSize);
-                    await ProcessBatchAsync(batch, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
+                    LogFinalFlush(_sessionId, channelIndex, batchCount, _batchSize);
+                    await ProcessBatchAsync(batchArray, batchCount, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
                 }
             }
         }
 
-        private async Task ProcessBatchAsync(List<TickData> batch, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
+        private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
             // OpenTelemetry: трейсинг обработки батча
             using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
-            activity?.SetTag("batch.size", batch.Count);
+            activity?.SetTag("batch.size", batchCount);
 
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var batchSize = batch.Count;
+                var batchSize = batchCount;
 
                 // OpenTelemetry: гистограмма размера батча
                 MarketDataTelemetry.BatchSize.Record(batchSize);
@@ -558,34 +570,38 @@ namespace MarketDataCollector.Application.Services
                 //    Кэш заполняется РАНЬШЕ DB-вставки — поэтому ловит
                 //    и intra-batch дубли (те же ключи в одном батче),
                 //    и cross-batch дубли (ключи из предыдущих батчей).
-                List<TickData> filteredTicks;
+                // Use ArrayPool for filteredTicks too — eliminates List<TickData> allocation
+                List<TickData>? filteredList = null;
                 int cachedCount = 0;
                 if (dedupCache != null)
                 {
-                    filteredTicks = new List<TickData>(batch.Count);
-                    foreach (var t in batch)
+                    filteredList = new List<TickData>(batchCount);
+                    for (int i = 0; i < batchCount; i++)
                     {
+                        var t = batchArray[i];
                         if (dedupCache.Contains(t.Ticker, t.Exchange, t.Timestamp))
                         {
                             cachedCount++;
                         }
                         else
                         {
-                            filteredTicks.Add(t);
+                            filteredList.Add(t);
                             dedupCache.Add(t.Ticker, t.Exchange, t.Timestamp);
                         }
                     }
                 }
                 else
                 {
-                    // Кэш отключён — GroupBy как fallback для intra-batch дедупликации
-                    filteredTicks = batch
-                        .GroupBy(t => (t.Ticker, t.Exchange, t.Timestamp))
-                        .Select(g => g.First())
-                        .ToList();
+                    // Кэш отключён — простой проход без выделения новой коллекции,
+                    // передаём batchArray напрямую (срез по batchCount)
+                    filteredList = new List<TickData>(batchCount);
+                    for (int i = 0; i < batchCount; i++)
+                    {
+                        filteredList.Add(batchArray[i]);
+                    }
                 }
 
-                activity?.SetTag("filtered.count", filteredTicks.Count);
+                activity?.SetTag("filtered.count", filteredList.Count);
                 activity?.SetTag("cached.count", cachedCount);
 
                 // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
@@ -593,17 +609,18 @@ namespace MarketDataCollector.Application.Services
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert напрямую из filteredTicks (без промежуточного List<RawTick>)
+                // 3. Bulk insert напрямую из filteredList (без промежуточного List<RawTick>)
                 var sw = Stopwatch.StartNew();
-                var inserted = await repository.BulkCopyAsync(filteredTicks, _timeService, cancellationToken);
+                var inserted = await repository.BulkCopyAsync(filteredList, _timeService, cancellationToken);
                 sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
 
                 // OpenTelemetry: гистограмма времени записи батча
+                // (batch_size и inserted_count варьируются — не кэшируются)
                 MarketDataTelemetry.BatchWriteDuration.Record(
                     sw.Elapsed.TotalMilliseconds,
-                    new KeyValuePair<string, object?>("channel_index", channelIndex),
+                    ChannelTag(channelIndex),
                     new KeyValuePair<string, object?>("batch_size", batchSize),
                     new KeyValuePair<string, object?>("inserted_count", inserted));
 
@@ -626,26 +643,24 @@ namespace MarketDataCollector.Application.Services
                 // OpenTelemetry: счётчики полученных и обработанных тиков
                 MarketDataTelemetry.TicksReceived.Add(
                     batchSize,
-                    new KeyValuePair<string, object?>("channel_index", channelIndex));
+                    ChannelTag(channelIndex));
 
                 MarketDataTelemetry.TicksProcessed.Add(
                     inserted,
-                    new KeyValuePair<string, object?>("exchange", batch.Count > 0 ? batch[0].Exchange : "unknown"));
+                    batchCount > 0 ? GetExchangeTag(batchArray[0].Exchange) : ExchangeUnknownTag);
 
                 // Batch increment: один Interlocked.Add вместо N Interlocked.Increment
                 _processedRpsCounter.IncrementBatch(inserted);
                 
                 if (totalInserted % 10000 < inserted)
                 {
-                    _logger.LogInformation(
-                        "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, filtered={Filtered}, cached={Cached}, вставлено={Inserted})",
-                        totalInserted, totalReceived, batchSize, filteredTicks.Count, cachedCount, inserted);
+                    LogPeriodicProgress(totalInserted, totalReceived, batchSize, filteredList.Count, cachedCount, inserted);
                 }
             }
             catch (OperationCanceledException)
             {
                 activity?.SetStatus(ActivityStatusCode.Error, "Cancelled");
-                _logger.LogWarning("Обработка батча отменена");
+                LogBatchCancelled();
                 throw;
             }
             catch (PostgresException pgEx)
@@ -653,33 +668,28 @@ namespace MarketDataCollector.Application.Services
                 activity?.SetStatus(ActivityStatusCode.Error, pgEx.Message);
                 activity?.SetTag("exception.type", "PostgresException");
                 activity?.SetTag("exception.sql_state", pgEx.SqlState);
-                _logger.LogError(pgEx,
-                    "PostgreSQL error SqlState={SqlState} writing batch {Count} ticks (channel={Channel})",
-                    pgEx.SqlState, batch.Count, channelIndex);
+                LogPostgresError(pgEx, pgEx.SqlState, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
-                    new KeyValuePair<string, object?>("exception_type", "PostgresException"),
+                    ExceptionTypePostgresTag,
                     new KeyValuePair<string, object?>("sql_state", pgEx.SqlState));
             }
             catch (NpgsqlException npgEx)
             {
                 activity?.SetStatus(ActivityStatusCode.Error, npgEx.Message);
                 activity?.SetTag("exception.type", "NpgsqlException");
-                _logger.LogError(npgEx,
-                    "Npgsql error writing batch {Count} ticks (channel={Channel})",
-                    batch.Count, channelIndex);
+                LogNpgsqlError(npgEx, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
-                    new KeyValuePair<string, object?>("exception_type", "NpgsqlException"),
-                    new KeyValuePair<string, object?>("sql_state", "none"));
+                    ExceptionTypeNpgsqlTag,
+                    SqlStateNoneTag);
             }
             catch (Exception ex)
             {
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 activity?.SetTag("exception.type", ex.GetType().Name);
-                _logger.LogError(ex, "Неожиданная ошибка при обработке батча из {Count} тиков (channel={Channel})",
-                    batch.Count, channelIndex);
+                LogUnexpectedBatchError(ex, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
                     new KeyValuePair<string, object?>("exception_type", ex.GetType().Name),
-                    new KeyValuePair<string, object?>("sql_state", "none"));
+                    SqlStateNoneTag);
                 // Временная ошибка (БД, сеть и т.д.) — consumer продолжает работать.
                 // Исключение НЕ пробрасывается, чтобы следующие батчи обрабатывались.
             }

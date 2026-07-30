@@ -36,6 +36,8 @@ public class MarketDataProcessorTests
         _output = output;
         _repositoryMock = new Mock<IRawTickRepository>();
         _loggerMock = new Mock<ILogger<MarketDataProcessor>>();
+        // LoggerMessage source-gen calls ILogger.IsEnabled() before logging — Moq returns false by default
+        _loggerMock.Setup(x => x.IsEnabled(It.IsAny<LogLevel>())).Returns(true);
         _timeServiceMock = new Mock<ITimeService>();
 
         // Настраиваем IServiceScopeFactory, чтобы она возвращала scope с нужным репозиторием

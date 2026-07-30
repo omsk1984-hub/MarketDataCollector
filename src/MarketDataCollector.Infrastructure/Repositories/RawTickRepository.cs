@@ -21,11 +21,34 @@ namespace MarketDataCollector.Infrastructure.Repositories
         private readonly DbSet<RawTick> _dbSet;
         private readonly ILogger<RawTickRepository> _logger;
 
+        // Reusable NpgsqlParameter[] for BulkCopyAsync(TickData) — pre-allocated once,
+        // avoids 8× new NpgsqlParameter per batch (~8.5 batches/sec).
+        // Safe because RawTickRepository is Scoped + consumer processes batches sequentially.
+        private readonly Npgsql.NpgsqlParameter[] _tickDataParameters;
+        private const string SqlTickDataBulkCopy = @"
+            INSERT INTO rawticks (""id"", ""ticker"", ""price"", ""volume"", ""timestamp"", ""exchange"", ""receivedat"", ""normalized"")
+            SELECT unnest(@ids), unnest(@tickers), unnest(@prices), unnest(@volumes),
+                   unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
+            ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
+
         public RawTickRepository(MarketDataDbContext context, ILogger<RawTickRepository> logger)
         {
             _context = context;
             _dbSet = context.Set<RawTick>();
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+            // Pre-create the NpgsqlParameter array — only Value is updated per batch call
+            _tickDataParameters = new Npgsql.NpgsqlParameter[]
+            {
+                new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = null! },
+                new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
+                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = null! },
+                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = null! },
+                new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
+                new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
+                new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
+                new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = null! },
+            };
         }
 
         public async Task<RawTick?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -345,23 +368,15 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 normalizeds[i] = false;
             }
 
-            const string sql = @"
-                INSERT INTO rawticks (""id"", ""ticker"", ""price"", ""volume"", ""timestamp"", ""exchange"", ""receivedat"", ""normalized"")
-                SELECT unnest(@ids), unnest(@tickers), unnest(@prices), unnest(@volumes),
-                       unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
-                ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
-
-            var parameters = new Npgsql.NpgsqlParameter[]
-            {
-                new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = ids },
-                new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = tickers },
-                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = prices },
-                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = volumes },
-                new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = timestamps },
-                new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = exchanges },
-                new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = receivedAts },
-                new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = normalizeds },
-            };
+            // Reuse pre-allocated NpgsqlParameter[] — only update Value each batch call
+            _tickDataParameters[0].Value = ids;
+            _tickDataParameters[1].Value = tickers;
+            _tickDataParameters[2].Value = prices;
+            _tickDataParameters[3].Value = volumes;
+            _tickDataParameters[4].Value = timestamps;
+            _tickDataParameters[5].Value = exchanges;
+            _tickDataParameters[6].Value = receivedAts;
+            _tickDataParameters[7].Value = normalizeds;
 
             int attempt = 0;
             while (true)
@@ -370,7 +385,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
                 try
                 {
-                    return await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+                    return await _context.Database.ExecuteSqlRawAsync(SqlTickDataBulkCopy, _tickDataParameters, cancellationToken);
                 }
                 catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {

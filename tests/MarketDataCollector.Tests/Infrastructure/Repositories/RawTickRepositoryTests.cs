@@ -16,6 +16,7 @@ public class RawTickRepositoryTests
     private readonly ITestOutputHelper _output;
     private readonly MarketDataDbContext _context;
     private readonly RawTickRepository _repository;
+    private readonly Mock<ILogger<RawTickRepository>> _loggerMock;
 
     public RawTickRepositoryTests(ITestOutputHelper output)
     {
@@ -25,7 +26,8 @@ public class RawTickRepositoryTests
             .Options;
 
         _context = new MarketDataDbContext(options);
-        _repository = new RawTickRepository(_context);
+        _loggerMock = new Mock<ILogger<RawTickRepository>>();
+        _repository = new RawTickRepository(_context, _loggerMock.Object);
     }
 
     [Fact(Timeout = 10000)]
