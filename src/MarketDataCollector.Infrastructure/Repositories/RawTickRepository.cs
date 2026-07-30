@@ -225,9 +225,10 @@ namespace MarketDataCollector.Infrastructure.Repositories
         /// - Один round-trip вместо трёх (DROP, COPY, INSERT)
         /// - Npgsql передаёт массивы как бинарные параметры — ~10-50x быстрее temp table
         ///
-        /// Retry: 1 попытка при deadlock (40P01) как safety-net.
-        /// Deadlock'и невозможны (per-ticker routing), retry — на случай
-        /// других транзиентных ошибок Npgsql.
+        /// Retry: safety-net для транзиентных ошибок Npgsql (deadlock, timeout, network).
+        /// Deadlock'и (40P01) невозможны — per-ticker routing в MarketDataProcessor
+        /// гарантирует disjoint наборы тикеров между consumer'ами,
+        /// поэтому два INSERT'а никогда не конкурируют за один unique index.
         /// </summary>
         public async Task<int> BulkCopyAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {

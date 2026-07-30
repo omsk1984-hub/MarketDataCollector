@@ -42,7 +42,6 @@ namespace MarketDataCollector.Application.Services
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
         private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync
         private int _totalDroppedCount;    // сколько тиков реально дропнуто каналом (TryWrite=false из-за DropOldest)
-        private int _roundRobinIndex;      // атомарный счётчик для round-robin распределения по каналам
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
@@ -132,9 +131,16 @@ namespace MarketDataCollector.Application.Services
             }
             else
             {
-                // Round-robin: атомарный инкремент с защитой от переполнения.
-                // & int.MaxValue гарантирует положительное значение даже при wrap'е int.MinValue.
-                channelIndex = (Interlocked.Increment(ref _roundRobinIndex) & int.MaxValue) % channels.Length;
+                // Per-ticker routing: детерминированный хэш от ticker'а.
+                // Гарантирует, что все тики одного тикера попадают в один канал,
+                // а разные consumer'ы работают с disjoint наборами тикеров.
+                // Это исключает deadlock'и (40P01) при ON CONFLICT DO NOTHING,
+                // т.к. два consumer'а никогда не конкурируют за один unique index.
+                //
+                // При 3 тикерах и 3 consumer'ах нагрузка распределяется идеально.
+                // При асимметричной нагрузке (один тикер быстрее других)
+                // DropOldest защищает от переполнения канала.
+                channelIndex = (GetStableHashCode(ticker) & int.MaxValue) % channels.Length;
             }
 
             if (!channels[channelIndex].Writer.TryWrite(tick))
@@ -236,15 +242,12 @@ namespace MarketDataCollector.Application.Services
             }
             else
             {
-                // ===== Multiple Consumers Mode (default) =====
+                // ===== Multiple Consumers Mode =====
                 // Создаём отдельные каналы для каждого consumer'а с SingleReader=true.
-                // Каждый consumer получает disjoint набор тикеров (по хэшу ticker'а в ProcessTickAsync),
-                // поэтому B-tree страницы unique-индекса (ticker, exchange, timestamp)
-                // физически не пересекаются — deadlock'и (40P01) невозможны,
-                // и SemaphoreSlim в BulkCopyAsync больше не нужен.
-                //
-                // Ожидаемая производительность: ~3x прирост при 3 consumer'ах и 3+ тикерах
-                // против текущего SemaphoreSlim-режима (~55k → ~150k+ ticks/sec).
+                // Per-ticker routing в ProcessTickAsync гарантирует, что каждый consumer
+                // получает disjoint набор тикеров (детерминированный хэш ticker'а).
+                // B-tree страницы unique-индекса (ticker, exchange, timestamp)
+                // физически не пересекаются — deadlock'и (40P01) невозможны.
 
                 int consumerCount;
                 string countSource;

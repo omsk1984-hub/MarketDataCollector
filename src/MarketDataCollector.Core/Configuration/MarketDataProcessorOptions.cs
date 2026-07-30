@@ -33,21 +33,23 @@ namespace MarketDataCollector.Core.Configuration
         /// <summary>
         /// Режим Single Consumer: использует ровно 1 consumer вместо N параллельных.
         ///
-        /// Когда true:
+        /// Когда true (рекомендовано):
         /// - Channel создаётся с SingleReader=true (гарантия однопоточного чтения)
         /// - Запускается ровно 1 consumer, который последовательно читает тики и пишет батчи
         /// - Полностью исключает deadlock'и (40P01) за счёт отсутствия конкуренции потоков
+        /// - Меньше GC-давления и lock contention
         ///
-        /// Когда false (по умолчанию):
-        /// - Channel с SingleReader=false
+        /// Когда false:
+        /// - Per-ticker routing (хэш от ticker'а) гарантирует disjoint наборы тикеров
+        /// - Consumer'ы работают с разными тикерами — deadlock'и (40P01) невозможны
         /// - Запускается ConsumerCount parallel consumer'ов (если ConsumerCount > 0)
         ///   либо Math.Clamp(CPU/2, 1, 4) при ConsumerCount = 0
-        /// - Вставка в БД сериализована через SemaphoreSlim(1,1) в BulkCopyAsync
+        /// - Parallelism полезен при throughput > 25K ticks/sec
         ///
-        /// По результатам бенчмарка: Sequential batch=700 даёт ~62 680 ticks/sec,
-        /// что достаточно для текущей нагрузки на одном потоке.
+        /// По результатам бенчмарка: Sequential batch=2500 даёт ~10,700 ticks/sec,
+        /// что достаточно для текущей нагрузки (~19K msg/s).
         /// </summary>
-        public bool UseSingleConsumer { get; set; } = false;
+        public bool UseSingleConsumer { get; set; } = true;
 
         /// <summary>
         /// Количество parallel consumer'ов для режима Multiple Consumers (UseSingleConsumer=false).
