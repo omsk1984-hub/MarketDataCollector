@@ -41,6 +41,7 @@ namespace MarketDataCollector.Application.Services
         private int _totalReceivedCount;   // сколько всего тиков пришло в ProcessBatchAsync (до дедупликации)
         private int _totalIncomingCount;   // сколько всего тиков поступило в ProcessTickAsync
         private int _totalDroppedCount;    // сколько тиков реально дропнуто каналом (TryWrite=false из-за DropOldest)
+        private int _roundRobinIndex;      // атомарный счётчик для round-robin распределения по каналам
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
@@ -118,9 +119,10 @@ namespace MarketDataCollector.Application.Services
 
             // Определяем канал для записи:
             // - SingleConsumer mode: всегда канал 0
-            // - Multiple consumers mode: по хэшу ticker'а, чтобы каждый consumer получал
-            //   disjoint набор тикеров (B-tree страницы unique-индекса не пересекаются →
-            //   deadlock'и невозможны → SemaphoreSlim в BulkCopyAsync не нужен)
+            // - Multiple consumers mode: round-robin по атомарному счётчику,
+            //   чтобы нагрузка распределялась равномерно между всеми consumer'ами.
+            //   Это решает проблему хэш-коллизий, когда несколько быстрых тикеров
+            //   попадают в один канал, вызывая переполнение и DropOldest.
             var channels = _channels;
             int channelIndex;
             if (_useSingleConsumer || channels.Length == 1)
@@ -129,9 +131,9 @@ namespace MarketDataCollector.Application.Services
             }
             else
             {
-                // Math.Abs может вернуть int.MinValue, что даёт отрицательное число.
-                // Используем & 0x7FFFFFFF для гарантии положительного значения.
-                channelIndex = (GetStableHashCode(ticker) & 0x7FFFFFFF) % channels.Length;
+                // Round-robin: атомарный инкремент с защитой от переполнения.
+                // & int.MaxValue гарантирует положительное значение даже при wrap'е int.MinValue.
+                channelIndex = (Interlocked.Increment(ref _roundRobinIndex) & int.MaxValue) % channels.Length;
             }
 
             if (!channels[channelIndex].Writer.TryWrite(tick))
@@ -284,7 +286,7 @@ namespace MarketDataCollector.Application.Services
 
                 _logger.LogInformation(
                     "Session={SessionId}: Обработчик рыночных данных запущен: {ConsumerCount} consumer'ов ({CountSource}), " +
-                    "batchSize={BatchSize}, ChannelCapacity={Capacity}, routing=tickerHash",
+                    "batchSize={BatchSize}, ChannelCapacity={Capacity}, routing=roundRobin",
                     _sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
             }
 
