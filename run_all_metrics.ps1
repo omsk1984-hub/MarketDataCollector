@@ -1,0 +1,1 @@
+.\metrics.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50
