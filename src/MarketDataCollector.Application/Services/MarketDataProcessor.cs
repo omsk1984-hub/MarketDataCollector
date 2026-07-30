@@ -4,6 +4,7 @@ using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Core.Utilities;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
+using TickData = MarketDataCollector.Domain.Entities.TickData;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -43,13 +44,6 @@ namespace MarketDataCollector.Application.Services
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
-        public readonly record struct TickData(
-            string Ticker,
-            decimal Price,
-            decimal Volume,
-            DateTime Timestamp,
-            string Exchange
-        );
 
         public MarketDataProcessor(
             IServiceScopeFactory scopeFactory,
@@ -395,6 +389,10 @@ namespace MarketDataCollector.Application.Services
             // поэтому синхронизация не нужна.
             var dedupCache = deduplicationCacheMaxSize > 0 ? new DeduplicationCache(deduplicationCacheMaxSize) : null;
 
+            // Для периодической записи fill level (раз в ~10 сек)
+            var fillLevelTimer = Stopwatch.StartNew();
+            const int fillLevelIntervalMs = 10_000;
+
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -422,7 +420,7 @@ namespace MarketDataCollector.Application.Services
                                 "Session={SessionId}: Таймерный сброс частичного батча: {Count} тиков (batchSize={BatchSize}), channel={Channel}",
                                 _sessionId, batch.Count, _batchSize, channelIndex);
 
-                            await ProcessBatchAsync(batch, dedupCache, cancellationToken).ConfigureAwait(false);
+                            await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                             batch.Clear();
                             continue; // переходим к следующей итерации — снова ждём тики
                         }
@@ -457,8 +455,17 @@ namespace MarketDataCollector.Application.Services
                         batch.Add(tick);
                         if (batch.Count >= _batchSize)
                         {
-                            await ProcessBatchAsync(batch, dedupCache, cancellationToken).ConfigureAwait(false);
+                            await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                             batch.Clear();
+
+                            // Периодическая запись fill level (раз в ~10 сек)
+                            if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
+                            {
+                                MarketDataTelemetry.ChannelFill.Record(
+                                    channel.Reader.Count,
+                                    new KeyValuePair<string, object?>("channel_index", channelIndex));
+                                fillLevelTimer.Restart();
+                            }
                         }
                     }
 
@@ -470,8 +477,17 @@ namespace MarketDataCollector.Application.Services
                     // Перед выходом сбросим частичный батч
                     if (batch.Count > 0)
                     {
-                        await ProcessBatchAsync(batch, dedupCache, cancellationToken).ConfigureAwait(false);
+                        await ProcessBatchAsync(batch, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                         batch.Clear();
+
+                        // Периодическая запись fill level (раз в ~10 сек)
+                        if (fillLevelTimer.ElapsedMilliseconds >= fillLevelIntervalMs)
+                        {
+                            MarketDataTelemetry.ChannelFill.Record(
+                                channel.Reader.Count,
+                                new KeyValuePair<string, object?>("channel_index", channelIndex));
+                            fillLevelTimer.Restart();
+                        }
                     }
                     break;
                 }
@@ -503,12 +519,12 @@ namespace MarketDataCollector.Application.Services
                     _logger.LogDebug(
                         "Session={SessionId}: Финальный сброс channel={Channel}: {Count} тиков (batchSize={BatchSize})",
                         _sessionId, channelIndex, batch.Count, _batchSize);
-                    await ProcessBatchAsync(batch, dedupCache, CancellationToken.None).ConfigureAwait(false);
+                    await ProcessBatchAsync(batch, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
                 }
             }
         }
 
-        private async Task ProcessBatchAsync(List<TickData> batch, DeduplicationCache? dedupCache, CancellationToken cancellationToken)
+        private async Task ProcessBatchAsync(List<TickData> batch, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
             // OpenTelemetry: трейсинг обработки батча
             using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
@@ -566,25 +582,44 @@ namespace MarketDataCollector.Application.Services
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert через Npgsql Binary COPY protocol (быстрее ExecuteSqlRaw в 10-100x)
-                //    SemaphoreSlim в BulkCopyAsync удалён — deadlock'и невозможны, т.к. каждый consumer
-                //    пишет disjoint наборы тикеров (per-ticker routing в ProcessTickAsync),
-                //    поэтому B-tree страницы unique-индекса не пересекаются.
+                // 3. Bulk insert — замеряем время записи для гистограммы
                 var entities = filteredTicks.Select(t => new RawTick(
                     t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
                 )).ToList();
 
+                var sw = Stopwatch.StartNew();
                 var inserted = await repository.BulkCopyAsync(entities, cancellationToken);
+                sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
 
-                var totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
-                var totalInserted = Interlocked.Add(ref _processedCount, inserted);
+                // OpenTelemetry: гистограмма времени записи батча
+                MarketDataTelemetry.BatchWriteDuration.Record(
+                    sw.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("channel_index", channelIndex),
+                    new KeyValuePair<string, object?>("batch_size", batchSize),
+                    new KeyValuePair<string, object?>("inserted_count", inserted));
+
+                // Single Consumer mode: гонки нет — обычные присваивания быстрее Interlocked.
+                // Multiple Consumers mode: Interlocked гарантирует атомарность.
+                int totalReceived, totalInserted;
+                if (_useSingleConsumer)
+                {
+                    _totalReceivedCount += batchSize;
+                    _processedCount += inserted;
+                    totalReceived = _totalReceivedCount;
+                    totalInserted = _processedCount;
+                }
+                else
+                {
+                    totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
+                    totalInserted = Interlocked.Add(ref _processedCount, inserted);
+                }
 
                 // OpenTelemetry: счётчики полученных и обработанных тиков
                 MarketDataTelemetry.TicksReceived.Add(
                     batchSize,
-                    new KeyValuePair<string, object?>("channel_index", 0));
+                    new KeyValuePair<string, object?>("channel_index", channelIndex));
 
                 MarketDataTelemetry.TicksProcessed.Add(
                     inserted,

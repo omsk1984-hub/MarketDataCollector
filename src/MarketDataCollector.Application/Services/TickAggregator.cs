@@ -10,10 +10,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using TickData = MarketDataCollector.Domain.Entities.TickData;
 
 namespace MarketDataCollector.Application.Services
 {
@@ -39,13 +39,6 @@ namespace MarketDataCollector.Application.Services
         private Timer _flushTimer = null!;
         private readonly CancellationTokenSource _cts = new();
 
-        public readonly record struct TickData(
-            string Ticker,
-            decimal Price,
-            decimal Volume,
-            DateTime Timestamp,
-            string Exchange
-        );
 
         /// <summary>
         /// Внутреннее представление свечи в памяти.

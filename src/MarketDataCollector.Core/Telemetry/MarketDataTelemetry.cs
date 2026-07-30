@@ -117,4 +117,13 @@ public static class MarketDataTelemetry
         name: "processor.channel.fill",
         unit: "count",
         description: "Channel fill level (current queue depth)");
+
+    /// <summary>
+    /// Длительность записи батча в БД (гистограмма).
+    /// Теги: channel_index, batch_size, inserted_count
+    /// </summary>
+    public static readonly Histogram<double> BatchWriteDuration = Instance.CreateHistogram<double>(
+        name: "ticks.batch.write.duration",
+        unit: "ms",
+        description: "Duration of batch database write operation");
 }
