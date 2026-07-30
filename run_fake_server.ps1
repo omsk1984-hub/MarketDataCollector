@@ -3,7 +3,7 @@ $Port = 5000
 $Rps = 20000
 $Symbols = "btcusdt,ethusdt,solusdt"
 $BasePrice = 5000
-$MaxTicks = 1200000
+$MaxTicks = 1500000
 $DupPercent = 3
 
 # Останавливаем предыдущий экземпляр, если запущен
