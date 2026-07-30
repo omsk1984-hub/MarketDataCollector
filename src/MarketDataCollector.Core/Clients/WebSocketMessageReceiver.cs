@@ -11,12 +11,18 @@ namespace MarketDataCollector.Core.Clients;
 /// <summary>
 /// Управляет циклом приёма сообщений WebSocket.
 /// Собирает фрагментированные сообщения и вызывает обработчик при получении полного сообщения.
+/// Потокобезопасен: поддерживает корректную остановку текущего loop перед запуском нового.
 /// </summary>
 public class WebSocketMessageReceiver : IWebSocketMessageReceiver
 {
     private readonly IWebSocketConnectionManager _connectionManager;
     private readonly WebSocketClientOptions _options;
     private readonly ILogger<WebSocketMessageReceiver> _logger;
+
+    private readonly object _loopLock = new();
+    private Task? _currentLoopTask;
+    private CancellationTokenSource? _loopCts;
+    private static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(5);
 
     public WebSocketMessageReceiver(
         IWebSocketConnectionManager connectionManager,
@@ -35,12 +41,45 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         Action<Exception>? onError,
         CancellationToken cancellationToken)
     {
+        // Останавливаем предыдущий loop и дожидаемся его завершения.
+        // Это гарантирует, что только один receive loop работает в любой момент времени.
+        await StopReceiveLoopAsync().ConfigureAwait(false);
+
         _logger.LogDebug("Цикл приёма сообщений запущен.");
-        
+
+        // Создаём linked CTS: внешняя отмена + наш внутренний CTS для остановки
+        lock (_loopLock)
+        {
+            _loopCts?.Dispose();
+            _loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+        var linkedToken = _loopCts.Token;
+
+        // Запускаем loop и сохраняем ссылку на Task
+        var task = RunLoopCoreAsync(processMessage, onMessageReceived, onError, linkedToken);
+
+        lock (_loopLock)
+        {
+            _currentLoopTask = task;
+        }
+
+        // Не await'им — loop работает в фоне. Caller (BaseWebSocketClient) наблюдаемый Task.
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Основной цикл приёма сообщений.
+    /// </summary>
+    private async Task RunLoopCoreAsync(
+        Func<string, Task> processMessage,
+        Action<string>? onMessageReceived,
+        Action<Exception>? onError,
+        CancellationToken cancellationToken)
+    {
         // Используем ArrayPool для эффективного управления памятью
         var tempBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
         var messageStream = new MemoryStream(_options.MaxMessageSize);
-        
+
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -54,7 +93,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     }
 
                     var result = await _connectionManager.ReceiveAsync(
-                        new ArraySegment<byte>(tempBuffer), cancellationToken);
+                        new ArraySegment<byte>(tempBuffer), cancellationToken).ConfigureAwait(false);
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
@@ -68,15 +107,15 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         _logger.LogWarning(
                             "Сообщение превышает максимальный размер ({0} байт). Отбрасываем сообщение.",
                             _options.MaxMessageSize);
-                        
+
                         // Пропускаем оставшиеся фрагменты до EndOfMessage
                         while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested)
                         {
                             result = await _connectionManager.ReceiveAsync(
-                                new ArraySegment<byte>(tempBuffer), cancellationToken);
+                                new ArraySegment<byte>(tempBuffer), cancellationToken).ConfigureAwait(false);
                         }
-                        
-                        messageStream.SetLength(0); // Очищаем поток для следующего сообщения
+
+                        messageStream.SetLength(0);
                         continue;
                     }
 
@@ -89,9 +128,9 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         {
                             // Декодируем сообщение из потока
                             var message = Encoding.UTF8.GetString(messageStream.GetBuffer(), 0, (int)messageStream.Length);
-                            
+
                             onMessageReceived?.Invoke(message);
-                            await processMessage(message);
+                            await processMessage(message).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -100,25 +139,23 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         }
                         finally
                         {
-                            // Очищаем поток для следующего сообщения
                             messageStream.SetLength(0);
                         }
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    // Ожидаемое поведение при отмене
                     break;
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Ошибка при приёме сообщения.");
                     onError?.Invoke(ex);
-                    
+
                     // Небольшая пауза перед повторной попыткой
                     try
                     {
-                        await Task.Delay(1000, cancellationToken);
+                        await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -129,17 +166,63 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         }
         finally
         {
-            // Возвращаем буфер в пул
             ArrayPool<byte>.Shared.Return(tempBuffer);
             messageStream.Dispose();
+            _logger.LogDebug("Цикл приёма сообщений завершён.");
         }
-
-        _logger.LogDebug("Цикл приёма сообщений завершён.");
     }
 
     /// <inheritdoc />
-    public void StopReceiveLoop()
+    public async Task StopReceiveLoopAsync(TimeSpan? timeout = null)
     {
-        _logger.LogDebug("Остановка цикла приёма сообщений запрошена.");
+        Task? taskToWait;
+        CancellationTokenSource? ctsToCancel;
+
+        lock (_loopLock)
+        {
+            taskToWait = _currentLoopTask;
+            ctsToCancel = _loopCts;
+        }
+
+        // Если loop не запущен или уже завершился — выходим сразу
+        if (taskToWait == null || taskToWait.IsCompleted)
+        {
+            lock (_loopLock)
+            {
+                _currentLoopTask = null;
+                _loopCts?.Dispose();
+                _loopCts = null;
+            }
+            return;
+        }
+
+        // Отменяем CTS receive loop
+        try
+        {
+            ctsToCancel?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS уже disposed — игнорируем
+        }
+
+        // Дожидаемся завершения loop с таймаутом
+        var effectiveTimeout = timeout ?? DefaultStopTimeout;
+        try
+        {
+            await Task.WhenAny(taskToWait, Task.Delay(effectiveTimeout)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Ошибка при остановке цикла приёма сообщений.");
+        }
+
+        // Чистим состояние
+        lock (_loopLock)
+        {
+            _currentLoopTask = null;
+            _loopCts?.Dispose();
+            _loopCts = null;
+        }
     }
 }

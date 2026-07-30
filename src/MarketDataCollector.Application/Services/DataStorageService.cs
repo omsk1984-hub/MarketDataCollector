@@ -40,10 +40,12 @@ namespace MarketDataCollector.Application.Services
         {
             try
             {
-                await _rawTickRepository.AddRangeAsync(rawTicks);
+                // Материализуем один раз, чтобы избежать повторного перечисления IEnumerable
+                var list = rawTicks as IReadOnlyList<RawTick> ?? rawTicks.ToList();
+                await _rawTickRepository.AddRangeAsync(list);
                 await _rawTickRepository.SaveChangesAsync();
-                
-                _logger.LogDebug("Batch of {Count} raw ticks stored", rawTicks.Count());
+
+                _logger.LogDebug("Batch of {Count} raw ticks stored", list.Count);
             }
             catch (Exception ex)
             {

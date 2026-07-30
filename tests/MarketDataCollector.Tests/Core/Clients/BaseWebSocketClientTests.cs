@@ -485,7 +485,7 @@ public class BaseWebSocketClientTests
 
         // Assert
         _connectionManagerMock.Verify(cm => cm.DisconnectAsync(cancellationToken), Times.Once);
-        _messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        _messageReceiverMock.Verify(mr => mr.StopReceiveLoopAsync(It.IsAny<TimeSpan?>()), Times.Once);
         // Проверяем, что OnDisconnected() был вызван
         _loggerMock.Verify(
             x => x.Log(
@@ -722,7 +722,7 @@ public class BaseWebSocketClientTests
         await client.DisposeAsync();
 
         // Assert
-        messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        messageReceiverMock.Verify(mr => mr.StopReceiveLoopAsync(It.IsAny<TimeSpan?>()), Times.Once);
         // Проверяем только отписку от события (подписка была в конструкторе)
         connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
         disposableConnectionManager.Verify(d => d.Dispose(), Times.Once);
@@ -754,7 +754,7 @@ public class BaseWebSocketClientTests
         client.Dispose();
 
         // Assert
-        messageReceiverMock.Verify(mr => mr.StopReceiveLoop(), Times.Once);
+        messageReceiverMock.Verify(mr => mr.StopReceiveLoopAsync(It.IsAny<TimeSpan?>()), Times.Once);
         connectionManagerMock.VerifyRemove(cm => cm.StateChanged -= It.IsAny<EventHandler<WebSocketState>>(), Times.Once);
         disposableConnectionManager.Verify(d => d.Dispose(), Times.Once);
     }

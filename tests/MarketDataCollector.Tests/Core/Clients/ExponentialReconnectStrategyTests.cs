@@ -16,7 +16,8 @@ public class ExponentialReconnectStrategyTests
         _defaultOptions = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(1),
-            MaxReconnectDelay = TimeSpan.FromSeconds(60)
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0 // точные проверки без jitter
         };
         _loggerMock = new Mock<ILogger<ExponentialReconnectStrategy>>();
     }
@@ -24,130 +25,114 @@ public class ExponentialReconnectStrategyTests
     [Fact(Timeout = 5000)]
     public void Constructor_WithValidOptions_SetsProperties()
     {
-        // Arrange & Act
         var strategy = new ExponentialReconnectStrategy(
             Options.Create(_defaultOptions),
             _loggerMock.Object);
 
-        // Assert
         strategy.Should().NotBeNull();
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_FirstAttempt_ReturnsBaseDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(2),
-            MaxReconnectDelay = TimeSpan.FromSeconds(60)
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(1);
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(2));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_SecondAttempt_ReturnsDoubleDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(2),
-            MaxReconnectDelay = TimeSpan.FromSeconds(60)
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(2);
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(4));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_ThirdAttempt_ReturnsExponentialDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(2),
-            MaxReconnectDelay = TimeSpan.FromSeconds(60)
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(3);
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(8));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_FourthAttempt_ReturnsExponentialDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(2),
-            MaxReconnectDelay = TimeSpan.FromSeconds(60)
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(4);
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(16));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_ExceedsMaxDelay_ReturnsCappedDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(2),
-            MaxReconnectDelay = TimeSpan.FromSeconds(10)
+            MaxReconnectDelay = TimeSpan.FromSeconds(10),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(5); // 2 * 2^4 = 32, but capped at 10
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(10));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_WithLargeAttempt_ReturnsMaxDelay()
     {
-        // Arrange
         var options = new WebSocketClientOptions
         {
             ReconnectDelay = TimeSpan.FromSeconds(1),
-            MaxReconnectDelay = TimeSpan.FromSeconds(30)
+            MaxReconnectDelay = TimeSpan.FromSeconds(30),
+            JitterFactor = 0
         };
         var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
 
-        // Act
         var delay = strategy.GetDelay(20);
 
-        // Assert
         delay.Should().Be(TimeSpan.FromSeconds(30));
     }
 
     [Fact(Timeout = 5000)]
     public void GetDelay_WithZeroAttempt_ThrowsArgumentOutOfRangeException()
     {
-        // Arrange
         var strategy = new ExponentialReconnectStrategy(Options.Create(_defaultOptions), _loggerMock.Object);
 
-        // Act & Assert
         var act = () => strategy.GetDelay(0);
         act.Should().Throw<ArgumentOutOfRangeException>()
             .WithParameterName("attempt");
@@ -156,42 +141,71 @@ public class ExponentialReconnectStrategyTests
     [Fact(Timeout = 5000)]
     public void GetDelay_WithNegativeAttempt_ThrowsArgumentOutOfRangeException()
     {
-        // Arrange
         var strategy = new ExponentialReconnectStrategy(Options.Create(_defaultOptions), _loggerMock.Object);
 
-        // Act & Assert
         var act = () => strategy.GetDelay(-1);
         act.Should().Throw<ArgumentOutOfRangeException>()
             .WithParameterName("attempt");
     }
 
     [Fact(Timeout = 5000)]
-    public void ShouldRetry_AlwaysReturnsTrue()
+    public void GetDelay_WithJitter_ReturnsDelayWithinRange()
     {
-        // Arrange
+        // Arrange — JitterFactor = 0.3 (по умолчанию)
+        var options = new WebSocketClientOptions
+        {
+            ReconnectDelay = TimeSpan.FromSeconds(10),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            JitterFactor = 0.3
+        };
+        var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
+
+        // Act — запускаем 100 раз и проверяем разброс
+        var delays = Enumerable.Range(0, 100)
+            .Select(_ => strategy.GetDelay(1).TotalSeconds)
+            .ToList();
+
+        // Assert — все задержки в диапазоне [7, 13] (10 ± 30%)
+        delays.Should().AllSatisfy(d => d.Should().BeInRange(7.0, 13.0));
+        // Разброс должен быть значительным — не все одинаковые
+        delays.Distinct().Count().Should().BeGreaterThan(1);
+    }
+
+    [Fact(Timeout = 5000)]
+    public void ShouldRetry_WithZeroMaxAttempts_ReturnsTrueAlways()
+    {
+        // MaxReconnectAttempts = 0 → бесконечно
         var strategy = new ExponentialReconnectStrategy(Options.Create(_defaultOptions), _loggerMock.Object);
 
-        // Act
-        var result1 = strategy.ShouldRetry(1);
-        var result2 = strategy.ShouldRetry(10);
-        var result3 = strategy.ShouldRetry(100);
+        strategy.ShouldRetry(1).Should().BeTrue();
+        strategy.ShouldRetry(10).Should().BeTrue();
+        strategy.ShouldRetry(100).Should().BeTrue();
+    }
 
-        // Assert
-        result1.Should().BeTrue();
-        result2.Should().BeTrue();
-        result3.Should().BeTrue();
+    [Fact(Timeout = 5000)]
+    public void ShouldRetry_WithMaxAttempts_RespectsLimit()
+    {
+        var options = new WebSocketClientOptions
+        {
+            ReconnectDelay = TimeSpan.FromSeconds(1),
+            MaxReconnectDelay = TimeSpan.FromSeconds(60),
+            MaxReconnectAttempts = 5
+        };
+        var strategy = new ExponentialReconnectStrategy(Options.Create(options), _loggerMock.Object);
+
+        strategy.ShouldRetry(1).Should().BeTrue();
+        strategy.ShouldRetry(5).Should().BeTrue();
+        strategy.ShouldRetry(6).Should().BeFalse();
+        strategy.ShouldRetry(100).Should().BeFalse();
     }
 
     [Fact(Timeout = 5000)]
     public void Reset_LogsDebugMessage()
     {
-        // Arrange
         var strategy = new ExponentialReconnectStrategy(Options.Create(_defaultOptions), _loggerMock.Object);
 
-        // Act
         strategy.Reset();
 
-        // Assert
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Debug,

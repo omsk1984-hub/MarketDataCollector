@@ -240,20 +240,13 @@ public class Worker : BackgroundService
                 }
             }
 
+            // Recovery-loop клиента уже обрабатывает переподключение.
+            // Health-check только логирует дисконнект для операционной видимости.
             foreach (var client in clients.Where(c => !c.IsConnected))
             {
-                _logger.LogWarning("Client {Exchange} ({Symbol}) is disconnected, triggering restart...",
+                _logger.LogWarning(
+                    "Client {Exchange} ({Symbol}) is disconnected. Recovery-loop should handle reconnection.",
                     client.ExchangeName, client.Symbol);
-
-                try
-                {
-                    // StartAsync идемпотентен — безопасно вызывать повторно
-                    await client.StartAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to restart {Exchange}", client.ExchangeName);
-                }
             }
         }
     }

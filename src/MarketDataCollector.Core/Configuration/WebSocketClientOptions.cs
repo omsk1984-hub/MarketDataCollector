@@ -46,6 +46,21 @@ public class WebSocketClientOptions
     public int MaxMessageSize { get; set; } = 1_048_576;
 
     /// <summary>
+    /// Максимальное количество попыток переподключения в фоновом цикле восстановления.
+    /// 0 = бесконечно (цикл работает пока не отменён CancellationToken).
+    /// По умолчанию: 0 (бесконечно).
+    /// </summary>
+    public int MaxReconnectAttempts { get; set; } = 0;
+
+    /// <summary>
+    /// Доля jitter от задержки backoff (0.0 — 1.0).
+    /// Фактическая задержка = delay ± (delay * JitterFactor).
+    /// По умолчанию: 0.3 (±30% от задержки).
+    /// Используется для предотвращения thundering herd при массовом переподключении.
+    /// </summary>
+    public double JitterFactor { get; set; } = 0.3;
+
+    /// <summary>
     /// Таймаут ожидания при остановке клиента (Dispose).
     /// По умолчанию: 5 секунд.
     /// </summary>

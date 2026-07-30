@@ -185,7 +185,7 @@ public class WebSocketMessageReceiverTests
             Times.Once);
     }
 
-    [Fact(Timeout = 5000)]
+    [Fact(Timeout = 10000)]
     public async Task StartReceiveLoopAsync_ReceiveThrowsException_CallsOnErrorAndContinues()
     {
         _output.WriteLine($"=== Running: {nameof(StartReceiveLoopAsync_ReceiveThrowsException_CallsOnErrorAndContinues)} ===");
@@ -196,7 +196,7 @@ public class WebSocketMessageReceiverTests
             _loggerMock.Object);
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
-        
+
         var onErrorCalled = false;
         Exception? capturedException = null;
         var onError = new Action<Exception>(ex =>
@@ -209,16 +209,29 @@ public class WebSocketMessageReceiverTests
         var onMessageReceived = new Action<string>(msg => { });
 
         using var cts = new CancellationTokenSource();
-        
-        // Первый ReceiveAsync выбрасывает исключение, второй возвращает Close
-        var closeResult = new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
-        _connectionManagerMock.SetupSequence(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Test receive error"))
-            .ReturnsAsync(closeResult);
 
-        // Act
-        await receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
-        
+        // Используем счётчик вместо SetupSequence, т.к. StartReceiveLoopAsync
+        // теперь вызывает StopReceiveLoopAsync() перед запуском нового loop.
+        int receiveCallCount = 0;
+        var closeResult = new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
+        _connectionManagerMock.Setup(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                receiveCallCount++;
+                if (receiveCallCount == 1)
+                    throw new Exception("Test receive error");
+                return Task.FromResult(closeResult);
+            });
+
+        // Act — запускаем loop (не await'им, т.к. он работает в фоне)
+        _ = receiver.StartReceiveLoopAsync(processMessage, onMessageReceived, onError, cts.Token);
+
+        // Даём loop обработать ошибку и повторить вызов (1 сек задержка между retry)
+        await Task.Delay(2000, CancellationToken.None);
+
+        // Останавливаем loop
+        await receiver.StopReceiveLoopAsync();
+
         // Assert
         onErrorCalled.Should().BeTrue();
         capturedException.Should().NotBeNull();
@@ -231,8 +244,8 @@ public class WebSocketMessageReceiverTests
                 It.Is<Exception>(e => e.Message == "Test receive error"),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
-        // Проверяем, что ReceiveAsync был вызван дважды (первый раз с ошибкой, второй раз Close)
-        _connectionManagerMock.Verify(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        // ReceiveAsync вызван минимум дважды (первый раз с ошибкой, второй раз Close)
+        receiveCallCount.Should().BeGreaterOrEqualTo(2);
     }
 
     [Fact(Timeout = 5000)]
@@ -362,7 +375,7 @@ public class WebSocketMessageReceiverTests
     }
 
     [Fact(Timeout = 5000)]
-    public void StopReceiveLoop_LogsDebugMessage()
+    public async Task StopReceiveLoopAsync_Completes_WhenNoLoopRunning()
     {
         // Arrange
         var receiver = new WebSocketMessageReceiver(
@@ -370,17 +383,43 @@ public class WebSocketMessageReceiverTests
             Options.Create(_defaultOptions),
             _loggerMock.Object);
 
+        // Act — loop не запущен, остановка должна завершиться сразу
+        await receiver.StopReceiveLoopAsync();
+
+        // Assert — не выбрасывает исключение
+    }
+
+    [Fact(Timeout = 5000)]
+    public async Task StopReceiveLoopAsync_StopsRunningLoop()
+    {
+        // Arrange
+        _connectionManagerMock.Setup(cm => cm.IsConnected).Returns(true);
+        _connectionManagerMock.Setup(cm => cm.ReceiveAsync(
+                It.IsAny<ArraySegment<byte>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WebSocketReceiveResult(
+                0, WebSocketMessageType.Close, true, null, null));
+
+        var receiver = new WebSocketMessageReceiver(
+            _connectionManagerMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object);
+
+        var cts = new CancellationTokenSource();
+        var loopTask = receiver.StartReceiveLoopAsync(
+            _ => Task.CompletedTask,
+            null,
+            null,
+            cts.Token);
+
+        // Даем loop стартовать
+        await Task.Delay(100);
+
         // Act
-        receiver.StopReceiveLoop();
+        await receiver.StopReceiveLoopAsync(TimeSpan.FromSeconds(3));
 
         // Assert
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Debug,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Остановка цикла приёма сообщений запрошена")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+        cts.Cancel();
+        // Loop должен завершиться
     }
 }

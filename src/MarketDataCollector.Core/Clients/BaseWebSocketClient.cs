@@ -224,7 +224,8 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
         }
         finally
         {
-            StopReceiveLoop();
+            // Используем sync-обёртку, т.к. DisconnectAsync может вызываться из sync-контекста
+            StopReceiveLoopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
         }
     }
 
@@ -277,8 +278,9 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     private async Task StartReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        // Отменяем предыдущий ReceiveLoop, если он есть
-        StopReceiveLoop();
+        // Останавливаем предыдущий ReceiveLoop и дожидаемся его завершения.
+        // Это гарантирует, что два receive loop не работают одновременно.
+        await StopReceiveLoopAsync().ConfigureAwait(false);
 
         _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _receiveLoopTask = _messageReceiver.StartReceiveLoopAsync(
@@ -287,16 +289,40 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
             onError: OnErrorOccurred,
             cancellationToken: _receiveLoopCts.Token);
 
-        await Task.CompletedTask; // Запускаем в фоне
+        // Loop запущен в фоне — не await'им. Caller наблюдаемый Task через _receiveLoopTask.
     }
 
-    private void StopReceiveLoop()
+    private async Task StopReceiveLoopAsync()
     {
-        _messageReceiver.StopReceiveLoop();
-        _receiveLoopCts?.Cancel();
-        _receiveLoopCts?.Dispose();
-        _receiveLoopCts = null;
-        _receiveLoopTask = null;
+        // Сначала отменяем CTS — receive loop заметит отмену и выйдет из цикла
+        CancellationTokenSource? ctsToCancel;
+        lock (_backgroundLock)
+        {
+            ctsToCancel = _receiveLoopCts;
+            _receiveLoopCts = null;
+            _receiveLoopTask = null;
+        }
+
+        try
+        {
+            ctsToCancel?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Уже disposed — игнорируем
+        }
+
+        // Дожидаемся завершения loop в MessageReceiver (с таймаутом 5 сек)
+        try
+        {
+            await _messageReceiver.StopReceiveLoopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "{Name}: Ошибка при остановке receive loop.", Name);
+        }
+
+        ctsToCancel?.Dispose();
     }
 
     private async Task RunBackgroundRecoveryLoopAsync(CancellationToken cancellationToken)
@@ -459,7 +485,16 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     private void DisposeCore()
     {
-        StopReceiveLoop();
+        // Останавливаем receive loop — синхронная обёртка над async
+        try
+        {
+            StopReceiveLoopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "{Name}: Ошибка при остановке receive loop в Dispose.", Name);
+        }
+
         _backgroundRecoveryCts?.Cancel();
         _backgroundRecoveryCts?.Dispose();
         _connectionManager.StateChanged -= OnConnectionStateChanged;

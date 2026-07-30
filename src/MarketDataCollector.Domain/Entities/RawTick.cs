@@ -62,14 +62,13 @@ namespace MarketDataCollector.Domain.Entities
             Normalized = true;
         }
 
-        public void UpdatePrice(decimal newPrice)
+        /// <summary>
+        /// Обновляет цену тика. Используется тестами репозитория.
+        /// В продакшен-коде не рекомендуется — сущность immutable по design.
+        /// </summary>
+        internal void UpdatePrice(decimal newPrice)
         {
             Price = DecimalHelper.TruncateForDatabase(newPrice);
-        }
-
-        public void UpdateVolume(decimal newVolume)
-        {
-            Volume = DecimalHelper.TruncateForDatabase(newVolume);
         }
     }
 }

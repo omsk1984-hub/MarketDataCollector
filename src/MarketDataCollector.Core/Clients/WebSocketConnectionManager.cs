@@ -59,9 +59,9 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
 
             // Атомарно заменяем старый сокет, старый диспозим
             var oldWs = Interlocked.Exchange(ref _webSocket, ws);
-            if (oldWs != _webSocket)
+            if (oldWs != null)
             {
-                try { oldWs.Dispose(); } catch { /* игнорируем */ }
+                try { oldWs.Dispose(); } catch { /* игнорируем — старый сокет мог уже быть disposed */ }
             }
 
             _logger.LogInformation("WebSocket подключён к {Uri}.", uri);

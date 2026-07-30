@@ -24,7 +24,9 @@ public interface IWebSocketMessageReceiver
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Останавливает цикл приёма сообщений.
+    /// Останавливает цикл приёма сообщений и дожидается его завершения.
     /// </summary>
-    void StopReceiveLoop();
+    /// <param name="timeout">Таймаут ожидания завершения. По умолчанию 5 секунд.</param>
+    /// <returns>Task, завершающийся после остановки loop или по таймауту.</returns>
+    Task StopReceiveLoopAsync(TimeSpan? timeout = null);
 }
