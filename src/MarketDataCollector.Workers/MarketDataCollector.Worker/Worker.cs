@@ -1,4 +1,5 @@
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Core.Telemetry;
 
 namespace MarketDataCollector.Worker;
 
@@ -8,6 +9,10 @@ public class Worker : BackgroundService
 
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+
+    // Предыдущие значения для расчёта дельт OpenTelemetry метрик
+    private int _lastEstimatedDropped;
+    private long _lastBacklog;
 
     public Worker(
         ILogger<Worker> logger,
@@ -174,70 +179,62 @@ public class Worker : BackgroundService
             var disconnected = clients.Count - connected;
 
             // RPS метрики
-            var incommingRps = clients.Sum(c => c.GetMessagesPerSecond());
+            var incomingRps = clients.Sum(c => c.GetMessagesPerSecond());
             var processedRps = marketDataProcessor.GetProcessedRps();
 
-            // Total-счётчики для отслеживания потерь
-            var totalWsMessages = clients.Sum(c => c.GetTotalMessagesCount());
-            var totalChannelIncoming = marketDataProcessor.GetTotalIncomingCount();
-            var totalChannelReceived = marketDataProcessor.GetTotalReceivedCount();
-            var totalChannelDropped = marketDataProcessor.GetTotalDroppedCount();
+            // Per-channel fill percentages
+            var fillLevels = marketDataProcessor.GetChannelFillLevels();
+            var fillPercents = string.Join(", ", fillLevels.Select(f =>
+                f.Capacity > 0 ? $"{(double)f.Count / f.Capacity * 100.0:F1}%" : "0%"));
 
-            // Детальные RPS + total по каждому клиенту
-            var clientDetails = string.Join(", ", clients.Select(c =>
-                $"{c.ExchangeName}_{c.Symbol}={c.GetMessagesPerSecond():F1}"));
-
-            // Заполненность канала (для мониторинга перегрузки)
-            var channelCount = marketDataProcessor.GetChannelCount();
-            var channelCapacity = marketDataProcessor.GetChannelCapacity();
-            var channelFillPercent = channelCapacity > 0
-                ? (double)channelCount / channelCapacity * 100.0
+            // Total fill (sum over all channels)
+            var totalCount = fillLevels.Sum(f => f.Count);
+            var totalCapacity = fillLevels.Sum(f => f.Capacity);
+            var totalFillPercent = totalCapacity > 0
+                ? (double)totalCount / totalCapacity * 100.0
                 : 0.0;
 
-            // Логи health-check с полной статистикой
+            // Estimated dropped (via backlog, because DropOldest never returns TryWrite=false)
+            var estimatedDropped = marketDataProcessor.GetEstimatedDroppedCount();
+            var totalChannelIncoming = marketDataProcessor.GetTotalIncomingCount();
+            var totalChannelReceived = marketDataProcessor.GetTotalReceivedCount();
+
+            // OpenTelemetry: update metrics (UpDownCounter использует Add(delta),
+            // Counter.Add(delta) — для cumulative метрик)
+            var currentBacklog = totalChannelIncoming - totalChannelReceived;
+            var backlogDelta = currentBacklog - _lastBacklog;
+            if (backlogDelta != 0)
+            {
+                MarketDataTelemetry.ChannelBacklog.Add(backlogDelta);
+                _lastBacklog = currentBacklog;
+            }
+
+            var droppedDelta = estimatedDropped - _lastEstimatedDropped;
+            if (droppedDelta > 0)
+            {
+                MarketDataTelemetry.TicksDroppedSilently.Add(droppedDelta);
+                _lastEstimatedDropped = estimatedDropped;
+            }
+
+            // Per-channel fill через уже существующую гистограмму ChannelFill,
+            // которая записывается в ProcessBatchesAsync раз в 10 сек.
+            // Здесь не дублируем — гистограмма точнее для распределения.
+
+            // Compact health-check log
             _logger.LogInformation(
                 "Health-check: {Connected} connected, {Disconnected} disconnected | " +
-                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | " +
-                "Totals: WS_msgs={TotalWs}, Channel_in={TotalIn}, Channel_received={TotalReceived} | " +
-                "Channel fill: {ChannelFillPercent:F1}% ({ChannelCount}/{ChannelCapacity}) | " +
-                "Clients: {ClientDetails}",
-                connected, disconnected, incommingRps, processedRps,
-                totalWsMessages, totalChannelIncoming, totalChannelReceived,
-                channelFillPercent, channelCount, channelCapacity, clientDetails);
+                "fills: {FillPercents} | total: {TotalFill:F1}% | dropped: ~{Dropped} | " +
+                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s",
+                connected, disconnected, fillPercents, totalFillPercent, estimatedDropped,
+                incomingRps, processedRps);
 
-            // Предупреждение при расхождении счётчиков
-            if (totalWsMessages > 0 && totalChannelIncoming > 0)
+            // Warning if significant drops detected
+            if (estimatedDropped > 100)
             {
-                var wsVsChannelDiff = totalWsMessages - totalChannelIncoming;
-                if (wsVsChannelDiff > 100)
-                {
-                    _logger.LogWarning(
-                        "Health-check: Расхождение счётчиков: WebSocket сообщений ({WsMsgs}) vs Channel incoming ({ChannelIn}) = {Diff}. " +
-                        "Возможна потеря на уровне WebSocket → MarketDataProcessor.",
-                        totalWsMessages, totalChannelIncoming, wsVsChannelDiff);
-                }
-
-                // Реальные дропы — считаются через TryWrite в ProcessTickAsync.
-                // backlog (incoming - received) — это нормальный остаток в канале/батче,
-                // а не дропнутые тики (см. архитектурное решение в MarketDataProcessor).
-                if (totalChannelDropped > 100)
-                {
-                    _logger.LogWarning(
-                        "Health-check: Channel DropOldest дропнул {Dropped} тиков (incoming={In}, received={Rec}, backlog={Backlog}). " +
-                        "Канал переполняется! Увеличьте ChannelCapacity или оптимизируйте скорость записи в БД.",
-                        totalChannelDropped, totalChannelIncoming, totalChannelReceived,
-                        totalChannelIncoming - totalChannelReceived);
-                }
-
-                // INFO-лог backlog'а — для аналитики, не варнинг
-                var backlog = totalChannelIncoming - totalChannelReceived;
-                if (backlog > 100 && totalChannelDropped == 0)
-                {
-                    _logger.LogInformation(
-                        "Health-check: Backlog канала: {Backlog} тиков (incoming={In}, received={Rec}). " +
-                        "Тики в очереди/батче, не дропнуты.",
-                        backlog, totalChannelIncoming, totalChannelReceived);
-                }
+                _logger.LogWarning(
+                    "Health-check: Дропнуто ~{Dropped} тиков из-за переполнения канала (DropOldest). " +
+                    "incoming={In}, received={Rec}. Увеличьте ChannelCapacity или оптимизируйте скорость записи.",
+                    estimatedDropped, totalChannelIncoming, totalChannelReceived);
             }
 
             // Recovery-loop клиента уже обрабатывает переподключение.

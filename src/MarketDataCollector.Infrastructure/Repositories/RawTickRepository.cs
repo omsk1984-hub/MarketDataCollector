@@ -1,4 +1,5 @@
 using MarketDataCollector.Core.Interfaces;
+using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -282,6 +283,79 @@ namespace MarketDataCollector.Infrastructure.Repositories
             };
 
             // Retry loop — 1 попытка при deadlock (safety-net)
+            int attempt = 0;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    return await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+                }
+                catch (Exception ex) when (
+                    (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < 1)
+                    || (ex is NpgsqlException && attempt < 1)
+                )
+                {
+                    attempt++;
+                    await Task.Delay(200, cancellationToken);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Bulk insert напрямую из List<TickData> без промежуточного List<RawTick>.
+        /// Создаёт RawTick в одном проходе — устраняет двойную итерацию и лишние аллокации.
+        /// Price/Volume передаются как text[] с кастом ::numeric (как в базовом BulkCopyAsync).
+        /// </summary>
+        public async Task<int> BulkCopyAsync(List<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
+        {
+            if (ticks.Count == 0)
+                return 0;
+
+            var count = ticks.Count;
+            var ids = new Guid[count];
+            var tickers = new string[count];
+            var prices = new string[count];
+            var volumes = new string[count];
+            var timestamps = new DateTime[count];
+            var exchanges = new string[count];
+            var receivedAts = new DateTime[count];
+            var normalizeds = new bool[count];
+
+            var now = timeService.UtcNow;
+
+            for (int i = 0; i < count; i++)
+            {
+                var t = ticks[i];
+                ids[i] = Guid.NewGuid();
+                tickers[i] = t.Ticker;
+                prices[i] = t.Price.ToString(CultureInfo.InvariantCulture);
+                volumes[i] = t.Volume.ToString(CultureInfo.InvariantCulture);
+                timestamps[i] = t.Timestamp;
+                exchanges[i] = t.Exchange;
+                receivedAts[i] = now;
+                normalizeds[i] = false;
+            }
+
+            const string sql = @"
+                INSERT INTO rawticks (""id"", ""ticker"", ""price"", ""volume"", ""timestamp"", ""exchange"", ""receivedat"", ""normalized"")
+                SELECT unnest(@ids), unnest(@tickers), unnest(@prices::text[])::numeric, unnest(@volumes::text[])::numeric,
+                       unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
+                ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
+
+            var parameters = new Npgsql.NpgsqlParameter[]
+            {
+                new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = ids },
+                new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = tickers },
+                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = prices },
+                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = volumes },
+                new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = timestamps },
+                new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = exchanges },
+                new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = receivedAts },
+                new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = normalizeds },
+            };
+
             int attempt = 0;
             while (true)
             {

@@ -582,13 +582,10 @@ namespace MarketDataCollector.Application.Services
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert — замеряем время записи для гистограммы
-                var entities = filteredTicks.Select(t => new RawTick(
-                    t.Ticker, t.Price, t.Volume, t.Timestamp, t.Exchange, _timeService
-                )).ToList();
-
+                // 3. Bulk insert напрямую из filteredTicks (без промежуточного List<RawTick>)
+                //    — устраняет двойную итерацию и лишние аллокации объектов.
                 var sw = Stopwatch.StartNew();
-                var inserted = await repository.BulkCopyAsync(entities, cancellationToken);
+                var inserted = await repository.BulkCopyAsync(filteredTicks, _timeService, cancellationToken);
                 sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
@@ -639,7 +636,7 @@ namespace MarketDataCollector.Application.Services
                 }
 
                 _logger.LogDebug("Батч сохранён: {Saved} вставлено, {Duplicates} дубликатов пропущено (внутрибатчевых), {Cached} отсечено кэшем",
-                    inserted, entities.Count - inserted, cachedCount);
+                    inserted, filteredTicks.Count - inserted, cachedCount);
             }
             catch (OperationCanceledException)
             {
@@ -702,6 +699,29 @@ namespace MarketDataCollector.Application.Services
         /// Количество активных каналов (consumer'ов).
         /// </summary>
         public int GetConsumerCountChannels() => _channels.Length;
+
+        /// <summary>
+        /// Заполненность каждого канала: (Count, Capacity) по каждому consumer'у.
+        /// </summary>
+        public (int Count, int Capacity)[] GetChannelFillLevels()
+        {
+            var result = new (int Count, int Capacity)[_channels.Length];
+            for (int i = 0; i < _channels.Length; i++)
+            {
+                result[i] = (_channels[i].Reader.Count, _channelCapacity);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Оценка реально дропнутых тиков через DropOldest.
+        /// Считается как max(0, incoming - received - channelCount).
+        /// </summary>
+        public int GetEstimatedDroppedCount()
+        {
+            int droppedByChannel = _totalIncomingCount - _totalReceivedCount - GetChannelCount();
+            return Math.Max(0, droppedByChannel);
+        }
 
         /// <summary>
         /// Доступ к каналу по индексу (для тестов).

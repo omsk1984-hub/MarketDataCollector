@@ -57,5 +57,18 @@ namespace MarketDataCollector.Core.Interfaces
         /// Сбрасывается при пересоздании канала в StartProcessingAsync.
         /// </summary>
         int GetTotalDroppedCount();
+
+        /// <summary>
+        /// Заполненность каждого канала: массив кортежей (Count, Capacity).
+        /// </summary>
+        (int Count, int Capacity)[] GetChannelFillLevels();
+
+        /// <summary>
+        /// Оценка реально дропнутых тиков через DropOldest.
+        /// Считается как max(0, incoming - received - channelCount).
+        /// TryWrite при DropOldest всегда возвращает true (вытесняет старый),
+        /// поэтому прямой подсчёт дропов через TryWrite невозможен.
+        /// </summary>
+        int GetEstimatedDroppedCount();
     }
 }

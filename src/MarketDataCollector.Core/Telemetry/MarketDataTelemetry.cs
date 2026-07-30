@@ -126,4 +126,33 @@ public static class MarketDataTelemetry
         name: "ticks.batch.write.duration",
         unit: "ms",
         description: "Duration of batch database write operation");
+
+    // ========================================================================
+    // Metrics — Channel monitoring (new)
+    // ========================================================================
+
+    /// <summary>
+    /// Текущий fill level по каждому каналу (instant).
+    /// Теги: channel_index
+    /// </summary>
+    public static readonly UpDownCounter<long> ChannelFillLevel = Instance.CreateUpDownCounter<long>(
+        name: "processor.channel.fill_level",
+        unit: "count",
+        description: "Current ticks in channel by channel_index");
+
+    /// <summary>
+    /// Оценка дропнутых тиков через DropOldest (cumulative).
+    /// </summary>
+    public static readonly Counter<long> TicksDroppedSilently = Instance.CreateCounter<long>(
+        name: "ticks.dropped.silently",
+        unit: "count",
+        description: "Estimated ticks dropped silently by DropOldest mode");
+
+    /// <summary>
+    /// Backlog канала (incoming - received) — мгновенное давление.
+    /// </summary>
+    public static readonly UpDownCounter<long> ChannelBacklog = Instance.CreateUpDownCounter<long>(
+        name: "processor.channel.backlog",
+        unit: "count",
+        description: "Channel backlog (incoming - received)");
 }

@@ -1,4 +1,5 @@
 using MarketDataCollector.Domain.Entities;
+using MarketDataCollector.Domain.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -23,6 +24,12 @@ namespace MarketDataCollector.Core.Interfaces
         /// По производительности в 10-100x быстрее BulkInsertIgnoreConflictsAsync.
         /// </summary>
         Task<int> BulkCopyAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Bulk insert напрямую из TickData (без промежуточного создания List<RawTick>).
+        /// Создаёт RawTick внутри в одном проходе — устраняет двойную итерацию.
+        /// </summary>
+        Task<int> BulkCopyAsync(List<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default);
         Task<int> GetCountAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
         Task<IEnumerable<RawTick>> GetUnnormalizedAsync(int limit = 1000, CancellationToken cancellationToken = default);
     }
