@@ -43,8 +43,6 @@ namespace MarketDataCollector.Application.Services
         private readonly Guid _sessionId = Guid.NewGuid(); // уникальный ID сессии для связывания логов
         private readonly SlidingWindowCounter _processedRpsCounter = new();
 
-        public event EventHandler<Exception>? OnError;
-
         public readonly record struct TickData(
             string Ticker,
             decimal Price,
@@ -491,12 +489,10 @@ namespace MarketDataCollector.Application.Services
                 _logger.LogCritical(ex,
                     "Session={SessionId}: Неожиданная ошибка в consumer channel={Channel}",
                     _sessionId, channelIndex);
-                OnError?.Invoke(this, ex);
-                // Исключение уже выбросило нас из while-цикла → finally выполнит
-                // финальный flush с CancellationToken.None.
-                // _processingTask завершится успешно (не Faulted), т.к. catch перехватил
-                // исключение. Но OnError уже дёрнут, и Worker умрёт через
-                // processorErrorCts.Cancel() в Worker.cs.
+                // finally выполнит финальный flush с CancellationToken.None,
+                // затем исключение пробросится → _processingTask станет Faulted.
+                // Worker observe'ит IsFaulted и инициирует graceful shutdown.
+                throw;
             }
             finally
             {
@@ -621,7 +617,8 @@ namespace MarketDataCollector.Application.Services
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 activity?.SetTag("exception", ex.Message);
                 _logger.LogError(ex, "Критическая ошибка при обработке батча из {Count} тиков", batch.Count);
-                OnError?.Invoke(this, ex);
+                // Временная ошибка (БД, сеть и т.д.) — consumer продолжает работать.
+                // Исключение НЕ пробрасывается, чтобы следующие батчи обрабатывались.
             }
         }
 

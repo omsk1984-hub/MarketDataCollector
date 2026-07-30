@@ -43,11 +43,6 @@ public class Worker : BackgroundService
             return;
         }
 
-        // Используем отдельный CancellationTokenSource для прерывания health-check
-        // при критической ошибке процессора
-        using var processorErrorCts = new CancellationTokenSource();
-        var processorErrorException = (Exception?)null;
-
         try
         {
             // ВАЖНО: Сначала запускаем процессор и агрегатор, чтобы их Channel'ы
@@ -55,17 +50,9 @@ public class Worker : BackgroundService
             // отправлять тики. Это предотвращает потерю данных в "канале-призраке"
             // (старый channel, созданный в конструкторе, заменяется при старте).
 
-            // Подписываемся на критические ошибки процессора
-            marketDataProcessor.OnError += (sender, ex) =>
-            {
-                _logger.LogCritical(ex, "MarketDataProcessor raised a critical error. Worker will exit.");
-                processorErrorException = ex;
-                processorErrorCts.Cancel();
-            };
-
             // Запускаем процессор — возвращает фоновую задачу consumer'ов.
             // Не await'им здесь — она работает параллельно с health-check loop.
-            // Исключения обрабатываются через OnError event (строка 59-64).
+            // Фатальные ошибки fault'ят task (IsFaulted = true).
             var processorTask = marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Запускаем агрегатор свечей
@@ -78,18 +65,9 @@ public class Worker : BackgroundService
             await Task.WhenAll(tasks);
 
             // Активный health-check: мониторинг + перезапуск отключённых клиентов
-            // Используем объединённый токен — отмена либо от stoppingToken, либо от ошибки процессора
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, processorErrorCts.Token);
-            await RunHealthCheckAsync(clients, marketDataProcessor, combinedCts.Token);
+            await RunHealthCheckAsync(clients, marketDataProcessor, stoppingToken);
 
-            // Выбрасываем ошибку для внешнего оркестратора
-            if (processorErrorException != null)
-            {
-                throw new InvalidOperationException("MarketDataProcessor failed", processorErrorException);
-            }
-
-            // Наблюдаем за фоновой задачей процессора — если она упала с исключением
-            // (не через OnError), пробрасываем его для внешнего оркестратора.
+            // Наблюдаем за фоновой задачей процессора — фатальные ошибки fault'ят task
             if (processorTask.IsFaulted)
             {
                 throw new InvalidOperationException(

@@ -415,13 +415,20 @@ public class MarketDataProcessorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent()
+    public async Task ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues()
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndRaisesEvent)} ===");
-        // Arrange
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues)} ===");
+        // Arrange — первые 2 тика (1 батч) вызывают ошибку, следующие 2 — успешны
+        var callCount = 0;
         _repositoryMock
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Database error"));
+            .Returns<IEnumerable<RawTick>, CancellationToken>((ticks, ct) =>
+            {
+                var current = Interlocked.Increment(ref callCount);
+                if (current == 1)
+                    throw new InvalidOperationException("Database error");
+                return Task.FromResult(ticks.Count());
+            });
 
         var processor = CreateProcessor(new MarketDataProcessorOptions
         {
@@ -430,25 +437,19 @@ public class MarketDataProcessorTests
             UseSingleConsumer = false
         });
 
-        var errorOccurred = false;
-        processor.OnError += (sender, ex) =>
-        {
-            errorOccurred = true;
-            ex.Should().NotBeNull();
-        };
-
         using var cts = new CancellationTokenSource();
         processor.StartProcessingAsync(cts.Token);
 
-        // Act
+        // Act — 4 тика => 2 батча: первый упадёт, второй успешен
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
         await processor.ProcessTickAsync("BTCUSDT", 1001.00m, 0.3m, DateTime.UtcNow, "Binance");
+        await processor.ProcessTickAsync("ETHUSDT", 2000.00m, 1.0m, DateTime.UtcNow, "Binance");
+        await processor.ProcessTickAsync("ETHUSDT", 2001.00m, 0.8m, DateTime.UtcNow, "Binance");
 
         // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
-        // Assert
-        errorOccurred.Should().BeTrue();
+        // Assert — ошибка залогирована, consumer продолжил работу
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Error,
@@ -457,6 +458,10 @@ public class MarketDataProcessorTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
+        _repositoryMock.Verify(
+            x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeast(2),
+            "Consumer должен продолжить после ошибки и обработать следующий батч");
     }
 
     [Fact(Timeout = 10000)]
@@ -649,9 +654,6 @@ public class MarketDataProcessorTests
             UseSingleConsumer = false
         });
 
-        var errorCount = 0;
-        processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
-
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         processor.StartProcessingAsync(cts.Token);
 
@@ -670,8 +672,16 @@ public class MarketDataProcessorTests
 
         // Assert — первые два батча (из 3) упали с ошибкой, третий успешен.
         // С SingleReader=true всё последовательно: 2 ошибки, затем 1 успех + финальный flush.
-        errorCount.Should().Be(2,
-            "первые два батча должны упасть с ошибкой, третий — успешно обработаться");
+        // Проверяем через логи (OnError удалён — ошибки залогированы как LogError).
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Exactly(2),
+            "Первые два батча должны залогировать ошибку");
         // Проверяем, что BulkCopyAsync вызывался минимум 3 раза
         // (2 ошибки + минимум 1 успех + финальный flush)
         _repositoryMock.Verify(
@@ -1361,10 +1371,12 @@ public class MarketDataProcessorTests
     // ========== Safety Net Tests (catch(Exception) in ProcessBatchesAsync) ==========
 
     [Fact(Timeout = 15000)]
-    public async Task ProcessBatchesAsync_RepeatedErrors_OnErrorFiredAndTaskCompletes()
+    public async Task ProcessBatchesAsync_ConsumerError_LoggedAndContinues()
     {
-        _output.WriteLine($"=== Running: {nameof(ProcessBatchesAsync_RepeatedErrors_OnErrorFiredAndTaskCompletes)} ===");
-        // Arrange
+        _output.WriteLine($"=== Running: {nameof(ProcessBatchesAsync_ConsumerError_LoggedAndContinues)} ===");
+        // Arrange — все батчи падают с ошибкой, но ProcessBatchAsync перехватывает
+        // исключения → consumer продолжает работать → task НЕ faulted.
+        // Это поведение по设计: временные ошибки БД не убивают процессор.
         _repositoryMock
             .Setup(x => x.BulkCopyAsync(It.IsAny<IEnumerable<RawTick>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Database connection lost"));
@@ -1376,11 +1388,8 @@ public class MarketDataProcessorTests
             UseSingleConsumer = true
         });
 
-        var errorCount = 0;
-        processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
-
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        processor.StartProcessingAsync(cts.Token);
+        var processorTask = processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 20 тиков (batchSize=5 => 4 батча, все упадут)
         for (int i = 0; i < 20; i++)
@@ -1396,15 +1405,12 @@ public class MarketDataProcessorTests
         // Даём время на обработку
         await Task.Delay(1000, cts.Token);
 
-        // Act — StopProcessingAsync вызывает _processingTask.WaitAsync() внутри.
-        // Если бы _processingTask был Faulted (без нашего catch), здесь было бы исключение.
-        // С новым catch(Exception) задача завершается нормально.
-        await processor.StopProcessingAsync(CancellationToken.None);
+        // Assert — task НЕ faulted, т.к. ProcessBatchAsync перехватывает исключения
+        // и consumer продолжает работать (временные ошибки БД — штатная ситуация)
+        processorTask.IsFaulted.Should().BeFalse(
+            "ProcessBatchAsync перехватывает исключения → consumer продолжает → task здоров");
 
-        // Assert
-        errorCount.Should().BeGreaterThanOrEqualTo(1,
-            "OnError должен вызываться при каждой ошибке батча (сработал catch в ProcessBatchAsync)");
-
+        // Но ошибки должны быть залогированы
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Error,
@@ -1413,7 +1419,7 @@ public class MarketDataProcessorTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce,
-            "Должен быть хотя бы один лог критической ошибки обработки батча");
+            "Каждая ошибка батча должна быть залогирована");
     }
 
     [Fact(Timeout = 10000)]

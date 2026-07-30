@@ -6,12 +6,6 @@ namespace MarketDataCollector.Core.Interfaces
 {
     public interface IMarketDataProcessor
     {
-        /// <summary>
-        /// Вызывается при критической ошибке обработки данных.
-        /// Подписчик должен инициировать остановку Worker.
-        /// </summary>
-        event EventHandler<Exception>? OnError;
-
         Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange);
         Task<int> GetProcessedCountAsync();
 
@@ -21,7 +15,7 @@ namespace MarketDataCollector.Core.Interfaces
         /// только после вызова <see cref="StopProcessingAsync"/>.
         /// Caller НЕ должен await'ить этот Task напрямую — он предназначен для
         /// мониторинга и обработки исключений фоновых consumer'ов.
-        /// Исключения consumer'ов сигнализируются через событие <see cref="OnError"/>.
+        /// Фатальные ошибки consumer'ов fault'ят Task (IsFaulted = true).
         /// </summary>
         Task StartProcessingAsync(CancellationToken cancellationToken = default);
 
@@ -51,10 +45,6 @@ namespace MarketDataCollector.Core.Interfaces
         /// </summary>
         int GetChannelCount();
 
-        /// <summary>
-        /// Ёмкость канала (ChannelCapacity из конфигурации).
-        /// Используется совместно с <see cref="GetChannelCount"/> для расчёта процента заполненности.
-        /// </summary>
         /// <summary>
         /// Ёмкость канала (ChannelCapacity из конфигурации).
         /// Используется совместно с <see cref="GetChannelCount"/> для расчёта процента заполненности.
