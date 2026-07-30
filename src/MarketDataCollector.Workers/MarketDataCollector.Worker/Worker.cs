@@ -63,11 +63,13 @@ public class Worker : BackgroundService
                 processorErrorCts.Cancel();
             };
 
-            // Запускаем процессор — создаёт правильный channel с consumer'ом
-            _ = marketDataProcessor.StartProcessingAsync(stoppingToken);
+            // Запускаем процессор — возвращает фоновую задачу consumer'ов.
+            // Не await'им здесь — она работает параллельно с health-check loop.
+            // Исключения обрабатываются через OnError event (строка 59-64).
+            var processorTask = marketDataProcessor.StartProcessingAsync(stoppingToken);
 
             // Запускаем агрегатор свечей
-            await tickAggregator.StartAsync(stoppingToken);
+            var aggregatorTask = tickAggregator.StartAsync(stoppingToken);
 
             // Теперь запускаем WebSocket-клиентов — все их тики пойдут
             // в уже готовый канал процессора, ничего не потеряется.
@@ -84,6 +86,23 @@ public class Worker : BackgroundService
             if (processorErrorException != null)
             {
                 throw new InvalidOperationException("MarketDataProcessor failed", processorErrorException);
+            }
+
+            // Наблюдаем за фоновой задачей процессора — если она упала с исключением
+            // (не через OnError), пробрасываем его для внешнего оркестратора.
+            if (processorTask.IsFaulted)
+            {
+                throw new InvalidOperationException(
+                    "MarketDataProcessor background task failed",
+                    processorTask.Exception?.InnerException);
+            }
+
+            // Наблюдаем за фоновой задачей агрегатора
+            if (aggregatorTask.IsFaulted)
+            {
+                throw new InvalidOperationException(
+                    "TickAggregator background task failed",
+                    aggregatorTask.Exception?.InnerException);
             }
         }
         catch (OperationCanceledException)

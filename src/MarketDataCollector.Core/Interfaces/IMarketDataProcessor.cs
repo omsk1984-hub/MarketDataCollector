@@ -14,7 +14,21 @@ namespace MarketDataCollector.Core.Interfaces
 
         Task ProcessTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange);
         Task<int> GetProcessedCountAsync();
+
+        /// <summary>
+        /// Запускает фоновую обработку данных из каналов.
+        /// Возвращает Task фоновой задачи consumer'ов, который завершается
+        /// только после вызова <see cref="StopProcessingAsync"/>.
+        /// Caller НЕ должен await'ить этот Task напрямую — он предназначен для
+        /// мониторинга и обработки исключений фоновых consumer'ов.
+        /// Исключения consumer'ов сигнализируются через событие <see cref="OnError"/>.
+        /// </summary>
         Task StartProcessingAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Останавливает обработку: завершает каналы, дожидается дочитывания
+        /// backlog consumer'ами и отменяет внутренний CancellationTokenSource.
+        /// </summary>
         Task StopProcessingAsync(CancellationToken cancellationToken = default);
 
         /// <summary>

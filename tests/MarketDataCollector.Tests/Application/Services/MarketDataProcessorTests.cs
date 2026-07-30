@@ -1,4 +1,4 @@
-using MarketDataCollector.Application.Services;
+﻿using MarketDataCollector.Application.Services;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
@@ -212,7 +212,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
 
         // Act
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Assert
         _loggerMock.Verify(
@@ -234,7 +234,7 @@ public class MarketDataProcessorTests
 
         using var cts = new CancellationTokenSource();
         
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         await processor.StopProcessingAsync(cts.Token);
@@ -259,7 +259,7 @@ public class MarketDataProcessorTests
 
         using var cts = new CancellationTokenSource();
         
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
         await processor.StopProcessingAsync(cts.Token);
 
         // Act
@@ -329,7 +329,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
@@ -363,7 +363,7 @@ public class MarketDataProcessorTests
         var timestamp2 = new DateTime(2024, 1, 1, 10, 0, 1, DateTimeKind.Utc);
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act - используем разные timestamp, чтобы они не считались дубликатами в памяти
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, timestamp1, "Binance");
@@ -394,7 +394,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
@@ -438,7 +438,7 @@ public class MarketDataProcessorTests
         };
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
@@ -476,7 +476,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         await processor.ProcessTickAsync("BTCUSDT", 1000.50m, 0.5m, DateTime.UtcNow, "Binance");
@@ -536,7 +536,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 20 тиков (batchSize=5 => минимум 4 батча)
         for (int i = 0; i < 20; i++)
@@ -605,7 +605,7 @@ public class MarketDataProcessorTests
             tickAggregator: aggregatorMock.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 15 тиков => минимум 3 батча
         for (int i = 0; i < 15; i++)
@@ -653,7 +653,7 @@ public class MarketDataProcessorTests
         processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — 9 тиков => 3 батча
         for (int i = 0; i < 9; i++)
@@ -696,7 +696,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource();
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act - добавляем 100 тиков с разными timestamp
         for (int i = 0; i < 100; i++)
@@ -747,7 +747,7 @@ public class MarketDataProcessorTests
             tickAggregator: slowAggregatorMock.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 10 тиков, замеряем время
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -824,7 +824,7 @@ public class MarketDataProcessorTests
             tickAggregator: aggregator);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 1000 тиков. Канал агрегатора вмещает всего 5.
         // Если бы был await, после 5-го тика ProcessTickAsync заблокировался бы.
@@ -881,7 +881,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 100 тиков. Канал вмещает 10, consumer медленный (200ms).
         // Если FullMode=Wait, то после 10-го тика WriteAsync заблокируется.
@@ -964,7 +964,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
 
         // Act
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Assert — Single Consumer mode лог
         _loggerMock.Verify(
@@ -992,7 +992,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
 
         // Act
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Assert — Multiple consumers лог (содержит цифру consumer'ов)
         _loggerMock.Verify(
@@ -1044,7 +1044,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 20 тиков (batchSize=5 => минимум 4 батча)
         for (int i = 0; i < 20; i++)
@@ -1112,7 +1112,7 @@ public class MarketDataProcessorTests
             tickAggregator: aggregatorMock.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 15 тиков => минимум 3 батча
         for (int i = 0; i < 15; i++)
@@ -1154,7 +1154,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 20 тиков => 2 полных батча по 7 + остаток 6
         for (int i = 0; i < 20; i++)
@@ -1194,7 +1194,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
 
         // Act
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Assert — нет сообщения о запуске таймера
         _loggerMock.Verify(
@@ -1223,7 +1223,7 @@ public class MarketDataProcessorTests
         using var cts = new CancellationTokenSource();
 
         // Act
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Assert — таймер больше не запускается через System.Timers.Timer.
         // Вместо этого каждый consumer использует Task.Delay внутри ProcessBatchesAsync.
@@ -1260,7 +1260,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 5 тиков (меньше BatchSize=100)
         for (int i = 0; i < 5; i++)
@@ -1314,7 +1314,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 3 тика (меньше BatchSize)
         for (int i = 0; i < 3; i++)
@@ -1380,7 +1380,7 @@ public class MarketDataProcessorTests
         processor.OnError += (_, _) => Interlocked.Increment(ref errorCount);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем 20 тиков (batchSize=5 => 4 батча, все упадут)
         for (int i = 0; i < 20; i++)
@@ -1434,7 +1434,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act
         for (int i = 0; i < 9; i++)
@@ -1481,7 +1481,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем один и тот же тик дважды (с одним ключом)
         var timestamp = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);
@@ -1520,7 +1520,7 @@ public class MarketDataProcessorTests
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await processor.StartProcessingAsync(cts.Token);
+        processor.StartProcessingAsync(cts.Token);
 
         // Act — отправляем один и тот же тик дважды
         var timestamp = new DateTime(2024, 1, 1, 10, 0, 0, DateTimeKind.Utc);

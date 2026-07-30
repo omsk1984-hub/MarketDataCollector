@@ -174,7 +174,7 @@ namespace MarketDataCollector.Application.Services
             }
 
             if (_processingTask != null && !_processingTask.IsCompleted)
-                return Task.CompletedTask;
+                return _processingTask;
 
             // Логируем ошибку предыдущей задачи, если она завершилась с ошибкой
             if (_processingTask?.IsFaulted == true)
@@ -296,7 +296,7 @@ namespace MarketDataCollector.Application.Services
                     _sessionId, consumerCount, countSource, _batchSize, _channelCapacity);
             }
 
-            return Task.CompletedTask;
+            return _processingTask;
         }
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)

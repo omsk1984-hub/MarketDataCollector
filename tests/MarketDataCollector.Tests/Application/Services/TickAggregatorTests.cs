@@ -1,4 +1,4 @@
-using MarketDataCollector.Application.Services;
+﻿using MarketDataCollector.Application.Services;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
