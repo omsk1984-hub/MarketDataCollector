@@ -3,6 +3,7 @@ using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using System;
 using System.Collections.Generic;
@@ -18,11 +19,13 @@ namespace MarketDataCollector.Infrastructure.Repositories
     {
         private readonly MarketDataDbContext _context;
         private readonly DbSet<RawTick> _dbSet;
+        private readonly ILogger<RawTickRepository> _logger;
 
-        public RawTickRepository(MarketDataDbContext context)
+        public RawTickRepository(MarketDataDbContext context, ILogger<RawTickRepository> logger)
         {
             _context = context;
             _dbSet = context.Set<RawTick>();
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public async Task<RawTick?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -125,38 +128,31 @@ namespace MarketDataCollector.Infrastructure.Repositories
         }
 
         /// <summary>
-        /// Количество повторов при deadlock (PostgreSQL error 40P01).
-        /// Deadlock — транзиентная ошибка, повторная попытка обычно успешна.
+        /// Количество повторов для BulkCopy при транзиентных ошибках (deadlock, timeout, network).
+        /// Экспоненциальный backoff: 100ms, 200ms, 400ms (+ jitter 0-100ms).
         /// </summary>
-        private const int DeadlockMaxRetries = 5;
+        private const int BulkCopyMaxRetries = 3;
 
         /// <summary>
-        /// Базовая задержка между retry при deadlock (экспоненциальная: 200ms, 400ms, 800ms, 1600ms, 3200ms).
+        /// Базовая задержка между retry при транзиентных ошибках (экспоненциальная: 100ms, 200ms, 400ms).
         /// </summary>
-        private static readonly TimeSpan DeadlockBaseDelay = TimeSpan.FromMilliseconds(200);
-
-        /// <summary>
-        /// Максимальный jitter (случайная прибавка к задержке), чтобы избежать
-        /// thundering herd при одновременном retry нескольких consumer'ов.
-        /// </summary>
-        private static readonly TimeSpan DeadlockMaxJitter = TimeSpan.FromMilliseconds(500);
-
-        /// <summary>
-        /// SemaphoreSlim БОЛЬШЕ НЕ НУЖЕН.
-        /// В multiple consumers mode каждый consumer получает disjoint набор тикеров
-        /// (per-ticker routing в MarketDataProcessor.ProcessTickAsync через hash ticker'а).
-        /// B-tree страницы unique-индекса (ticker, exchange, timestamp) не пересекаются,
-        /// поэтому deadlock'и (40P01) невозможны.
-        ///
-        /// Retry-логика (5 попыток) остаётся safety net'ом на случай других транзиентных
-        /// ошибок (timeout, serialization failures, редкие page-level блокировки).
-        /// </summary>
+        private static readonly TimeSpan BulkCopyBaseDelay = TimeSpan.FromMilliseconds(100);
 
         /// <summary>
         /// Источник случайных чисел для jitter. Shared между всеми экземплярами,
         /// т.к. Random не thread-safe — используем ThreadLocal.
         /// </summary>
         private static readonly ThreadLocal<Random> JitterRandom = new(() => new Random());
+
+        /// <summary>
+        /// Определяет, является ли исключение транзиентным (можно повторить операцию).
+        /// </summary>
+        private static bool IsTransient(Exception ex)
+        {
+            return (ex is PostgresException pg && pg.SqlState is "40P01" or "57014" or "08006" or "08001" or "08003")
+                || ex is NpgsqlException
+                || ex is TimeoutException;
+        }
 
         [Obsolete("Use BulkCopyAsync (UNNEST-based) instead. This method uses per-row VALUES and is ~10-50x slower.")]
         public async Task<int> BulkInsertIgnoreConflictsAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
@@ -195,7 +191,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
             var formattedSql = string.Format(sql, string.Join(", ", valueRows));
 
-            // Retry loop для транзиентных deadlock'ов (40P01)
+            // Retry loop для транзиентных ошибок (deadlock, timeout, connection)
             int attempt = 0;
             while (true)
             {
@@ -205,12 +201,11 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 {
                     return await _context.Database.ExecuteSqlRawAsync(formattedSql, parameters, cancellationToken);
                 }
-                catch (PostgresException ex) when (ex.SqlState == "40P01" && attempt < DeadlockMaxRetries)
+                catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {
                     attempt++;
-                    var delay = DeadlockBaseDelay * (int)Math.Pow(2, attempt - 1);
-                    // Jitter для предотвращения thundering herd
-                    var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next((int)DeadlockMaxJitter.TotalMilliseconds));
+                    var delay = BulkCopyBaseDelay * (int)Math.Pow(2, attempt - 1);
+                    var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next(100));
                     await Task.Delay(delay + jitter, cancellationToken);
                 }
             }
@@ -242,6 +237,9 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
             // Формируем массивы для UNNEST (один проход по списку)
             var count = list.Count;
+            // Используем прямые new[] для Npgsql — массивы <85 KB, не LOH.
+            // ArrayPool не подходит: Npgsql требует точного размера массива (Array.Length),
+            // а Rent() может вернуть массив больше запрошенного размера.
             var ids = new Guid[count];
             var tickers = new string[count];
             var prices = new string[count];
@@ -282,7 +280,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = normalizeds },
             };
 
-            // Retry loop — 1 попытка при deadlock (safety-net)
+            // Retry loop с экспоненциальным backoff + jitter для транзиентных ошибок
             int attempt = 0;
             while (true)
             {
@@ -292,13 +290,18 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 {
                     return await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
                 }
-                catch (Exception ex) when (
-                    (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < 1)
-                    || (ex is NpgsqlException && attempt < 1)
-                )
+                catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {
                     attempt++;
-                    await Task.Delay(200, cancellationToken);
+                    var delay = BulkCopyBaseDelay * (int)Math.Pow(2, attempt - 1);
+                    var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next(100));
+                    _logger.LogWarning(ex,
+                        "BulkCopy (RawTick) attempt {Attempt}/{MaxRetries} failed with {ExceptionType}, " +
+                        "SqlState={SqlState}, retrying after {Delay}ms, count={Count}",
+                        attempt, BulkCopyMaxRetries, ex.GetType().Name,
+                        (ex is PostgresException pg ? pg.SqlState : null),
+                        (delay + jitter).TotalMilliseconds, count);
+                    await Task.Delay(delay + jitter, cancellationToken);
                 }
             }
         }
@@ -314,6 +317,9 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 return 0;
 
             var count = ticks.Count;
+            // Используем прямые new[] для Npgsql — массивы <85 KB, не LOH.
+            // ArrayPool не подходит: Npgsql требует точного размера массива (Array.Length),
+            // а Rent() может вернуть массив больше запрошенного размера.
             var ids = new Guid[count];
             var tickers = new string[count];
             var prices = new decimal[count];
@@ -365,13 +371,25 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 {
                     return await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
                 }
-                catch (Exception ex) when (
-                    (ex is PostgresException pgEx && pgEx.SqlState == "40P01" && attempt < 1)
-                    || (ex is NpgsqlException && attempt < 1)
-                )
+                catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {
                     attempt++;
-                    await Task.Delay(200, cancellationToken);
+                    var delay = BulkCopyBaseDelay * (int)Math.Pow(2, attempt - 1);
+                    var jitter = TimeSpan.FromMilliseconds(JitterRandom.Value!.Next(100));
+                    _logger.LogWarning(ex,
+                        "BulkCopy (TickData) attempt {Attempt}/{MaxRetries} failed with {ExceptionType}, " +
+                        "SqlState={SqlState}, retrying after {Delay}ms, count={Count}",
+                        attempt, BulkCopyMaxRetries, ex.GetType().Name,
+                        (ex is PostgresException pg ? pg.SqlState : null),
+                        (delay + jitter).TotalMilliseconds, count);
+                    await Task.Delay(delay + jitter, cancellationToken);
+                }
+                catch (Exception ex) when (!IsTransient(ex) || attempt >= BulkCopyMaxRetries)
+                {
+                    _logger.LogError(ex,
+                        "BulkCopy (TickData) failed permanently after {Attempt}/{MaxRetries} attempts, count={Count}",
+                        attempt, BulkCopyMaxRetries, count);
+                    throw;
                 }
             }
         }

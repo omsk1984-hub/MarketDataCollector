@@ -7,6 +7,7 @@ using MarketDataCollector.Domain.Interfaces;
 using TickData = MarketDataCollector.Domain.Entities.TickData;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -393,6 +394,16 @@ namespace MarketDataCollector.Application.Services
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
 
+            // Timer для принудительного сброса частичных батчей (переиспользуется вместо Task.Delay).
+            // Создаётся один раз на весь lifecycle consumer'а — устраняет ~600+ internal timer creations.
+            using var flushTimerCts = new CancellationTokenSource();
+            Timer? flushTimer = null;
+            if (_flushIntervalSeconds > 0)
+            {
+                flushTimer = new Timer(_ => flushTimerCts.Cancel(),
+                    null, Timeout.Infinite, Timeout.Infinite);
+            }
+
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -401,14 +412,15 @@ namespace MarketDataCollector.Application.Services
 
                     // Ждём новый тик в канале данных.
                     // Если настроен таймер сброса частичных батчей и батч непустой —
-                    // используем Task.Delay как таймер для принудительного сброса.
-                    // Это заменяет старый механизм с Timer + сигнальный канал _flushSignal,
-                    // который не масштабировался на N consumer'ов.
+                    // используем Timer для принудительного сброса (без создания Task.Delay per iteration).
                     Task<bool> readTask;
                     if (_flushIntervalSeconds > 0 && batch.Count > 0)
                     {
                         var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        var flushDelay = Task.Delay(TimeSpan.FromSeconds(_flushIntervalSeconds), cancellationToken);
+                        // Переиспользуем один Timer: сбрасываем предыдущее состояние и ставим новый таймаут
+                        flushTimerCts.TryReset();
+                        flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
+                        var flushDelay = Task.Delay(Timeout.Infinite, flushTimerCts.Token);
                         var completed = await Task.WhenAny(readTaskTyped, flushDelay).ConfigureAwait(false);
 
                         cancellationToken.ThrowIfCancellationRequested();
@@ -633,11 +645,38 @@ namespace MarketDataCollector.Application.Services
                 _logger.LogWarning("Обработка батча отменена");
                 throw;
             }
+            catch (PostgresException pgEx)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, pgEx.Message);
+                activity?.SetTag("exception.type", "PostgresException");
+                activity?.SetTag("exception.sql_state", pgEx.SqlState);
+                _logger.LogError(pgEx,
+                    "PostgreSQL error SqlState={SqlState} writing batch {Count} ticks (channel={Channel})",
+                    pgEx.SqlState, batch.Count, channelIndex);
+                MarketDataTelemetry.ExceptionsByType.Add(1,
+                    new KeyValuePair<string, object?>("exception_type", "PostgresException"),
+                    new KeyValuePair<string, object?>("sql_state", pgEx.SqlState));
+            }
+            catch (NpgsqlException npgEx)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, npgEx.Message);
+                activity?.SetTag("exception.type", "NpgsqlException");
+                _logger.LogError(npgEx,
+                    "Npgsql error writing batch {Count} ticks (channel={Channel})",
+                    batch.Count, channelIndex);
+                MarketDataTelemetry.ExceptionsByType.Add(1,
+                    new KeyValuePair<string, object?>("exception_type", "NpgsqlException"),
+                    new KeyValuePair<string, object?>("sql_state", "none"));
+            }
             catch (Exception ex)
             {
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity?.SetTag("exception", ex.Message);
-                _logger.LogError(ex, "Критическая ошибка при обработке батча из {Count} тиков", batch.Count);
+                activity?.SetTag("exception.type", ex.GetType().Name);
+                _logger.LogError(ex, "Неожиданная ошибка при обработке батча из {Count} тиков (channel={Channel})",
+                    batch.Count, channelIndex);
+                MarketDataTelemetry.ExceptionsByType.Add(1,
+                    new KeyValuePair<string, object?>("exception_type", ex.GetType().Name),
+                    new KeyValuePair<string, object?>("sql_state", "none"));
                 // Временная ошибка (БД, сеть и т.д.) — consumer продолжает работать.
                 // Исключение НЕ пробрасывается, чтобы следующие батчи обрабатывались.
             }

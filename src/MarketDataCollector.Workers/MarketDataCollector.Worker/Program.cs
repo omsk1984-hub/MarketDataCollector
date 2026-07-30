@@ -1,3 +1,4 @@
+using System.Runtime;
 using MarketDataCollector.Application.Services;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
@@ -15,6 +16,27 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+
+// ===== GC Optimization =====
+GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+
+// Периодическая LOH compaction (каждые 5 минут) для снижения LOH фрагментации
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        await Task.Delay(TimeSpan.FromMinutes(5));
+        try
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, blocking: false);
+        }
+        catch
+        {
+            // Ignore — LOH compaction может упасть при OOM
+        }
+    }
+});
 
 var builder = WebApplication.CreateBuilder(args);
 

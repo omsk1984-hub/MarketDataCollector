@@ -9,7 +9,7 @@ namespace MarketDataCollector.Core.Configuration
         /// По результатам бенчмарка: chunk=800 даёт ~53 775 ticks/sec
         /// при 8 parallel consumer'ах через BulkCopyAsync.
         /// </summary>
-        public int BatchSize { get; set; } = 800;
+        public int BatchSize { get; set; } = 5000;
         /// <summary>
         /// Ёмкость bounded-канала System.Threading.Channels.Channel<TickData>
         /// для буферизации входящих тиков перед обработкой.

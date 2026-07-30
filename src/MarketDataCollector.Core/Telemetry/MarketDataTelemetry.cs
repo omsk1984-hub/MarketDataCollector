@@ -155,4 +155,17 @@ public static class MarketDataTelemetry
         name: "processor.channel.backlog",
         unit: "count",
         description: "Channel backlog (incoming - received)");
+
+    // ========================================================================
+    // Metrics — Exception tracking (new)
+    // ========================================================================
+
+    /// <summary>
+    /// Счётчик исключений по типам для real-time мониторинга в Prometheus.
+    /// Теги: exception_type, sql_state
+    /// Инкрементируется в catch-блоках MarketDataProcessor и RawTickRepository.
+    /// </summary>
+    public static readonly Counter<double> ExceptionsByType = Instance.CreateCounter<double>(
+        name: "exceptions_total",
+        description: "Total exceptions by type");
 }
