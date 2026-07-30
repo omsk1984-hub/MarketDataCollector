@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -404,6 +405,8 @@ namespace MarketDataCollector.Application.Services
         {
             // Use ArrayPool instead of List<TickData> — eliminates List allocation per consumer
             var batchArray = ArrayPool<TickData>.Shared.Rent(Math.Max(_batchSize, 1));
+            // Reusable wrapper for filtered ticks — zero extra allocations after first use
+            var filteredSlice = new FilteredTickSlice();
             int batchCount = 0;
             var channel = _channels[channelIndex];
 
@@ -451,7 +454,7 @@ namespace MarketDataCollector.Application.Services
                             // --- Сброс частичного батча по таймеру ---
                             LogTimerFlush(_sessionId, batchCount, _batchSize, channelIndex);
 
-                            await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                             batchCount = 0;
                             continue; // переходим к следующей итерации — снова ждём тики
                         }
@@ -486,7 +489,7 @@ namespace MarketDataCollector.Application.Services
                         batchArray[batchCount++] = tick;
                         if (batchCount >= _batchSize)
                         {
-                            await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                             batchCount = 0;
 
                             // Периодическая запись fill level (раз в ~10 сек)
@@ -508,7 +511,7 @@ namespace MarketDataCollector.Application.Services
                     // Перед выходом сбросим частичный батч
                     if (batchCount > 0)
                     {
-                        await ProcessBatchAsync(batchArray, batchCount, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                        await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                         batchCount = 0;
 
                         // Периодическая запись fill level (раз в ~10 сек)
@@ -546,12 +549,58 @@ namespace MarketDataCollector.Application.Services
                 if (batchCount > 0)
                 {
                     LogFinalFlush(_sessionId, channelIndex, batchCount, _batchSize);
-                    await ProcessBatchAsync(batchArray, batchCount, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
+                    await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, CancellationToken.None, channelIndex).ConfigureAwait(false);
                 }
             }
+
+            // Return batchArray to pool after consumer completes
+            ArrayPool<TickData>.Shared.Return(batchArray, clearArray: false);
         }
 
-        private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
+        /// <summary>
+        /// Reusable IReadOnlyList<TickData> wrapper over an array slice.
+        /// Eliminates List<TickData> allocation per batch in the hot path.
+        /// Not thread-safe — designed for single-consumer sequential use.
+        /// </summary>
+        private sealed class FilteredTickSlice : IReadOnlyList<TickData>
+        {
+            private TickData[] _source = Array.Empty<TickData>();
+            private int _count;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public void Set(TickData[] source, int count)
+            {
+                _source = source;
+                _count = count;
+            }
+
+            public TickData this[int index]
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => _source[index];
+            }
+
+            public int Count => _count;
+
+            public IEnumerator<TickData> GetEnumerator()
+            {
+                for (int i = 0; i < _count; i++)
+                    yield return _source[i];
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        /// <summary>
+        /// Обрабатывает один батч тиков: дедупликация in-place + bulk insert.
+        /// </summary>
+        /// <param name="batchArray">Массив тиков из ArrayPool (может быть больше batchCount).</param>
+        /// <param name="batchCount">Количество валидных тиков в batchArray.</param>
+        /// <param name="filteredSlice">Reusable wrapper для передачи отфильтрованных тиков в BulkCopyAsync без аллокации List.</param>
+        /// <param name="dedupCache">Кэш дедупликации (nullable).</param>
+        /// <param name="cancellationToken">Токен отмены.</param>
+        /// <param name="channelIndex">Индекс канала (для логирования/метрик).</param>
+        private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
             // OpenTelemetry: трейсинг обработки батча
             using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
@@ -566,16 +615,15 @@ namespace MarketDataCollector.Application.Services
                 // OpenTelemetry: гистограмма размера батча
                 MarketDataTelemetry.BatchSize.Record(batchSize);
 
-                // 1. Единый проход: фильтрация через кэш дедупликации.
+                // 1. Единый проход in-place: фильтрация через кэш дедупликации + сжатие batchArray.
                 //    Кэш заполняется РАНЬШЕ DB-вставки — поэтому ловит
                 //    и intra-batch дубли (те же ключи в одном батче),
                 //    и cross-batch дубли (ключи из предыдущих батчей).
-                // Use ArrayPool for filteredTicks too — eliminates List<TickData> allocation
-                List<TickData>? filteredList = null;
+                //    In-place filtering устраняет new List<TickData>(batchCount) + internal array (~40KB).
                 int cachedCount = 0;
+                int writeIdx = 0;
                 if (dedupCache != null)
                 {
-                    filteredList = new List<TickData>(batchCount);
                     for (int i = 0; i < batchCount; i++)
                     {
                         var t = batchArray[i];
@@ -585,23 +633,22 @@ namespace MarketDataCollector.Application.Services
                         }
                         else
                         {
-                            filteredList.Add(t);
+                            batchArray[writeIdx++] = t;
                             dedupCache.Add(t.Ticker, t.Exchange, t.Timestamp);
                         }
                     }
                 }
                 else
                 {
-                    // Кэш отключён — простой проход без выделения новой коллекции,
-                    // передаём batchArray напрямую (срез по batchCount)
-                    filteredList = new List<TickData>(batchCount);
-                    for (int i = 0; i < batchCount; i++)
-                    {
-                        filteredList.Add(batchArray[i]);
-                    }
+                    // Кэш отключён — все тики проходят, но без выделения новой коллекции.
+                    // Просто используем batchArray как есть — writeIdx = batchCount.
+                    writeIdx = batchCount;
                 }
 
-                activity?.SetTag("filtered.count", filteredList.Count);
+                // Reuse filteredSlice wrapper — no allocation
+                filteredSlice.Set(batchArray, writeIdx);
+
+                activity?.SetTag("filtered.count", writeIdx);
                 activity?.SetTag("cached.count", cachedCount);
 
                 // 2. Создаём отдельный scope для DbContext — каждый consumer получает свой экземпляр,
@@ -609,9 +656,9 @@ namespace MarketDataCollector.Application.Services
                 using var scope = _scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
-                // 3. Bulk insert напрямую из filteredList (без промежуточного List<RawTick>)
+                // 3. Bulk insert напрямую из filteredSlice (без промежуточного List<RawTick>)
                 var sw = Stopwatch.StartNew();
-                var inserted = await repository.BulkCopyAsync(filteredList, _timeService, cancellationToken);
+                var inserted = await repository.BulkCopyAsync(filteredSlice, _timeService, cancellationToken);
                 sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
@@ -654,7 +701,7 @@ namespace MarketDataCollector.Application.Services
                 
                 if (totalInserted % 10000 < inserted)
                 {
-                    LogPeriodicProgress(totalInserted, totalReceived, batchSize, filteredList.Count, cachedCount, inserted);
+                    LogPeriodicProgress(totalInserted, totalReceived, batchSize, writeIdx, cachedCount, inserted);
                 }
             }
             catch (OperationCanceledException)

@@ -7,9 +7,12 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -331,9 +334,47 @@ namespace MarketDataCollector.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// Generates a UUID v7 (time-ordered) for better b-tree index clustering.
+        /// Format: 48-bit Unix ms timestamp (big-endian) + 74 random bits.
+        /// Uses thread-local Random for the random portion to avoid locks in hot path.
+        /// </summary>
+        private static readonly ThreadLocal<Random> UuidRandom = new(() => new Random());
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Guid NextUuidV7()
+        {
+            // UUID v7: 48-bit timestamp (milliseconds since Unix epoch) + 74 random bits
+            // Layout: [32-bit ms][16-bit ms][16-bit random][64-bit random]
+            var ms = (long)(DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
+            var random = UuidRandom.Value!;
+
+            // Generate 10 random bytes (80 bits, but we only use 74)
+            Span<byte> guidBytes = stackalloc byte[16];
+            random.NextBytes(guidBytes.Slice(6)); // fill last 10 bytes with randomness
+
+            // Set version (7) in the 4 most significant bits of byte 7 (guid[6] in network order)
+            // guid[6] = (guid[6] & 0x0F) | 0x70; (version 7)
+            guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x70);
+
+            // Set variant (RFC 4122) in byte 8: 10xx xxxx
+            guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+
+            // Write 48-bit timestamp (big-endian) in bytes 0-5
+            guidBytes[0] = (byte)((ms >> 40) & 0xFF);
+            guidBytes[1] = (byte)((ms >> 32) & 0xFF);
+            guidBytes[2] = (byte)((ms >> 24) & 0xFF);
+            guidBytes[3] = (byte)((ms >> 16) & 0xFF);
+            guidBytes[4] = (byte)((ms >> 8) & 0xFF);
+            guidBytes[5] = (byte)(ms & 0xFF);
+
+            return new Guid(guidBytes);
+        }
+
+        /// <summary>
         /// Bulk insert напрямую из IReadOnlyList<TickData> без промежуточного List<RawTick>.
         /// Создаёт RawTick в одном проходе — устраняет двойную итерацию и лишние аллокации.
         /// Price/Volume передаются как numeric[] (было text[], теперь decimal[] без string аллокаций).
+        /// Использует UUID v7 для кластеризованных b-tree индексов.
         /// </summary>
         public async Task<int> BulkCopyAsync(IReadOnlyList<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
         {
@@ -358,7 +399,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
             for (int i = 0; i < count; i++)
             {
                 var t = ticks[i];
-                ids[i] = Guid.NewGuid();
+                ids[i] = NextUuidV7();          // UUID v7 instead of Guid.NewGuid()
                 tickers[i] = t.Ticker;
                 prices[i] = t.Price;
                 volumes[i] = t.Volume;
