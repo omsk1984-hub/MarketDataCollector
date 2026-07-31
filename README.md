@@ -2,16 +2,20 @@
 
 Система сбора, обработки и хранения ценовых данных с криптобирж в реальном времени.
 
-> **Результаты нагрузочного тестирования:** 3 WebSocket-клиента (BTCUSDT, ETHUSDT, SOLUSDT) + 3 параллельных consumer'а + Binary COPY protocol. Фактическая производительность записи в PostgreSQL: **~35 000 RPS** (processed ticks/sec) при входящем потоке ~50 000 msg/s. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
+> **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + Binary COPY protocol. Sequential-режим (batch=2500) даёт ~10 700 ticks/sec, что покрывает текущую нагрузку (~19K msg/s). Single Consumers (per-ticker routing) даёт до ~19–24K processed ticks/sec при входящем потоке ~25 000 msg/s при непрерывной нагрузке. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
 
 ## Описание
 
 Система предназначена для непрерывного сбора тиковых данных (сделок) с криптобирж через WebSocket соединения, нормализации данных, удаления дубликатов и сохранения в базу данных PostgreSQL. Поддерживает параллельную работу с несколькими источниками данных и символами. Архитектура построена на принципах SOLID с чистыми зависимостями и делегированием ответственности специализированным компонентам.
 
 **Ключевые особенности:**
+- **Single Consumer (по умолчанию)** — ровно 1 consumer + 1 writer, `SingleReader=true`, полностью исключает deadlock'и (40P01) и lock contention
+- **Multiple Consumers Mode** — опционально N параллельных consumer'ов с per-ticker routing (disjoint наборы тикеров), для throughput > 25K ticks/sec
 - **Async Writer** — отдельный канал для записи батчей, Collector не блокируется на записи
-- **Adaptive Batch Size** — автоматическая подстройка размера батча под скорость записи (backlog-driven)
-- **DeduplicationCache** — in-memory FIFO-кэш для ранней дедупликации до БД (6000 записей на consumer)
+- **Adaptive Batch Size** — автоматическая подстройка размера батча под backlog и скорость записи
+- **MinPartialBatchSize** — защита от микробатчей при flush по таймеру
+- **DeduplicationCache** — in-memory FIFO-кэш для ранней дедупликации до БД (10 000 записей)
+- **CounterBatcher** — батчевый сбор per-message метрик (Interlocked.Increment без lock) для снижения lock contention OpenTelemetry
 - **TickAggregator** — агрегация OHLCV-свечей с опциональной публикацией через Kafka
 - **SlidingWindowCounter** — lock-free счётчик RPS со скользящим окном (60 секунд)
 - **OpenTelemetry / Prometheus** — метрики, трейсинг и структурированные логи
@@ -29,15 +33,15 @@
 ### 2. Обработка потока данных
 - Нормализация к единому формату через [`TickData`](src/MarketDataCollector.Domain/Entities/TickData.cs) (value-type `readonly record struct` — иммутабельна, минимальные аллокации)
 - **Трёхуровневая дедупликация**:
-  1. [`DeduplicationCache`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs) — in-memory FIFO (6000 записей на consumer, batch-эвикция 10%)
+  1. [`DeduplicationCache`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs) — in-memory FIFO (10 000 записей, batch-эвикция 10%)
   2. `GroupBy` в памяти `(Ticker, Exchange, Timestamp)` — внутри батча
   3. `ON CONFLICT DO NOTHING` — глобально, через unique-индекс БД
-- Асинхронная обработка через **N независимых `Channel<T>`** — по одному на consumer (per-ticker routing через hash ticker'а)
-- **Async Writer** — Collector отправляет батчи Writer'у через отдельный `Channel<CollectedBatch>`, Writer выполняет запись в БД. Это предотвращает блокировку Collector'а на записи.
-- **Adaptive Batch Size** — автоматически подстраивает размер батча под backlog и скорость записи (`_minBatchSize` = 100, `_maxBatchSize` = 5000, `_backlogLowThreshold` = 10000, `_backlogHighThreshold` = 50000)
+- **Single Consumer Mode** (по умолчанию): ровно 1 consumer + 1 writer, Channel с `SingleReader=true`. Полностью исключает deadlock'и (40P01), снижает GC-давление и lock contention. Sequential batch=2500 даёт ~10 700 ticks/sec.
+- **Multiple Consumers Mode** (`UseSingleConsumer=false`): N параллельных consumer'ов, каждый получает disjoint набор тикеров через per-ticker routing (hash ticker'а) → B-tree страницы unique-индекса не пересекаются → deadlock'и невозможны. Полезен при throughput > 25K ticks/sec. `ConsumerCount=0` → авто `Math.Clamp(CPU/2, 1, 4)`.
+- **Async Writer** — Collector отправляет батчи Writer'у через отдельный `Channel<CollectedBatch>` (`BatchChannelCapacity`, FullMode=Wait → backpressure), Writer выполняет запись в БД. Это предотвращает блокировку Collector'а на записи.
+- **Adaptive Batch Size** — автоматически подстраивает размер батча под backlog (`MinBatchSize`–`MaxBatchSize`, линейная интерполяция между `BacklogLowThreshold` и `BacklogHighThreshold`), плюс снижение на 20% при медленной записи (`WriteDurationWarningMs`)
+- **MinPartialBatchSize** — минимальный размер частичного батча при flush по таймеру, предотвращает микробатчи
 - **Bulk insert** через Binary COPY protocol (Npgsql) — в 10-100x быстрее `AddRangeAsync`
-- **Multiple Consumers Mode** (по умолчанию): каждый consumer получает disjoint набор тикеров → B-tree страницы unique-индекса не пересекаются → deadlock'и невозможны
-- **Single Consumer Mode**: ровно 1 consumer, Channel с `SingleReader=true` (~62k ticks/sec)
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
 ### 3. Хранение в БД
@@ -54,6 +58,8 @@
 
 #### OpenTelemetry метрики (Prometheus + Aspire Dashboard)
 Централизованный источник метрик — [`MarketDataTelemetry`](src/MarketDataCollector.Core/Telemetry/MarketDataTelemetry.cs):
+
+Per-message счётчики (`ticks.incoming`, `ticks.dropped`, `ws.messages.received`) инкрементируются в hot path через [`CounterBatcher`](src/MarketDataCollector.Core/Telemetry/CounterBatcher.cs) (Interlocked.Increment без lock и аллокаций), а реальный `Counter.Add` выносится один раз за батч через `FlushMetricBatchers()`. Это снижает внутренний lock contention OpenTelemetry. Имена/теги/единицы метрик при этом не меняются.
 
 | Метрика | Тип | Описание |
 |---------|-----|----------|
@@ -226,19 +232,29 @@ MarketDataCollector/
 │   ├── prometheus/
 │   │   └── prometheus.yml                     # Конфигурация Prometheus (scrape /metrics)
 │   └── migrations/                            # Директория для миграций БД
-├── scripts/                                   # Скрипты
+├── scripts/                                   # Скрипты сбора метрик и профилирования
+│   ├── collect-counters.ps1                   # Сбор Prometheus-метрик в CSV
+│   ├── collect-trace.ps1                      # dotnet-trace с allocation tracking
+│   ├── collect-gcdump.ps1                     # dotnet-gcdump (2 снапшота)
+│   ├── collect-all.ps1                        # Всё сразу: counters + trace + gcdump
+│   ├── analyze_counters.ps1                   # Анализ CSV-файлов счётчиков
+│   ├── run-batching-loadtest.ps1              # Нагрузочный тест батчинга
+│   ├── common-functions.ps1                   # Общие функции для скриптов
+│   └── vscode-terminal-init.ps1               # Инициализация терминала VS Code
 ├── config/                                    # Дополнительные конфигурации
 ├── plans/                                     # Планы рефакторинга и оптимизации
 │   ├── counters-analysis-*.md                 # Анализ счётчиков производительности
 │   ├── optimization-execution-plan.md         # План оптимизации производительности
 │   ├── fix-deadlock-40p01-plan.md             # План исправления deadlock'ов PostgreSQL
 │   └── ... (другие планы и analysis)
-├── counters/                                  # CSV-файлы с метриками (Prometheus scrape)
+├── traces/                                    # Результаты профилирования (nettrace, gcdump, CSV)
+├── metrics.ps1                                # Диспетчер сбора метрик/профилирования (counters/trace/gcdump/all)
+├── run_all_metrics.ps1                        # Запуск полного профилирования (all)
+├── old_counter.ps1                            # Устаревший сбор метрик через /metrics (совместимость)
 ├── run.ps1                                    # Сборка и запуск воркера
 ├── run_test.ps1                               # Запуск тестов
 ├── run_benchmark.ps1                          # Запуск TickWriteBenchmark
 ├── run_fake_server.ps1                        # Запуск FakeTickServer (нагрузочное тестирование)
-├── run_counter.ps1                            # Сбор метрик через /metrics endpoint
 ├── read_baseline.json                         # Baseline READ-бенчмарка
 └── read_partitioned.json                      # Partitioned READ-бенчмарка
 ```
@@ -312,7 +328,7 @@ MarketDataCollector/
 │  │ (обёртка над            │  └────────────────────────────┘                      │
 │  │  IRawTickRepository)    │  ┌────────────────────────────┐                      │
 │  └─────────────────────────┘  │ DeduplicationCache         │                      │
-│                               │ (in-memory FIFO, 6000/item)│                      │
+│                               │ (in-memory FIFO, 10000/item)│                     │
 │                               └────────────────────────────┘                      │
 └──────────────────────────────────────────────────────────────────────────────────┘
           ▲ реализует интерфейсы Domain
@@ -338,12 +354,12 @@ BinanceWebSocketClient.ProcessMessageAsync()
 IWebSocketMessageReceiver (цикл приёма)
     ↓ (вызов ProcessMessageAsync)
 IMarketDataProcessor.ProcessTickAsync()
-    ↓ (per-ticker routing: hash(ticker) % consumerCount)
+    ↓ (per-ticker routing: hash(ticker) % consumerCount; в Single Consumer = 1)
     ↓ (+ OTel: ticks.incoming, ticks.dropped при переполнении)
-N независимых Channel<TickData> (SingleReader=true, DropOldest)
+Channel<TickData> (SingleReader=true, DropOldest; при Multiple Consumers — N каналов)
     ↓
-N Consumer'ов (Collector: читает свой канал)
-    ↓ (накопление батча, adaptive batch size 100-5000)
+Collector (Consumer: читает канал)
+    ↓ (накопление батча, adaptive batch size 2500-5000)
     ↓ (+ DeduplicationCache — ранняя дедупликация)
     ↓ (OTel: ticks.received, channel fill level, backlog)
 Отправка батча в Async Writer через Channel<CollectedBatch>
@@ -400,7 +416,7 @@ Worker слушает HTTP на порту 5010 и предоставляет:
 - **Factory** — для создания WebSocket клиентов ([`WebSocketClientFactory`](src/MarketDataCollector.Infrastructure/Factories/WebSocketClientFactory.cs)) с двухфазной инициализацией
 - **Observer** — события WebSocket (`MessageReceived`, `Connected`, `Disconnected`, `ErrorOccurred`)
 - **Strategy** — стратегия переподключения ([`IReconnectStrategy`](src/MarketDataCollector.Core/Interfaces/IReconnectStrategy.cs))
-- **Channel** — N независимых асинхронных очередей с backpressure (per-ticker routing через hash ticker'а) + отдельный канал для Async Writer
+- **Channel** — асинхронная очередь с backpressure (Single Consumer: один канал с `SingleReader=true`; Multiple Consumers: N независимых каналов с per-ticker routing) + отдельный канал для Async Writer
 - **Bridge** — разделение монолитного клиента на связанные, но независимые иерархии (ConnectionManager, MessageReceiver, SubscriptionManager, ReconnectStrategy)
 - **Bulk Copy** — Binary COPY protocol (Npgsql) для массовой вставки (10-100x быстрее AddRangeAsync)
 - **FIFO Cache (batch eviction)** — [`DeduplicationCache`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs) с эвикцией 10% при переполнении (быстрее, чем по одному элементу)
@@ -496,36 +512,49 @@ dotnet build
 
 ```json
 {
-  "ConnectionStrings": {
-    "MarketDataDb": "Host=localhost;Port=5433;Database=MarketDataDb;Username=marketdata_user;Password=StrongPassword123!"
+  "Kestrel": {
+    "Endpoints": {
+      "Http": { "Url": "http://0.0.0.0:5010" }
+    }
   },
   "OpenTelemetry": {
-    "OtlpEndpoint": "http://localhost:4317",
+    "OtlpEndpoint": "http://localhost:18889",
     "ServiceName": "MarketDataCollector.Worker"
   },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "MarketDataDb": "Host=localhost;Port=5433;Database=MarketDataDb;Username=marketdata_user;Password=StrongPassword123!;sslmode=Disable;Keepalive=30;Include Error Detail=true;CommandTimeout=120"
+  },
   "MarketDataProcessor": {
-    "BatchSize": 1000,
+    "UseSingleConsumer": true,
     "ChannelCapacity": 150000,
-    "UseSingleConsumer": false,
-    "ConsumerCount": 3,
-    "FlushIntervalSeconds": 3,
-    "MinBatchSize": 100,
+    "MinBatchSize": 2500,
     "MaxBatchSize": 5000,
-    "BacklogLowThreshold": 10000,
-    "BacklogHighThreshold": 50000,
-    "DeduplicationCacheMaxSize": 6000
+    "MinPartialBatchSize": 1000,
+    "BatchChannelCapacity": 40,
+    "FlushIntervalSeconds": 5,
+    "DeduplicationCacheMaxSize": 10000,
+    "BacklogLowThreshold": 3000,
+    "BacklogHighThreshold": 10000,
+    "WriteDurationWarningMs": 200.0,
+    "ProcessBatchTraceSampling": 10
   },
   "TickAggregator": {
-    "Enabled": true,
+    "Enabled": false,
     "CandleIntervalSeconds": 60,
     "FlushIntervalSeconds": 5,
-    "ChannelCapacity": 10000
+    "ChannelCapacity": 100000
   },
   "Kafka": {
-    "Enabled": true,
+    "Enabled": false,
     "BootstrapServers": "localhost:9094",
-    "AggregatedDataTopic": "aggregated-data",
     "AggregatedDataGroupId": "marketdata-aggregated-group",
+    "AggregatedDataTopic": "aggregated-data",
     "AcksTimeoutMs": 5000,
     "MessageMaxBytes": 1048576
   },
@@ -533,15 +562,17 @@ dotnet build
     "Exchanges": [
       {
         "ExchangeName": "binance",
+        "WebSocketUrl": "ws://localhost:5000/ws/{symbol}@trade"
+      },
+      {
+        "ExchangeName": "binance2",
         "WebSocketUrl": "wss://stream.binance.com:9443/ws/{symbol}@trade"
       }
     ],
     "Readers": [
       { "ExchangeName": "binance", "Symbol": "btcusdt" },
       { "ExchangeName": "binance", "Symbol": "ethusdt" },
-      { "ExchangeName": "binance", "Symbol": "solusdt" },
-      { "ExchangeName": "binance", "Symbol": "xrpusdt" },
-      { "ExchangeName": "binance", "Symbol": "adausdt" }
+      { "ExchangeName": "binance", "Symbol": "solusdt" }
     ]
   },
   "WebSocketClient": {
@@ -549,42 +580,45 @@ dotnet build
     "MaxReconnectDelay": "00:00:60",
     "MaxInternalReconnectAttempts": 3,
     "MaxSubscribeRetries": 3,
-    "ReceiveBufferSize": 4096,
+    "ReceiveBufferSize": 16384,
     "MaxMessageSize": 1048576,
     "DisposeTimeout": "00:00:05"
   }
 }
 ```
 
+> Примечание: файл `appsettings.json` содержит локальные настройки для разработки (например, `binance` → `ws://localhost:5000` для FakeTickServer). В продакшене используйте реальный URL биржи (`wss://stream.binance.com:9443/ws/{symbol}@trade`).
+
 **Параметры конфигурации MarketDataProcessor:**
-- `BatchSize` — размер батча для записи в БД через Binary COPY (по умолчанию 1000)
-- `ChannelCapacity` — ёмкость КАЖДОГО канала (150000). При N consumer'ов общая ёмкость = N × ChannelCapacity
-- `UseSingleConsumer` — `true`: 1 consumer, `false`: несколько consumer'ов (по умолчанию)
-- `ConsumerCount` — количество consumer'ов (0 = авто, Math.Clamp(CPU/2, 1, 4))
-- `FlushIntervalSeconds` — сброс частичных батчей по таймеру (3с)
-- `MinBatchSize` — минимальный размер батча (адаптивный, 100)
-- `MaxBatchSize` — максимальный размер батча (адаптивный, 5000)
-- `BacklogLowThreshold` — порог backlog для уменьшения батча (10000)
-- `BacklogHighThreshold` — порог backlog для увеличения батча (50000)
-- `DeduplicationCacheMaxSize` — размер in-memory кэша дедупликации (6000)
+- `UseSingleConsumer` — `true` (по умолчанию): ровно 1 consumer + 1 writer. `false`: N параллельных consumer'ов с per-ticker routing
+- `ConsumerCount` — количество consumer'ов для Multiple Consumers (0 = авто, Math.Clamp(CPU/2, 1, 4)). Используется только при `UseSingleConsumer=false`
+- `ChannelCapacity` — ёмкость КАЖДОГО input-канала (150000). При N consumer'ов общая ёмкость = N × ChannelCapacity
+- `MinBatchSize` — минимальный размер батча при адаптивном режиме (2500)
+- `MaxBatchSize` — максимальный размер батча при адаптивном режиме (5000); если 0 — используется `BatchSize`
+- `MinPartialBatchSize` — минимальный размер частичного батча при flush по таймеру (1000); защита от микробатчей
+- `BatchChannelCapacity` — ёмкость канала между Collector и Writer (40 батчей); при переполнении — backpressure (FullMode=Wait)
+- `FlushIntervalSeconds` — сброс неполных батчей по таймеру (5с)
+- `DeduplicationCacheMaxSize` — размер in-memory кэша дедупликации (10000)
+- `BacklogLowThreshold` — порог backlog для снижения батча (3000)
+- `BacklogHighThreshold` — порог backlog для увеличения батча (10000)
+- `WriteDurationWarningMs` — если запись батча заняла дольше этого времени (ms), BatchSize временно снижается на 20% (200.0)
+- `ProcessBatchTraceSampling` — сэмплирование трейсов ProcessBatch: создавать Activity только для каждого N-го батча (10)
 
 **Параметры конфигурации TickAggregator:**
-- `Enabled` — включить агрегацию свечей (true/false)
+- `Enabled` — включить агрегацию свечей (по умолчанию `false`)
 - `CandleIntervalSeconds` — интервал свечи в секундах (1-3600, по умолчанию 60 = 1m)
 - `FlushIntervalSeconds` — интервал сброса завершённых свечей (5с)
-- `ChannelCapacity` — ёмкость Channel для буферизации тиков (10000)
+- `ChannelCapacity` — ёмкость Channel для буферизации тиков (100000)
 
 **Параметры конфигурации Kafka:**
-- `Enabled` — включить Kafka интеграцию (true/false)
+- `Enabled` — включить Kafka интеграцию (по умолчанию `false`)
 - `BootstrapServers` — адрес Kafka брокера
 - `AggregatedDataTopic` — топик для OHLCV-свечей
 - `AggregatedDataGroupId` — consumer group ID для свечей
 
 **Параметры OpenTelemetry:**
-- `OtlpEndpoint` — endpoint OTLP gRPC (по умолчанию `http://localhost:4317`)
+- `OtlpEndpoint` — endpoint OTLP gRPC (по умолчанию `http://localhost:18889` — Aspire Dashboard)
 - `ServiceName` — имя сервиса для меток
-
-Остальные параметры описаны в предыдущей версии.
 
 ### Шаг 4: Запуск воркера сбора данных
 
@@ -710,6 +744,8 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 .\run_fake_server.ps1
 ```
 
+Скрипт [`run_fake_server.ps1`](run_fake_server.ps1) по умолчанию запускает генератор с нагрузкой **~25 000 тиков/сек** по 3 символам (`btcusdt,ethusdt,solusdt`), `--max-ticks 1700000` и `--dup-percent 3`. Параметры можно изменить в самом скрипте.
+
 После запуска FakeTickServer нужно заменить в `appsettings.json` URL биржи на `ws://localhost:5000/ws/{symbol}@trade` и запустить Worker.
 
 ## Мониторинг и логирование
@@ -729,19 +765,19 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 
 ### Сбор метрик через Prometheus
 
-Скрипт [`run_counter.ps1`](run_counter.ps1) периодически опрашивает `/metrics` endpoint и сохраняет метрики в CSV:
+Скрипт [`scripts/collect-counters.ps1`](scripts/collect-counters.ps1) периодически опрашивает `/metrics` endpoint и сохраняет метрики в CSV (директория по умолчанию `./traces`):
 
 ```powershell
-.\run_counter.ps1 -Url "http://localhost:5010/metrics" -RefreshSeconds 5 -Duration 120
+.\scripts\collect-counters.ps1 -MetricsUrl "http://localhost:5010/metrics" -Duration 120
 ```
 
 Параметры:
-- `-Url` — URL Prometheus metrics endpoint (по умолчанию `http://localhost:5010/metrics`)
+- `-MetricsUrl` — URL Prometheus metrics endpoint (по умолчанию `http://localhost:5010/metrics`)
 - `-RefreshSeconds` — интервал опроса (5с)
 - `-Duration` — максимальная длительность сбора в секундах (0 = без ограничений)
-- `-OutputDir` — директория для CSV (по умолчанию `./counters`)
+- `-OutputDir` — директория для CSV (по умолчанию `./traces`)
 
-Метрики можно просматривать в реальном времени через Prometheus (http://localhost:9091) или Aspire Dashboard (http://localhost:19000).
+Метрики можно просматривать в реальном времени через Prometheus (http://localhost:9091) или Aspire Dashboard (http://localhost:19000). Для анализа собранных CSV используйте [`scripts/analyze_counters.ps1`](scripts/analyze_counters.ps1).
 
 ### Health-check (в [`Worker.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Worker.cs))
 - Периодическая проверка каждые 10 секунд
@@ -808,7 +844,37 @@ dotnet run
 - [`run_test.ps1`](run_test.ps1) — запуск тестов
 - [`run_benchmark.ps1`](run_benchmark.ps1) — запуск TickWriteBenchmark
 - [`run_fake_server.ps1`](run_fake_server.ps1) — запуск FakeTickServer (нагрузочное тестирование)
-- [`run_counter.ps1`](run_counter.ps1) — сбор метрик через Prometheus endpoint
+- [`metrics.ps1`](metrics.ps1) — диспетчер сбора метрик и профилирования (см. ниже)
+- [`run_all_metrics.ps1`](run_all_metrics.ps1) — запуск полного профилирования (counters + trace + gcdump)
+
+### Сбор метрик и профилирование
+
+[`metrics.ps1`](metrics.ps1) — единый диспетчер, делегирующий вызов скриптам из папки `scripts/`:
+
+| Режим (`-Mode`) | Что делает |
+|-----------------|------------|
+| `counters` | Сбор Prometheus-метрик в CSV (дефолт) |
+| `trace` | `dotnet-trace` с allocation tracking (+ конвертация в SpeedScope) |
+| `gcdump` | `dotnet-gcdump` (2 снапшота: на пике и после дренажа) |
+| `all` | Всё сразу: counters + trace + 2× gcdump |
+
+```powershell
+.\metrics.ps1 -Mode counters
+.\metrics.ps1 -Mode trace -TraceDuration 60
+.\metrics.ps1 -Mode gcdump -GcDumpAtPeakSec 40
+.\metrics.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50
+```
+
+Также можно запускать скрипты напрямую:
+
+```powershell
+.\scripts\collect-counters.ps1 -Duration 120
+.\scripts\collect-trace.ps1 -TraceDuration 90
+.\scripts\collect-gcdump.ps1 -GcDumpAtPeakSec 50
+.\scripts\collect-all.ps1 -TraceDuration 90 -GcDumpAtPeakSec 50
+```
+
+Результаты сохраняются в [`traces/`](traces/) (по умолчанию). Для анализа CSV-файлов счётчиков используйте [`scripts/analyze_counters.ps1`](scripts/analyze_counters.ps1).
 
 ### Переменные окружения
 
@@ -900,4 +966,4 @@ telegram: @Omsk1984
 
 ---
 
-*Последнее обновление: июль 2026*
+*Последнее обновление: июль 2026 (актуализировано под Single Consumer и новые скрипты)*
