@@ -337,6 +337,17 @@ function Collect-GcDump {
     Write-Host "    PID: $ProcessId"
     Write-Host "    Output: $OutputPath"
 
+    # ===== ВАЛИДАЦИЯ (только диагностика, без изменения поведения) =====
+    # 1) Проверка живости целевого процесса перед attach.
+    $targetAlive = $false
+    $targetObj = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($targetObj) {
+        $targetAlive = $true
+        Write-Host "    [DIAG] PID $ProcessId жив (WS=$([math]::Round($targetObj.WorkingSet64/1MB,1)) MB, Responding=$($targetObj.Responding))" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    [DIAG] ВНИМАНИЕ: PID $ProcessId НЕ существует на момент сборки gcdump ($Label)" -ForegroundColor Yellow
+    }
+
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "dotnet-gcdump"
     $psi.Arguments = "collect --process-id $ProcessId --output `"$OutputPath`""
@@ -346,6 +357,7 @@ function Collect-GcDump {
     $psi.RedirectStandardError = $true
 
     $proc = [System.Diagnostics.Process]::Start($psi)
+    Write-Host "    [DIAG] dotnet-gcdump запущен (PID: $($proc.Id), t=$([math]::Round((Get-Date -DisplayHint Time).TimeOfDay.TotalSeconds))s)" -ForegroundColor DarkGray
 
     # ВАЖНО: не используем event-based async чтение (add_OutputDataReceived / add_ErrorDataReceived
     # со scriptblock'ами). При большом потоке вывода (dotnet-gcdump при длительном сборе пишет много)
@@ -356,16 +368,25 @@ function Collect-GcDump {
     $stderrTask = $proc.StandardError.ReadToEndAsync()
 
     # Ждём завершения (до 120 сек). При зависании — принудительно завершаем.
-    if (-not $proc.WaitForExit(120000)) {
+    $waitStart = Get-Date
+    $waitResult = $proc.WaitForExit(120000)
+    Write-Host "    [DIAG] WaitForExit вернул $waitResult (t=$([math]::Round((Get-Date - $waitStart).TotalSeconds))s)" -ForegroundColor DarkGray
+    if (-not $waitResult) {
         Write-Host "[!] gcdump не завершился за 120s, принудительное завершение..." -ForegroundColor Yellow
         try { $proc.Kill() } catch { }
         $proc.WaitForExit(5000)
     }
 
+    # После Kill чтение задач может блокироваться, если pipe-буфер не закрыт процессом.
+    # Здесь только засекаем время выполнения чтения, чтобы выявить зависание.
+    $readStart = Get-Date
     $stdout = ""
     $stderr = ""
-    try { $stdout = $stdoutTask.GetAwaiter().GetResult() } catch { }
-    try { $stderr = $stderrTask.GetAwaiter().GetResult() } catch { }
+    try { $stdout = $stdoutTask.GetAwaiter().GetResult() } catch { Write-Host "    [DIAG] Ошибка чтения stdout: $($_.Exception.Message)" -ForegroundColor Yellow }
+    try { $stderr = $stderrTask.GetAwaiter().GetResult() } catch { Write-Host "    [DIAG] Ошибка чтения stderr: $($_.Exception.Message)" -ForegroundColor Yellow }
+    Write-Host "    [DIAG] Чтение stdout/stderr заняло t=$([math]::Round((Get-Date - $readStart).TotalSeconds))s" -ForegroundColor DarkGray
+    Write-Host "    [DIAG] ExitCode=$($proc.ExitCode), файл существует=$(Test-Path $OutputPath)" -ForegroundColor DarkGray
+    # ===== КОНЕЦ ВАЛИДАЦИИ =====
 
     if ($proc.ExitCode -eq 0) {
         $fileSize = (Get-Item $OutputPath -ErrorAction SilentlyContinue).Length
@@ -392,18 +413,39 @@ function Convert-TraceToSpeedScope {
     }
 
     $outputFile = [System.IO.Path]::ChangeExtension($TraceFile, ".speedscope.json")
+    # dotnet-trace convert --format speedscope сам добавляет суффикс ".speedscope.json"
+    # к имени из --output. Если передать полный путь с расширением, получится задвоенный
+    # суффикс (....speedscope.speedscope.json). Поэтому передаём базовое имя без расширения.
+    $outputBase = [System.IO.Path]::ChangeExtension($TraceFile, "")
 
     Write-Host "[*] Конвертация trace → SpeedScope..." -ForegroundColor Cyan
     Write-Host "    Input: $TraceFile"
     Write-Host "    Output: $outputFile"
 
-    $convertOut = dotnet-trace convert --format speedscope "$TraceFile" --output "$outputFile" 2>&1
+    $convertOut = dotnet-trace convert --format speedscope "$TraceFile" --output "$outputBase" 2>&1
     $convertText = ($convertOut | Out-String)
     if ($convertText) {
         Write-Host $convertText.Trim()
     }
-    if ($LASTEXITCODE -eq 0 -and (Test-Path $outputFile)) {
-        $fileSize = (Get-Item $outputFile).Length
+
+    # Нормализация: если dotnet-trace создал файл с задвоенным суффиксом — переименовываем
+    # в ожидаемое имя, чтобы последующие проверки в отчёте совпадали.
+    $actualFile = $outputFile
+    if (-not (Test-Path -LiteralPath $actualFile)) {
+        $fileNameBase = [System.IO.Path]::GetFileNameWithoutExtension($TraceFile)
+        $candidates = @(Get-ChildItem -Path (Split-Path $TraceFile) -Filter "*.speedscope.json" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "$fileNameBase*" })
+        if ($candidates.Count -gt 0) {
+            $actualFile = $candidates[0].FullName
+            if ($actualFile -ne $outputFile) {
+                Move-Item -LiteralPath $actualFile -Destination $outputFile -Force
+                $actualFile = $outputFile
+            }
+        }
+    }
+
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $actualFile)) {
+        $fileSize = (Get-Item -LiteralPath $actualFile).Length
         $sizeStr = if ($fileSize -gt 1MB) { "$([math]::Round($fileSize/1MB, 2)) MB" } else { "$([math]::Round($fileSize/1KB, 1)) KB" }
         Write-Host "[+] SpeedScope файл создан ($sizeStr)" -ForegroundColor Green
         Write-Host "    Откройте в браузере: https://www.speedscope.app" -ForegroundColor DarkGray
