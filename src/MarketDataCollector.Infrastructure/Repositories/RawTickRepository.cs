@@ -71,7 +71,9 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
         public async Task<RawTick?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _dbSet.FindAsync(new object[] { id }, cancellationToken);
+            // PK составной (Id, Timestamp) из-за партиционирования — FindAsync
+            // с одиночным ключом больше не работает. Ищем по Id напрямую.
+            return await _dbSet.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
         }
 
         public async Task<IEnumerable<RawTick>> GetAllAsync(CancellationToken cancellationToken = default)

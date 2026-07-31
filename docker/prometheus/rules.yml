@@ -1,0 +1,84 @@
+# Alerting rules для MarketDataCollector.
+# Пороги откалиброваны под рабочую нагрузку ~19–25K msg/s и ChannelCapacity=150000.
+# При необходимости скорректировать под фактический профиль нагрузки.
+
+groups:
+  - name: marketdata-alerts
+    rules:
+
+      # === Backlog канала ===
+      # Backlog = incoming - received. Высокий backlog означает, что consumer
+      # не успевает записывать в БД. Потенциальная потеря данных при DropOldest.
+      - alert: MarketDataChannelBacklogHigh
+        expr: processor_channel_backlog > 50000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокий backlog канала ({{ $value }})"
+          description: "Backlog каналов процессора превысил 50K тиков. Consumer не успевает писать в БД. Проверьте нагрузку на БД / скорость записи."
+
+      - alert: MarketDataChannelBacklogCritical
+        expr: processor_channel_backlog > 100000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Критический backlog канала ({{ $value }})"
+          description: "Backlog каналов превысил 100K (ёмкость 150K). Риск массовых дропов (DropOldest) и потери данных."
+
+      # === Дропы тиков ===
+      # rate дропнутых тиков за 5 минут. Дропы указывают на переполнение канала.
+      - alert: MarketDataTicksDropped
+        expr: rate(ticks_dropped_silently_total[5m]) > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Дроп тиков ({{ $value }}/s)"
+          description: "Тики дропаются из-за переполнения канала (DropOldest). incoming не успевает обрабатываться. Увеличьте ChannelCapacity или оптимизируйте запись."
+
+      # === Дисконнекты WebSocket ===
+      # Все клиенты отключены (активных соединений = 0). Recovery-loop должен
+      # переподключать, но если 0 длительное время — проблема.
+      - alert: MarketDataAllWebSocketsDown
+        expr: ws_active_connections == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Все WebSocket-соединения отключены"
+          description: "Нет активных WebSocket-соединений к биржам в течение 3 минут. Данные не поступают."
+
+      # Снижение числа активных соединений ниже ожидаемого (частичный сбой).
+      - alert: MarketDataWebSocketsDegraded
+        expr: ws_active_connections < 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket-соединения деградированы ({{ $value }})"
+          description: "Активных WebSocket-соединений меньше 3. Часть клиентов отключена. Проверьте биржи и reconnection."
+
+      # === Исключения в пайплайне ===
+      - alert: MarketDataExceptionsSpike
+        expr: rate(exceptions_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Всплеск исключений ({{ $value }}/s)"
+          description: "Рост числа исключений в обработке. Проверьте логи и health."
+
+  - name: marketdata-health
+    rules:
+      # === Недоступность worker (/health) ===
+      # blackbox exporter пробивает http://worker:5010/health; probe_success=0 => 503.
+      - alert: MarketDataWorkerUnhealthy
+        expr: probe_success{job="blackbox-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker /health недоступен"
+          description: "HTTP-проба /health вернула не-200 (или таймаут) в течение 2 минут. Worker деградировал или недоступен."

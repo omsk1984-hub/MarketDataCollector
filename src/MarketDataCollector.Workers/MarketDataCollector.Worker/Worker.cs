@@ -39,8 +39,16 @@ public class Worker : BackgroundService
         var clientFactory = scope.ServiceProvider.GetRequiredService<IWebSocketClientFactory>();
         var marketDataProcessor = scope.ServiceProvider.GetRequiredService<IMarketDataProcessor>();
         var tickAggregator = scope.ServiceProvider.GetRequiredService<ITickAggregator>();
+        var clientRegistry = scope.ServiceProvider.GetRequiredService<IWebSocketClientRegistry>();
 
         var clients = clientFactory.CreateAllClients().ToList();
+
+        // Регистрируем реальные экземпляры клиентов в реестре, чтобы /health
+        // мог читать их живое состояние без повторного создания клиентов.
+        foreach (var client in clients)
+        {
+            clientRegistry.Register(client);
+        }
 
         if (clients.Count == 0)
         {
@@ -108,7 +116,7 @@ public class Worker : BackgroundService
             // Используем CancellationToken.None, т.к. stoppingToken уже отменён.
             // Добавляем safety-net timeout 30 секунд, чтобы не зависнуть навсегда.
             using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await CleanupAsync(marketDataProcessor, tickAggregator, clients, cleanupCts.Token);
+            await CleanupAsync(marketDataProcessor, tickAggregator, clients, clientRegistry, cleanupCts.Token);
         }
     }
 
@@ -116,6 +124,7 @@ public class Worker : BackgroundService
         IMarketDataProcessor marketDataProcessor,
         ITickAggregator tickAggregator,
         List<IExchangeWebSocketClient> clients,
+        IWebSocketClientRegistry clientRegistry,
         CancellationToken stoppingToken)
     {
         // ВАЖНО: Сначала останавливаем WebSocket-клиенты, чтобы они прекратили
@@ -125,6 +134,10 @@ public class Worker : BackgroundService
         _logger.LogInformation("Stopping WebSocket clients...");
         var stopTasks = clients.Select(client => StopClientAsync(client));
         await Task.WhenAll(stopTasks);
+
+        // Очищаем реестр после остановки клиентов, чтобы /health не показывал
+        // устаревшие (уже остановленные) клиенты.
+        clientRegistry.Clear();
 
         try
         {

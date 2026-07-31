@@ -1,0 +1,26 @@
+# Alertmanager конфигурация.
+# Заполните получателей уведомлений через env/секреты в docker-compose
+# (ALERTMANAGER_EMAIL_TO, SMTP_* и т.д.). По умолчанию — без активных receivers
+# (алерты видны только в UI Alertmanager: http://localhost:9093).
+
+global:
+  resolve_timeout: 5m
+  # SMTP настраивается при необходимости:
+  # smtp_smarthost: ${SMTP_HOST}
+  # smtp_from: ${SMTP_FROM}
+  # smtp_auth_username: ${SMTP_USER}
+  # smtp_auth_password: ${SMTP_PASS}
+
+route:
+  receiver: "default"
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: "default"
+    # Пример e-mail receiver:
+    # email_configs:
+    #   - to: ${ALERTMANAGER_EMAIL_TO}
+    #     send_resolved: true

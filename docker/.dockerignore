@@ -1,0 +1,30 @@
+# Игнорируем артефакты сборки и служебные каталоги для уменьшения build context
+**/bin/
+**/obj/
+**/TestResults/
+
+# Секреты и локальные env
+docker/.env
+*.local.env
+
+# Трейсы/профили/метрики
+traces/
+counters/
+*.gcdump
+*.nettrace
+gc_metrics.csv
+
+# VCS и IDE
+.git
+.github
+.vscode
+.gitignore
+
+# Документация и планы
+plans/
+README.md
+CLAUDE.md
+LICENSE
+
+# PowerShell-скрипты разработчика (не нужны в runtime-образе)
+*.ps1

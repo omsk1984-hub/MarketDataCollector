@@ -1,0 +1,48 @@
+# ===== Stage 1: Build =====
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Копируем csproj для восстановления зависимостей (layer caching).
+# Восстанавливаем только проект воркера: он через ProjectReference тянет
+# Domain/Core/Infrastructure/Application. Восстановление всего sln невозможно
+# без копирования тестовых проектов.
+COPY src/MarketDataCollector.Domain/MarketDataCollector.Domain.csproj src/MarketDataCollector.Domain/
+COPY src/MarketDataCollector.Core/MarketDataCollector.Core.csproj src/MarketDataCollector.Core/
+COPY src/MarketDataCollector.Infrastructure/MarketDataCollector.Infrastructure.csproj src/MarketDataCollector.Infrastructure/
+COPY src/MarketDataCollector.Application/MarketDataCollector.Application.csproj src/MarketDataCollector.Application/
+COPY src/MarketDataCollector.Workers/MarketDataCollector.Worker/MarketDataCollector.Worker.csproj src/MarketDataCollector.Workers/MarketDataCollector.Worker/
+
+RUN dotnet restore src/MarketDataCollector.Workers/MarketDataCollector.Worker/MarketDataCollector.Worker.csproj
+
+# Копируем исходники и публикуем в Release.
+# publish выполняет restore повторно (без --no-restore): это гарантирует,
+# что транзитивные пакеты (напр. Microsoft.EntityFrameworkCore.Analyzers) попадут
+# в кэш NuGet к моменту сборки, избегая NETSDK1064.
+COPY src/ src/
+WORKDIR /src/src/MarketDataCollector.Workers/MarketDataCollector.Worker
+RUN dotnet publish MarketDataCollector.Worker.csproj -c Release -o /app/publish
+
+# ===== Stage 2: Runtime =====
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# curl — для HEALTHCHECK (в aspnet:8.0 образа curl отсутствует)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV DOTNET_ENVIRONMENT=Production \
+    ASPNETCORE_URLS=http://0.0.0.0:5010 \
+    ASPNETCORE_HTTP_PORTS=5010
+
+COPY --from=build /app/publish .
+
+EXPOSE 5010
+
+# Healthcheck: /health возвращает 200, если ядро пайплайна, Postgres и WebSocket-клиенты здоровы.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+  CMD ["curl", "-fsS", "http://localhost:5010/health"]
+
+USER $APP_UID
+
+ENTRYPOINT ["dotnet", "MarketDataCollector.Worker.dll"]

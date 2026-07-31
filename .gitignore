@@ -5,3 +5,7 @@ gc_metrics.csv
 $null
 counters/*
 traces/*
+
+# Секреты и локальные env
+docker/.env
+*.local.env

@@ -2,11 +2,39 @@ global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
+# Правила алертов (backlog, дропы, дисконнекты WS, health).
+rule_files:
+  - "rules.yml"
+
+# Alertmanager endpoint.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
+  # Метрики воркера (Prometheus exporter на /metrics).
   - job_name: 'marketdata-worker'
     static_configs:
-      # Worker запущен на хосте (не в Docker) — используем host.docker.internal
-      # Если Worker тоже в Docker — заменить на имя сервиса
-      - targets: ['host.docker.internal:5010']
+      # Worker внутри compose-сети — используем имя сервиса.
+      # Если Worker запущен на хосте (не в Docker) — заменить на host.docker.internal:5010.
+      - targets: ['worker:5010']
     metrics_path: '/metrics'
     scrape_interval: 5s
+
+  # Blackbox probe /health — для алерта недоступности worker.
+  - job_name: 'blackbox-health'
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets:
+          - 'http://worker:5010/health'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+    scrape_interval: 15s

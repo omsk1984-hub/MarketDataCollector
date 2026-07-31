@@ -1,4 +1,5 @@
 using MarketDataCollector.Application.Services;
+using MarketDataCollector.Core.Clients;
 using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Interfaces;
@@ -23,12 +24,21 @@ public static class DependencyInjection
     /// </summary>
     public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
     {
+        var connectionString = configuration.GetConnectionString("MarketDataDb")
+            ?? throw new InvalidOperationException("Connection string 'MarketDataDb' is not configured.");
+
         services.AddDbContext<MarketDataDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("MarketDataDb")));
+            options.UseNpgsql(connectionString));
 
         services.AddScoped<IRawTickRepository, RawTickRepository>();
         services.AddScoped<IConnectionLogRepository, ConnectionLogRepository>();
         services.AddScoped<IAggregatedDataRepository, AggregatedDataRepository>();
+
+        // Автоматическое обслуживание партиций rawticks (создание вперёд + retention).
+        services.AddHostedService(sp => new PartitionMaintenanceService(
+            sp.GetRequiredService<ILogger<PartitionMaintenanceService>>(),
+            sp.GetRequiredService<IOptions<PartitioningOptions>>(),
+            connectionString));
 
         return services;
     }
@@ -42,6 +52,7 @@ public static class DependencyInjection
         services.Configure<MarketDataProcessorOptions>(configuration.GetSection(MarketDataProcessorOptions.SectionName));
         services.Configure<TickAggregatorOptions>(configuration.GetSection(TickAggregatorOptions.SectionName));
         services.Configure<KafkaOptions>(configuration.GetSection(KafkaOptions.SectionName));
+        services.Configure<PartitioningOptions>(configuration.GetSection(PartitioningOptions.SectionName));
 
         return services;
     }
@@ -53,6 +64,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<ITimeService, SystemTimeService>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
+        services.AddSingleton<IWebSocketClientRegistry, WebSocketClientRegistry>();
         services.AddScoped<IWebSocketClientFactory, WebSocketClientFactory>();
 
         return services;
@@ -94,6 +106,9 @@ public static class DependencyInjection
 
         if (kafkaConfig?.Enabled == true)
         {
+            // Проверка доступности Kafka при старте (логгер вместо Console.WriteLine).
+            services.AddHostedService<KafkaAvailabilityCheckService>();
+
             // Kafka candle producer — singleton (пул соединений), зарегистрирован как ICandlePublisher
             services.AddSingleton<ICandlePublisher, KafkaCandleProducer>();
 
@@ -123,34 +138,4 @@ public static class DependencyInjection
         return services;
     }
 
-    /// <summary>
-    /// Проверка доступности Kafka при старте. Вызывается при включённой Kafka.
-    /// Выводит в консоль статус брокеров. Не бросает исключений — при недоступности
-    /// свечи уходят в fallback на прямую запись в БД.
-    /// </summary>
-    public static void VerifyKafkaAvailability(IConfiguration configuration)
-    {
-        var kafkaConfig = configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
-        if (kafkaConfig?.Enabled != true)
-            return;
-
-        try
-        {
-            var testConfig = new Confluent.Kafka.AdminClientConfig { BootstrapServers = kafkaConfig.BootstrapServers };
-            using var adminClient = new Confluent.Kafka.AdminClientBuilder(testConfig).Build();
-            var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
-            if (metadata.Brokers.Count > 0)
-            {
-                Console.WriteLine($"[Kafka] Broker(s) available: {string.Join(", ", metadata.Brokers.Select(b => $"{b.Host}:{b.Port}"))}");
-            }
-            else
-            {
-                Console.WriteLine($"[Kafka] WARNING: No brokers found at {kafkaConfig.BootstrapServers}. Candles will fall back to direct DB write until Kafka becomes available.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Kafka] WARNING: Cannot reach Kafka at {kafkaConfig.BootstrapServers}: {ex.Message}. Candles will fall back to direct DB write until Kafka becomes available.");
-        }
-    }
 }

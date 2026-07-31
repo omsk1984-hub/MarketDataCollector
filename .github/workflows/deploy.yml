@@ -1,0 +1,111 @@
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/marketdata-worker
+  GHCR_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  publish-image:
+    name: Publish Docker Image (GHCR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # При ручном запуске (workflow_dispatch) образ ещё не собран CI'ем, поэтому
+    # собираем и публикуем его здесь. При push тега — тоже безопасно перепубликовать.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/marketdata-worker
+          tags: |
+            type=sha
+            type=raw,value=latest,enable=true
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.worker
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: publish-image
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Копируем compose-файлы и скрипты на target-сервер через отдельный scp-action
+      - name: Copy deploy files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: "docker/docker-compose.prod.yml,docker/prometheus/prometheus.yml,docker/prometheus/rules.yml,docker/prometheus/alertmanager.yml,docker/prometheus/blackbox.yml,docker/.env.example"
+          target: "/opt/marketdata-collector"
+          strip_components: 0
+
+      - name: Deploy worker
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            set -e
+            APP_DIR=/opt/marketdata-collector
+            mkdir -p $APP_DIR/docker
+            cd $APP_DIR
+
+            # Создаём/обновляем .env из GitHub Secrets
+            cat > docker/.env <<EOF
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
+            OTLP_ENDPOINT=http://aspire-dashboard:18889
+            EXCHANGE_WEBSOCKET_URL=${{ secrets.EXCHANGE_WEBSOCKET_URL }}
+            GHCR_OWNER=${{ env.GHCR_OWNER }}
+            EOF
+            chmod 600 docker/.env
+
+            # Логин в GHCR на сервере (нужен PAT с read:packages)
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+
+            cd docker
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Ожидаем готовности worker (healthcheck)
+            sleep 20
+            docker inspect --format='{{.State.Health.Status}}' marketdata-worker || echo "Health status unavailable"

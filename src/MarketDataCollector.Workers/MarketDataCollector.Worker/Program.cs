@@ -1,9 +1,11 @@
 using System.Runtime;
 using MarketDataCollector.Core.Configuration;
+using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Worker;
 using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Infrastructure.Data;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -70,7 +72,6 @@ builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddCoreServices();
 
 // ===== Aggregation (Kafka + TickAggregator) =====
-DependencyInjection.VerifyKafkaAvailability(builder.Configuration);
 builder.Services.AddAggregation(builder.Configuration);
 
 // ===== Main market data pipeline =====
@@ -80,6 +81,17 @@ builder.Services.AddMarketDataPipeline();
 builder.Services.AddHostedService<MarketDataCollector.Worker.Worker>();
 
 var app = builder.Build();
+
+// ===== Авто-миграция схемы БД при старте =====
+// Применяет все ожидающие EF Core миграции. Это упрощает деплой (не нужен
+// отдельный шаг миграции), но требует, чтобы Postgres был доступен к этому
+// моменту. При нескольких репликах возможна гонка — миграции EF Core
+// идемпотентны по применённым шагам, повторное применение безопасно.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<MarketDataDbContext>();
+    db.Database.Migrate();
+}
 
 // Kafka config — для health check ниже
 var kafkaConfig = builder.Configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
@@ -140,16 +152,69 @@ app.MapGet("/health", async (HttpContext ctx) =>
         };
     }
 
+    // ===== WebSocket clients health =====
+    var clientRegistry = ctx.RequestServices.GetRequiredService<IWebSocketClientRegistry>();
+    var wsClients = clientRegistry.GetClients();
+    var connectedClients = wsClients.Count(c => c.IsConnected);
+    var wsInfo = new
+    {
+        // Если клиенты зарегистрированы, но все отключены — unhealthy.
+        // Если реестр пуст (клиенты ещё не созданы или Worker остановлен) — unknown.
+        status = wsClients.Count == 0 ? "unknown"
+               : (connectedClients > 0 ? "healthy" : "unhealthy"),
+        total = wsClients.Count,
+        connected = connectedClients,
+        disconnected = wsClients.Count - connectedClients,
+        clients = wsClients.Select(c => new
+        {
+            exchange = c.ExchangeName,
+            name = c.Name,
+            symbol = c.Symbol,
+            connected = c.IsConnected,
+            messagesPerSecond = c.GetMessagesPerSecond(),
+            totalMessages = c.GetTotalMessagesCount()
+        })
+    };
+    healthChecks["websocket"] = wsInfo;
+
+    // ===== Channels fill-level (informational only) =====
+    var processor = ctx.RequestServices.GetRequiredService<IMarketDataProcessor>();
+    var fillLevels = processor.GetChannelFillLevels();
+    var totalCount = fillLevels.Sum(f => f.Count);
+    var totalCapacity = fillLevels.Sum(f => f.Capacity);
+    var channelsInfo = new
+    {
+        channels = fillLevels.Select(f => new
+        {
+            count = f.Count,
+            capacity = f.Capacity,
+            fillPercent = f.Capacity > 0 ? Math.Round((double)f.Count / f.Capacity * 100.0, 1) : 0.0
+        }),
+        totalCount,
+        totalCapacity,
+        totalFillPercent = totalCapacity > 0 ? Math.Round((double)totalCount / totalCapacity * 100.0, 1) : 0.0,
+        estimatedDropped = processor.GetEstimatedDroppedCount(),
+        incoming = processor.GetTotalIncomingCount(),
+        received = processor.GetTotalReceivedCount(),
+        processedRps = processor.GetProcessedRps()
+    };
+    healthChecks["channels"] = channelsInfo;
+
     var allHealthy = healthChecks.Values.All(h =>
     {
         var status = h.GetType().GetProperty("status")?.GetValue(h)?.ToString();
-        return status == "healthy" || status == "disabled";
+        // null — информационные блоки без статуса (например, channels) не влияют на здоровье.
+        return status == null || status == "healthy" || status == "disabled" || status == "unknown";
     });
 
-    ctx.Response.StatusCode = allHealthy ? 200 : 503;
+    // Комбинированно: 503, если Kafka/PostgreSQL unhealthy ИЛИ все WS-клиенты отключены.
+    var wsAllDown = wsClients.Count > 0 && connectedClients == 0;
+    var degraded = !allHealthy || wsAllDown;
+
+    ctx.Response.StatusCode = degraded ? 503 : 200;
     await ctx.Response.WriteAsJsonAsync(new
     {
-        status = allHealthy ? "healthy" : "degraded",
+        status = degraded ? "degraded" : "healthy",
         checks = healthChecks,
         timestamp = DateTime.UtcNow
     });

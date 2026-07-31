@@ -20,8 +20,13 @@ namespace MarketDataCollector.Infrastructure.Data
             // RawTick configuration
             modelBuilder.Entity<RawTick>(entity =>
             {
+                // Таблица rawticks партиционируется по Timestamp (native partitioning).
+                // Postgres требует, чтобы PRIMARY KEY включал partition key, поэтому
+                // ключ составной: (Id, Timestamp). Партиционирование добавляется
+                // вручную в миграции (PARTITION BY RANGE ("timestamp")) и партиции
+                // поддерживаются PartitionMaintenanceService.
                 entity.ToTable("rawticks");
-                entity.HasKey(e => e.Id);
+                entity.HasKey(e => new { e.Id, e.Timestamp });
                 entity.Property(e => e.Id).HasColumnName("id");
 
                 entity.Property(e => e.Ticker)

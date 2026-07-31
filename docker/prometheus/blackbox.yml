@@ -1,0 +1,12 @@
+# Blackbox exporter конфигурация.
+# Модуль http_health — HTTP-проба на /health воркера (ожидаем 200 OK).
+modules:
+  http_health:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      method: GET
+      no_follow_redirects: false
+      fail_if_ssl: false

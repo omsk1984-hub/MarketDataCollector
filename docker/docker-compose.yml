@@ -1,21 +1,26 @@
 version: '3.8'
 
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${POSTGRES_DB:-MarketDataDb}
+  POSTGRES_USER: ${POSTGRES_USER:-marketdata_user}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-StrongPassword123!}
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: marketdata-postgres
     environment:
-      POSTGRES_DB: MarketDataDb
-      POSTGRES_USER: marketdata_user
-      POSTGRES_PASSWORD: StrongPassword123!
-      # trust для dev-окружения — Npgsql на Windows через Docker NAT
-      # не может корректно выполнить SCRAM-SHA-256 аутентификацию
+      <<: *postgres-env
+      # trust только для локальной разработки на Windows (Npgsql через Docker NAT
+      # не выполняет корректно SCRAM-SHA-256). В production (docker-compose.prod.yml)
+      # используется полноценная аутентификация по паролю из .env.
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Схема создаётся EF Core миграциями (Database.Migrate() в Program.cs),
+      # а не init.sql — иначе конфликт с партиционированной таблицей rawticks.
     networks:
       - marketdata-network
     healthcheck:
@@ -110,10 +115,35 @@ services:
       - "9091:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=7d'
+    networks:
+      - marketdata-network
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: marketdata-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    networks:
+      - marketdata-network
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: marketdata-blackbox
+    command:
+      - '--config.file=/etc/blackbox_exporter/blackbox.yml'
+    volumes:
+      - ./prometheus/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro
     networks:
       - marketdata-network
     restart: unless-stopped
@@ -128,6 +158,46 @@ services:
       - DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true
     networks:
       - marketdata-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    image: marketdata-worker:latest
+    container_name: marketdata-worker
+    environment:
+      # .NET Configuration env-провайдер (double-underscore = вложенность):
+      # ConnectionStrings__MarketDataDb, Kafka__BootstrapServers, OpenTelemetry__OtlpEndpoint и т.д.
+      DOTNET_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5010
+      ConnectionStrings__MarketDataDb: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-MarketDataDb};
+        Username=${POSTGRES_USER:-marketdata_user};
+        Password=${POSTGRES_PASSWORD:-StrongPassword123!};
+        sslmode=Disable;Keepalive=30;Include Error Detail=true;CommandTimeout=120
+      Kafka__Enabled: "true"
+      Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-http://aspire-dashboard:18889}
+      ExchangeOptions__Exchanges__0__WebSocketUrl: ${EXCHANGE_WEBSOCKET_URL:-wss://stream.binance.com:9443/ws/{symbol}@trade}
+      Logging__LogLevel__Default: Information
+    ports:
+      - "5010:5010"  # /health и /metrics
+    networks:
+      - marketdata-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init-topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5010/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
     restart: unless-stopped
 
 volumes:
