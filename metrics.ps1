@@ -44,19 +44,19 @@
 
 .EXAMPLE
     # Только сбор Prometheus-метрик (как было)
-    .\run_counter.ps1 -Mode counters
+    .\metrics.ps1 -Mode counters
 
     # Только dotnet-trace (60 сек)
-    .\run_counter.ps1 -Mode trace -TraceDuration 60
+    .\metrics.ps1 -Mode trace -TraceDuration 60
 
     # Только gcdump: 2 снапшота (на пике через 40 сек и после дренажа)
-    .\run_counter.ps1 -Mode gcdump -GcDumpAtPeakSec 40
+    .\metrics.ps1 -Mode gcdump -GcDumpAtPeakSec 40
 
     # Всё сразу (90 сек trace, gcdump на 50-й секунде)
-    .\run_counter.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50
+    .\metrics.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50
 
     # Кастомный процесс (например, dotnet если запущен через dotnet run)
-    .\run_counter.ps1 -Mode all -WorkerProcessName "dotnet"
+    .\metrics.ps1 -Mode all -WorkerProcessName "dotnet"
 #>
 
 param(
@@ -141,41 +141,66 @@ function Find-ProcessId {
     Write-Host "[*] Поиск PID процесса '$ProcessName'..." -ForegroundColor Cyan
 
     # 1. Пробуем dotnet-trace ps (работает для .NET процессов)
+    #    Используем Out-String чтобы избежать проблем с перехватом большого вывода через 2>&1
     try {
-        $tracePs = dotnet-trace ps 2>&1
-        foreach ($line in $tracePs) {
+        $traceOutput = & { dotnet-trace ps 2>&1 | Out-String }
+        foreach ($line in ($traceOutput -split "`n")) {
             if ($line -match "^\s*(\d+)\s+$([regex]::Escape($ProcessName))") {
-                $pid = [int]$Matches[1]
-                Write-Host "[+] Найден PID: $pid (через dotnet-trace ps)" -ForegroundColor Green
-                return $pid
+                $foundPid = [int]$Matches[1]
+                Write-Host "[+] Найден PID: $foundPid (через dotnet-trace ps)" -ForegroundColor Green
+                return $foundPid
             }
         }
+        Write-Host "  dotnet-trace ps: процесс '$ProcessName' не в списке, пробую другие методы..." -ForegroundColor DarkGray
     } catch {
-        Write-Host "  dotnet-trace ps недоступен, пробую Get-Process..." -ForegroundColor DarkGray
+        Write-Host "  dotnet-trace ps недоступен: $($_.Exception.Message)" -ForegroundColor DarkGray
     }
 
-    # 2. Get-Process по имени (standalone exe)
+    # 2. Get-Process по имени (standalone exe: MarketDataCollector.Worker.exe)
     try {
         $proc = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
         if ($proc) {
-            $pid = $proc.Id
-            Write-Host "[+] Найден PID: $pid (через Get-Process)" -ForegroundColor Green
-            return $pid
+            $foundPid = $proc.Id
+            Write-Host "[+] Найден PID: $foundPid (через Get-Process)" -ForegroundColor Green
+            return $foundPid
         }
     } catch {
         # Игнорируем
     }
 
-    # 3. Поиск через Win32_Process по command line (dotnet run / dotnet <dll>)
-    #    Ищем процесс dotnet.exe, в командной строке которого есть $ProcessName
+    # 3. Поиск через Win32_Process
+    #    3a. Прямое имя в command line (standalone exe или dotnet <dll>)
+    #    3b. dotnet run (command line = "dotnet.exe" run — имя проекта НЕ в command line)
     try {
-        $procs = Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" -ErrorAction SilentlyContinue
-        foreach ($p in $procs) {
+        $dotnetProcs = Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" -ErrorAction SilentlyContinue
+        foreach ($p in $dotnetProcs) {
             $cmdLine = $p.CommandLine
-            if ($cmdLine -and $cmdLine -match [regex]::Escape($ProcessName)) {
-                $pid = $p.ProcessId
-                Write-Host "[+] Найден PID: $pid (dotnet run — '$ProcessName' в command line)" -ForegroundColor Green
-                return $pid
+            if (-not $cmdLine) { continue }
+
+            # 3a: Имя проекта есть в command line (standalone или dotnet path)
+            if ($cmdLine -match [regex]::Escape($ProcessName)) {
+                $foundPid = $p.ProcessId
+                Write-Host "[+] Найден PID: $foundPid (Win32_Process — '$ProcessName' в command line)" -ForegroundColor Green
+                return $foundPid
+            }
+
+            # 3b: dotnet run без пути — проверяем модули процесса
+            if ($cmdLine -match 'dotnet\.exe"\s+run\s*$') {
+                try {
+                    $procObj = Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
+                    if ($procObj) {
+                        $modules = $procObj.Modules | ForEach-Object { $_.ModuleName }
+                        foreach ($mod in $modules) {
+                            if ($mod -match [regex]::Escape($ProcessName)) {
+                                $foundPid = $p.ProcessId
+                                Write-Host "[+] Найден PID: $foundPid (dotnet run — модуль '$mod')" -ForegroundColor Green
+                                return $foundPid
+                            }
+                        }
+                    }
+                } catch {
+                    # Игнорируем ошибки доступа к модулям
+                }
             }
         }
     } catch {
@@ -188,17 +213,23 @@ function Find-ProcessId {
             $_.MainWindowTitle -match [regex]::Escape($ProcessName)
         }
         if ($procs) {
-            $pid = $procs[0].Id
-            Write-Host "[+] Найден PID: $pid (через MainWindowTitle)" -ForegroundColor Green
-            return $pid
+            $foundPid = $procs[0].Id
+            Write-Host "[+] Найден PID: $foundPid (через MainWindowTitle)" -ForegroundColor Green
+            return $foundPid
         }
     } catch {
         # Игнорируем
     }
 
-    Write-Host "[!] Процесс '$ProcessName' не найден." -ForegroundColor Red
+    Write-Host "[!] Процесс '$ProcessName' не найден ни одним из методов:" -ForegroundColor Red
+    Write-Host "    1) dotnet-trace ps" -ForegroundColor DarkGray
+    Write-Host "    2) Get-Process -Name '$ProcessName'" -ForegroundColor DarkGray
+    Write-Host "    3) Win32_Process (command line / modules)" -ForegroundColor DarkGray
+    Write-Host "    4) MainWindowTitle" -ForegroundColor DarkGray
+    Write-Host "" -ForegroundColor Yellow
     Write-Host "    Убедитесь, что Worker запущен." -ForegroundColor Yellow
-    Write-Host "    Если запускаете через 'dotnet run', убедитесь, что окно терминала не свёрнуто." -ForegroundColor Yellow
+    Write-Host "    Если запускаете через 'dotnet run', Worker должен работать в отдельном терминале." -ForegroundColor Yellow
+    Write-Host "    Также попробуйте: .\metrics.ps1 -Mode all -WorkerProcessName 'dotnet'" -ForegroundColor Yellow
     exit 1
 }
 
