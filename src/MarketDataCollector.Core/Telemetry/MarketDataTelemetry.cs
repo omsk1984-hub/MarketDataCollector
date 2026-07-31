@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Runtime.CompilerServices;
 
 namespace MarketDataCollector.Core.Telemetry;
 
@@ -188,4 +190,99 @@ public static class MarketDataTelemetry
     public static readonly Counter<double> ExceptionsByType = Instance.CreateCounter<double>(
         name: "exceptions_total",
         description: "Total exceptions by type");
+
+    // ========================================================================
+    // Metrics — Batched Counters (reduce OTel internal lock contention)
+    //
+    // Per-message Counters (TicksIncoming, WsMessagesReceived, TicksDropped)
+    // инкрементируются в hot path через CounterBatcher (Interlocked.Increment,
+    // без lock и аллокаций), а реальный Counter.Add выносится один раз за батч
+    // вызовом FlushMetricBatchers() из writer loop.
+    //
+    // Имена/теги/единицы метрик НЕ меняются — меняется только частота Add.
+    // ========================================================================
+
+    // TicksIncoming — 3 фиксированных exchange-тега (как в GetExchangeTag).
+    private static readonly CounterBatcher TicksIncomingBinance = new(
+        TicksIncoming, new KeyValuePair<string, object?>[] { new("exchange", "binance") });
+    private static readonly CounterBatcher TicksIncomingKraken = new(
+        TicksIncoming, new KeyValuePair<string, object?>[] { new("exchange", "kraken") });
+    private static readonly CounterBatcher TicksIncomingOther = new(
+        TicksIncoming, new KeyValuePair<string, object?>[] { new("exchange", "unknown") });
+
+    // TicksDropped — те же 3 exchange-тега.
+    private static readonly CounterBatcher TicksDroppedBinance = new(
+        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "binance") });
+    private static readonly CounterBatcher TicksDroppedKraken = new(
+        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "kraken") });
+    private static readonly CounterBatcher TicksDroppedOther = new(
+        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "unknown") });
+
+    // WsMessagesReceived — по комбинации exchange+symbol, создаётся лениво при первом сообщении.
+    private static readonly ConcurrentDictionary<(string Exchange, string Symbol), CounterBatcher> WsMessagesBatchers =
+        new();
+
+    /// <summary>
+    /// Инкремент <c>ticks.incoming</c> в hot path. Маппит exchange в фиксированный батчер.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementTicksIncoming(string exchange)
+        => BatcherForExchange(exchange, TicksIncomingBinance, TicksIncomingKraken, TicksIncomingOther).Add();
+
+    /// <summary>
+    /// Инкремент <c>ticks.dropped</c> в hot path. Маппит exchange в фиксированный батчер.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementTicksDropped(string exchange)
+        => BatcherForExchange(exchange, TicksDroppedBinance, TicksDroppedKraken, TicksDroppedOther).Add();
+
+    /// <summary>
+    /// Инкремент <c>ws.messages.received</c> в hot path. Получает/создаёт батчер
+    /// под (exchange, symbol) без аллокаций на сам инкремент.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementWsMessagesReceived(string exchange, string symbol)
+    {
+        var key = (exchange, symbol);
+        if (!WsMessagesBatchers.TryGetValue(key, out var batcher))
+        {
+            batcher = WsMessagesBatchers.GetOrAdd(key, k =>
+                new CounterBatcher(WsMessagesReceived, new[]
+                {
+                    new KeyValuePair<string, object?>("exchange", k.Exchange),
+                    new KeyValuePair<string, object?>("symbol", k.Symbol)
+                }));
+        }
+        batcher.Add();
+    }
+
+    /// <summary>
+    /// Выносит накопленные значения всех батчеров в OTel. Вызывается один раз за батч
+    /// из writer loop и при финальном сбросе на остановке.
+    /// </summary>
+    public static void FlushMetricBatchers()
+    {
+        TicksIncomingBinance.Flush();
+        TicksIncomingKraken.Flush();
+        TicksIncomingOther.Flush();
+
+        TicksDroppedBinance.Flush();
+        TicksDroppedKraken.Flush();
+        TicksDroppedOther.Flush();
+
+        foreach (var batcher in WsMessagesBatchers.Values)
+        {
+            batcher.Flush();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static CounterBatcher BatcherForExchange(
+        string exchange, CounterBatcher binance, CounterBatcher kraken, CounterBatcher other)
+        => exchange switch
+        {
+            "Binance" => binance,
+            "Kraken" => kraken,
+            _ => other
+        };
     }

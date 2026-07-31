@@ -51,6 +51,10 @@ namespace MarketDataCollector.Application.Services
         private readonly int _processBatchTraceSampling;
         private long _processBatchCounter;
 
+        // Батчевый сбор метрик: FlushMetricBatchers вызывается раз в N батчей (1 = каждый батч)
+        private readonly int _metricFlushBatchInterval;
+        private int _metricFlushBatchCounter;
+
         // Shared between Collector (reads) and Writer (writes) for adaptive batch size
         private long _lastWriteDurationMs;
 
@@ -124,6 +128,7 @@ namespace MarketDataCollector.Application.Services
             _writeDurationWarningMs = options.WriteDurationWarningMs;
             _minPartialBatchSize = options.MinPartialBatchSize;
             _processBatchTraceSampling = Math.Max(1, options.ProcessBatchTraceSampling);
+            _metricFlushBatchInterval = Math.Max(1, options.MetricFlushBatchInterval);
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
@@ -164,7 +169,8 @@ namespace MarketDataCollector.Application.Services
         {
             Interlocked.Increment(ref _totalIncomingCount);
 
-            MarketDataTelemetry.TicksIncoming.Add(1, GetExchangeTag(exchange));
+            // Батчевый сбор: только Interlocked.Increment, реальный Counter.Add выносится в FlushMetricBatchers().
+            MarketDataTelemetry.IncrementTicksIncoming(exchange);
 
             LogProcessTickDebug(ticker, price, volume, exchange);
 
@@ -184,7 +190,7 @@ namespace MarketDataCollector.Application.Services
             if (!channels[channelIndex].Writer.TryWrite(tick))
             {
                 Interlocked.Increment(ref _totalDroppedCount);
-                MarketDataTelemetry.TicksDropped.Add(1, GetExchangeTag(exchange));
+                MarketDataTelemetry.IncrementTicksDropped(exchange);
             }
 
             if (_tickAggregator != null)
@@ -378,6 +384,9 @@ namespace MarketDataCollector.Application.Services
                 {
                 }
             }
+
+            // Финальный сброс метрик: не теряем остаток, накопленный после последнего батча.
+            MarketDataTelemetry.FlushMetricBatchers();
 
             var totalIncoming = _totalIncomingCount;
             var totalReceived = _totalReceivedCount;
@@ -815,6 +824,13 @@ namespace MarketDataCollector.Application.Services
         /// </summary>
         private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
+            // Батчевый сбор метрик: выносим накопленные per-message счётчики в OTel
+            // раз в MetricFlushBatchInterval батчей (по умолчанию — каждый батч).
+            if (Interlocked.Increment(ref _metricFlushBatchCounter) % _metricFlushBatchInterval == 0)
+            {
+                MarketDataTelemetry.FlushMetricBatchers();
+            }
+
             // Сэмплирование трейсов hot path: создаём Activity только для каждого N-го батча.
             // Это снижает накладные расходы OTLP-экспорта (~2800 спанов/сек при полном сборе).
             using var activity = (_processBatchTraceSampling <= 1

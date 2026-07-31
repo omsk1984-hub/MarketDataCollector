@@ -400,10 +400,9 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
         _msgRpsCounter.Increment();
         Interlocked.Increment(ref _totalMessagesCount);
 
-        // OpenTelemetry: счётчик входящих WebSocket-сообщений
-        MarketDataTelemetry.WsMessagesReceived.Add(1,
-            new KeyValuePair<string, object?>("exchange", ExchangeName),
-            new KeyValuePair<string, object?>("symbol", Symbol));
+        // OpenTelemetry: счётчик входящих WebSocket-сообщений (батчевый сбор — только Interlocked.Increment,
+        // реальный Add выносится в FlushMetricBatchers из writer loop).
+        MarketDataTelemetry.IncrementWsMessagesReceived(ExchangeName, Symbol);
 
         MessageReceived?.Invoke(this, rawBytes);
     }

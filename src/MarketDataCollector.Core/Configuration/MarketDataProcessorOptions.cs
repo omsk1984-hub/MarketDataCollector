@@ -123,5 +123,15 @@ namespace MarketDataCollector.Core.Configuration
         /// Снижает накладные расходы OTLP-экспорта (~2800 спанов/сек при 2.8K батчей).
         /// </summary>
         public int ProcessBatchTraceSampling { get; set; } = 1;
+
+        /// <summary>
+        /// Интервал (в батчах) вызова <c>MarketDataTelemetry.FlushMetricBatchers()</c>.
+        /// Батчевый сбор метрик накапливает per-message счётчики (TicksIncoming,
+        /// WsMessagesReceived, TicksDropped) в локальных буферах через Interlocked.Increment
+        /// и выносит реальный Counter.Add один раз в этот интервал, снижая внутренний
+        /// lock contention OpenTelemetry.
+        /// 1 = флаш каждый батч (по умолчанию, предсказуемо).
+        /// </summary>
+        public int MetricFlushBatchInterval { get; set; } = 1;
     }
 }
