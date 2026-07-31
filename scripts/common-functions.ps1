@@ -370,7 +370,8 @@ function Collect-GcDump {
     # Ждём завершения (до 120 сек). При зависании — принудительно завершаем.
     $waitStart = Get-Date
     $waitResult = $proc.WaitForExit(120000)
-    Write-Host "    [DIAG] WaitForExit вернул $waitResult (t=$([math]::Round((Get-Date - $waitStart).TotalSeconds))s)" -ForegroundColor DarkGray
+    Write-Host "    [DIAG] DEBUG waitStart type=$($waitStart.GetType().Name) waitResult type=$($waitResult.GetType().Name)" -ForegroundColor DarkGray
+    Write-Host "    [DIAG] WaitForExit вернул $waitResult (t=$([math]::Round(((Get-Date) - $waitStart).TotalSeconds))s)" -ForegroundColor DarkGray
     if (-not $waitResult) {
         Write-Host "[!] gcdump не завершился за 120s, принудительное завершение..." -ForegroundColor Yellow
         try { $proc.Kill() } catch { }
@@ -384,7 +385,7 @@ function Collect-GcDump {
     $stderr = ""
     try { $stdout = $stdoutTask.GetAwaiter().GetResult() } catch { Write-Host "    [DIAG] Ошибка чтения stdout: $($_.Exception.Message)" -ForegroundColor Yellow }
     try { $stderr = $stderrTask.GetAwaiter().GetResult() } catch { Write-Host "    [DIAG] Ошибка чтения stderr: $($_.Exception.Message)" -ForegroundColor Yellow }
-    Write-Host "    [DIAG] Чтение stdout/stderr заняло t=$([math]::Round((Get-Date - $readStart).TotalSeconds))s" -ForegroundColor DarkGray
+    Write-Host "    [DIAG] Чтение stdout/stderr заняло t=$([math]::Round(((Get-Date) - $readStart).TotalSeconds))s" -ForegroundColor DarkGray
     Write-Host "    [DIAG] ExitCode=$($proc.ExitCode), файл существует=$(Test-Path $OutputPath)" -ForegroundColor DarkGray
     # ===== КОНЕЦ ВАЛИДАЦИИ =====
 
