@@ -1,0 +1,21 @@
+{
+    "python.defaultInterpreterPath": "D:\\PF\\anaconda3\\python.exe",
+    "python.condaPath": "D:\\PF\\anaconda3\\condabin\\conda.exe",
+    "python.terminal.activateEnvironment": false,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.analysis.extraPaths": ["./src"],
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.env.windows": {
+        "PYTHONIOENCODING": "utf-8"
+    },
+    "terminal.integrated.profiles.windows": {
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell",
+            "args": ["-NoExit", "-Command", "if ($env:PATH -notlike '*condabin*') { $env:PATH = 'D:\\PF\\anaconda3\\condabin;' + $env:PATH }"],
+            "overrideName": true
+        }
+    },
+    "terminal.integrated.shellArgs.windows": ["-NoExit", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8"]
+}

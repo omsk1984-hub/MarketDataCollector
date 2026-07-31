@@ -5,7 +5,8 @@ author: You
 ---
 
 # Workflow: Нагрузочное тестирование и анализ
-
+docker info 2>&1 | Select-String "Server Version"
+pwsh -Command "docker info 2>&1 | Select-String 'Server Version'"
 Твоя задача — провести нагрузочное тестирование по строгому алгоритму. 
 **НИКОГДА не запускай команды в foreground** — все долгоживущие процессы запускаются в background.
 

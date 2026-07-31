@@ -4,3 +4,4 @@
 gc_metrics.csv
 $null
 counters/*
+traces/*

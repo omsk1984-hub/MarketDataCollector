@@ -134,15 +134,15 @@ function Find-ProcessId {
     <#
     .SYNOPSIS
         Находит PID процесса Worker по имени.
+        Поддерживает: standalone exe, dotnet run, dotnet (dll).
     #>
     param([string]$ProcessName)
 
     Write-Host "[*] Поиск PID процесса '$ProcessName'..." -ForegroundColor Cyan
 
-    # Сначала пробуем dotnet-trace ps (работает для .NET процессов)
+    # 1. Пробуем dotnet-trace ps (работает для .NET процессов)
     try {
         $tracePs = dotnet-trace ps 2>&1
-        # Парсим: <PID>   <ProcessName>    <CPU>    <WorkingSet>
         foreach ($line in $tracePs) {
             if ($line -match "^\s*(\d+)\s+$([regex]::Escape($ProcessName))") {
                 $pid = [int]$Matches[1]
@@ -154,7 +154,7 @@ function Find-ProcessId {
         Write-Host "  dotnet-trace ps недоступен, пробую Get-Process..." -ForegroundColor DarkGray
     }
 
-    # Fallback: Get-Process
+    # 2. Get-Process по имени (standalone exe)
     try {
         $proc = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
         if ($proc) {
@@ -166,8 +166,39 @@ function Find-ProcessId {
         # Игнорируем
     }
 
+    # 3. Поиск через Win32_Process по command line (dotnet run / dotnet <dll>)
+    #    Ищем процесс dotnet.exe, в командной строке которого есть $ProcessName
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" -ErrorAction SilentlyContinue
+        foreach ($p in $procs) {
+            $cmdLine = $p.CommandLine
+            if ($cmdLine -and $cmdLine -match [regex]::Escape($ProcessName)) {
+                $pid = $p.ProcessId
+                Write-Host "[+] Найден PID: $pid (dotnet run — '$ProcessName' в command line)" -ForegroundColor Green
+                return $pid
+            }
+        }
+    } catch {
+        # Игнорируем
+    }
+
+    # 4. Последний шанс: ищем процесс с WindowTitle содержащим ProcessName
+    try {
+        $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.MainWindowTitle -match [regex]::Escape($ProcessName)
+        }
+        if ($procs) {
+            $pid = $procs[0].Id
+            Write-Host "[+] Найден PID: $pid (через MainWindowTitle)" -ForegroundColor Green
+            return $pid
+        }
+    } catch {
+        # Игнорируем
+    }
+
     Write-Host "[!] Процесс '$ProcessName' не найден." -ForegroundColor Red
     Write-Host "    Убедитесь, что Worker запущен." -ForegroundColor Yellow
+    Write-Host "    Если запускаете через 'dotnet run', убедитесь, что окно терминала не свёрнуто." -ForegroundColor Yellow
     exit 1
 }
 
