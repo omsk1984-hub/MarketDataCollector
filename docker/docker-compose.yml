@@ -117,6 +117,12 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus_data:/prometheus
+    # Токен для /metrics воркера из docker secret (prometheus.yml ссылается на
+    # /run/secrets/auth_api_key). В dev worker НЕ задаёт Auth__ApiKey, поэтому
+    # middleware неактивен и токен игнорируется, но файл секрета должен
+    # существовать, иначе Prometheus не загрузит конфиг.
+    secrets:
+      - auth_api_key
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=7d'
@@ -204,6 +210,13 @@ volumes:
   postgres_data:
   kafka_data:
   prometheus_data:
+
+secrets:
+  # Docker secret для Bearer/API-key доступа к /metrics воркера.
+  # Значение берётся из AUTH_API_KEY (задаётся в docker/.env, см. .env.example).
+  # В dev worker не проверяет токен, но переменная обязана существовать.
+  auth_api_key:
+    environment: AUTH_API_KEY
 
 networks:
   marketdata-network:

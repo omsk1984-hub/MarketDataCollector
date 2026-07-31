@@ -109,6 +109,13 @@ public static class DependencyInjection
             // Проверка доступности Kafka при старте (логгер вместо Console.WriteLine).
             services.AddHostedService<KafkaAvailabilityCheckService>();
 
+            // Базовый Kafka producer (singleton — пул соединений), используется
+            // KafkaCandleProducer через ICandlePublisher.
+            services.AddSingleton<IKafkaProducer<string, string>>(sp =>
+                new KafkaProducer(
+                    sp.GetRequiredService<IOptions<KafkaOptions>>().Value,
+                    sp.GetRequiredService<ILogger<KafkaProducer>>()));
+
             // Kafka candle producer — singleton (пул соединений), зарегистрирован как ICandlePublisher
             services.AddSingleton<ICandlePublisher, KafkaCandleProducer>();
 
