@@ -56,7 +56,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     public string Symbol { get; }
 
     /// <inheritdoc />
-    public event EventHandler<string> MessageReceived = null!;
+    public event EventHandler<ReadOnlyMemory<byte>> MessageReceived = null!;
 
     /// <inheritdoc />
     public event EventHandler Connected = null!;
@@ -391,7 +391,8 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     /// <summary>
     /// Вызывается при получении сообщения.
-    /// Декодирует UTF-8 байты в string только для событий MessageReceived (не hot path).
+    /// Передаёт сырые UTF-8 байты подписчикам без декодирования в string (hot path, zero-alloc).
+    /// Если подписчику нужен string, он декодирует самостоятельно.
     /// </summary>
     /// <param name="rawBytes">Сырые UTF-8 байты сообщения.</param>
     protected internal virtual void OnMessageReceived(ReadOnlyMemory<byte> rawBytes)
@@ -404,9 +405,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
             new KeyValuePair<string, object?>("exchange", ExchangeName),
             new KeyValuePair<string, object?>("symbol", Symbol));
 
-        // Декодируем в string только для подписчиков события (не hot path).
-        var message = System.Text.Encoding.UTF8.GetString(rawBytes.Span);
-        MessageReceived?.Invoke(this, message);
+        MessageReceived?.Invoke(this, rawBytes);
     }
 
     /// <summary>

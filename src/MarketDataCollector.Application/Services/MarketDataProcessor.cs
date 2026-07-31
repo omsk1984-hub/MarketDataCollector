@@ -47,6 +47,10 @@ namespace MarketDataCollector.Application.Services
         private readonly double _writeDurationWarningMs;
         private readonly int _minPartialBatchSize;
 
+        // ProcessBatch trace sampling (every N-th batch) — снижает OTLP-экспорт спанов hot path
+        private readonly int _processBatchTraceSampling;
+        private long _processBatchCounter;
+
         // Shared between Collector (reads) and Writer (writes) for adaptive batch size
         private long _lastWriteDurationMs;
 
@@ -119,6 +123,7 @@ namespace MarketDataCollector.Application.Services
             _backlogHighThreshold = options.BacklogHighThreshold;
             _writeDurationWarningMs = options.WriteDurationWarningMs;
             _minPartialBatchSize = options.MinPartialBatchSize;
+            _processBatchTraceSampling = Math.Max(1, options.ProcessBatchTraceSampling);
             _processedCount = 0;
             _totalReceivedCount = 0;
             _totalIncomingCount = 0;
@@ -810,7 +815,12 @@ namespace MarketDataCollector.Application.Services
         /// </summary>
         private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
         {
-            using var activity = MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch");
+            // Сэмплирование трейсов hot path: создаём Activity только для каждого N-го батча.
+            // Это снижает накладные расходы OTLP-экспорта (~2800 спанов/сек при полном сборе).
+            using var activity = (_processBatchTraceSampling <= 1
+                                  || Interlocked.Increment(ref _processBatchCounter) % _processBatchTraceSampling == 0)
+                ? MarketDataTelemetry.ActivitySource.StartActivity("ProcessBatch")
+                : null;
             activity?.SetTag("batch.size", batchCount);
 
             try
@@ -864,19 +874,10 @@ namespace MarketDataCollector.Application.Services
                     new KeyValuePair<string, object?>("batch_size", batchSize),
                     new KeyValuePair<string, object?>("inserted_count", inserted));
 
-                int totalReceived, totalInserted;
-                if (_useSingleConsumer)
-                {
-                    _totalReceivedCount += batchSize;
-                    _processedCount += inserted;
-                    totalReceived = _totalReceivedCount;
-                    totalInserted = _processedCount;
-                }
-                else
-                {
-                    totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
-                    totalInserted = Interlocked.Add(ref _processedCount, inserted);
-                }
+                // Thread-safe инкремент: счётчики читаются из фонового мониторинга /
+                // GetProcessedCountAsync параллельно с записью в hot path (всегда безопасно).
+                int totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
+                int totalInserted = Interlocked.Add(ref _processedCount, inserted);
 
                 MarketDataTelemetry.TicksReceived.Add(
                     batchSize,

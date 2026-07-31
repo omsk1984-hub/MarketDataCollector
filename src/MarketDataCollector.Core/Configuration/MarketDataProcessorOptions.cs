@@ -116,5 +116,12 @@ namespace MarketDataCollector.Core.Configuration
         /// 50000 ≈ 5 секунд при 10K ticks/sec — покрывает cross-batch дубли.
         /// </summary>
         public int DeduplicationCacheMaxSize { get; set; } = 50000;
+
+        /// <summary>
+        /// Сэмплирование трейсов ProcessBatch (hot path): создавать Activity только
+        /// для каждого N-го батча. 1 = все батчи (по умолчанию), 10 = каждый 10-й.
+        /// Снижает накладные расходы OTLP-экспорта (~2800 спанов/сек при 2.8K батчей).
+        /// </summary>
+        public int ProcessBatchTraceSampling { get; set; } = 1;
     }
 }

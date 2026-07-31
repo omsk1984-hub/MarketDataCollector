@@ -63,7 +63,7 @@ namespace MarketDataCollector.Core.Interfaces
         /// <summary>
         /// Событие получения сообщения
         /// </summary>
-        event EventHandler<string> MessageReceived;
+        event EventHandler<ReadOnlyMemory<byte>> MessageReceived;
 
         /// <summary>
         /// Событие успешного подключения

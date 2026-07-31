@@ -13,7 +13,7 @@ namespace MarketDataCollector.Core.Interfaces
         Task DisconnectAsync(CancellationToken cancellationToken = default);
         Task SendAsync(string message, CancellationToken cancellationToken = default);
         
-        event EventHandler<string> MessageReceived;
+        event EventHandler<ReadOnlyMemory<byte>> MessageReceived;
         event EventHandler Connected;
         event EventHandler Disconnected;
         event EventHandler<Exception> ErrorOccurred;

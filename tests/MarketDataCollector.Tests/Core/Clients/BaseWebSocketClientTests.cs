@@ -556,7 +556,7 @@ public class BaseWebSocketClientTests
     {
         // Arrange
         var messageReceivedRaised = false;
-        string? capturedMessage = null;
+        ReadOnlyMemory<byte>? capturedMessage = null;
         
         var client = new TestableWebSocketClient(
             _testUri,
@@ -580,7 +580,8 @@ public class BaseWebSocketClientTests
 
         // Assert
         messageReceivedRaised.Should().BeTrue();
-        capturedMessage.Should().Be("test message");
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.Value.ToArray().Should().BeEquivalentTo(utf8Bytes);
     }
 
     [Fact(Timeout = 5000)]

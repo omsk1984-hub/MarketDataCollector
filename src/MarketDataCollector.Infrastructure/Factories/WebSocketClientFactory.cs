@@ -88,6 +88,7 @@ public class WebSocketClientFactory : IWebSocketClientFactory
         {
             _monitoringService.UpdateConnectionStatus(exchangeName, ConnectionStatus.Error, ex.Message);
         };
+        // message — ReadOnlyMemory<byte>; подписчик использует только факт получения (без декодирования в string).
         client.MessageReceived += (sender, message) =>
         {
             _monitoringService.IncrementTickCounter(exchangeName);

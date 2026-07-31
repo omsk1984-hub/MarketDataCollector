@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
@@ -36,16 +35,18 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
         // Reusable arrays for BulkCopyAsync(TickData) — zero per-batch allocations on steady state.
         // Safe because RawTickRepository is Scoped + consumer processes batches sequentially.
-        // Cannot use ArrayPool directly because Npgsql requires precise Array.Length,
-        // and Rent() may return a larger array.
-        private Guid[]? _idsCache;
-        private string[]? _tickersCache;
-        private decimal[]? _pricesCache;
-        private decimal[]? _volumesCache;
-        private DateTime[]? _timestampsCache;
-        private string[]? _exchangesCache;
-        private DateTime[]? _receivedAtsCache;
-        private bool[]? _normalizedsCache;
+        // Cannot use ArrayPool directly because Npgsql requires precise Array.Length
+        // (Array.Length == number of elements via unnest), and Rent() may return a larger array.
+        // В отличие от одиночного кэша (один массив на поле), пул хранит несколько типичных
+        // размеров батча, устраняя пересоздание 8 массивов при каждом колебании размера.
+        private readonly ReusableArrayCache<Guid> _idsCache = new();
+        private readonly ReusableArrayCache<string> _tickersCache = new();
+        private readonly ReusableArrayCache<decimal> _pricesCache = new();
+        private readonly ReusableArrayCache<decimal> _volumesCache = new();
+        private readonly ReusableArrayCache<DateTime> _timestampsCache = new();
+        private readonly ReusableArrayCache<string> _exchangesCache = new();
+        private readonly ReusableArrayCache<DateTime> _receivedAtsCache = new();
+        private readonly ReusableArrayCache<bool> _normalizedsCache = new();
 
         public RawTickRepository(MarketDataDbContext context, ILogger<RawTickRepository> logger)
         {
@@ -194,16 +195,38 @@ namespace MarketDataCollector.Infrastructure.Repositories
         }
 
         /// <summary>
-        /// Returns a reusable array of exactly <paramref name="count"/> elements.
-        /// Allocates a new array only when <paramref name="count"/> changes (rare).
-        /// Thread-safe only when called sequentially (Scoped repository, single consumer).
+        /// Пул переиспользуемых массивов фиксированных размеров.
+        /// Хранит несколько типичных размеров батча (в отличие от одиночного кэша),
+        /// устраняя пересоздание 8 массивов при каждом колебании размера.
+        /// Возвращает массив точной длины — Npgsql использует Array.Length как число элементов (unnest).
+        /// Безопасен при последовательных вызовах (Scoped repository, single consumer).
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static T[] RentOrCreate<T>([MaybeNull] ref T[]? cache, int count)
+        private sealed class ReusableArrayCache<T>
         {
-            if (cache == null || cache.Length != count)
-                cache = new T[count];
-            return cache;
+            // Ограничение числа кэшируемых размеров — избегает бесконечного роста памяти
+            // при произвольных размерах батчей (резервный размер хранит последний использованный).
+            private const int MaxCachedSizes = 8;
+
+            private readonly Dictionary<int, T[]> _arrays = new();
+            private readonly Queue<int> _sizeOrder = new();
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public T[] Rent(int count)
+            {
+                if (_arrays.TryGetValue(count, out var cached))
+                    return cached;
+
+                var created = new T[count];
+                if (_arrays.Count >= MaxCachedSizes)
+                {
+                    // Эвикция самого старого размера — ограничение памяти пула.
+                    var evict = _sizeOrder.Dequeue();
+                    _arrays.Remove(evict);
+                }
+                _arrays[count] = created;
+                _sizeOrder.Enqueue(count);
+                return created;
+            }
         }
 
         [Obsolete("Use BulkCopyAsync (UNNEST-based) instead. This method uses per-row VALUES and is ~10-50x slower.")]
@@ -413,14 +436,14 @@ namespace MarketDataCollector.Infrastructure.Repositories
             // ArrayPool.Rent() may return a larger array than requested, which breaks
             // Npgsql because it uses Array.Length as element count. Instead, we cache
             // arrays and reallocate only when batch size changes (rare).
-            var ids = RentOrCreate(ref _idsCache, count);
-            var tickers = RentOrCreate(ref _tickersCache, count);
-            var prices = RentOrCreate(ref _pricesCache, count);
-            var volumes = RentOrCreate(ref _volumesCache, count);
-            var timestamps = RentOrCreate(ref _timestampsCache, count);
-            var exchanges = RentOrCreate(ref _exchangesCache, count);
-            var receivedAts = RentOrCreate(ref _receivedAtsCache, count);
-            var normalizeds = RentOrCreate(ref _normalizedsCache, count);
+            var ids = _idsCache.Rent(count);
+            var tickers = _tickersCache.Rent(count);
+            var prices = _pricesCache.Rent(count);
+            var volumes = _volumesCache.Rent(count);
+            var timestamps = _timestampsCache.Rent(count);
+            var exchanges = _exchangesCache.Rent(count);
+            var receivedAts = _receivedAtsCache.Rent(count);
+            var normalizeds = _normalizedsCache.Rent(count);
 
             var now = timeService.UtcNow;
 
