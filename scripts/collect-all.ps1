@@ -204,9 +204,12 @@ if ($remaining -gt 0) {
 }
 
 # ============================================================
-# 5. Остановка trace
+# 5. Остановка trace (с диагностикой ExitCode/nettrace)
 # ============================================================
-Stop-TraceCollection -TraceProcess $traceJob.Process
+Stop-TraceCollection -TraceProcess $traceJob.Process -TraceJob $traceJob
+if (-not (Test-Path $traceFile)) {
+    Write-Host "[!] ВНИМАНИЕ: nettrace не создан: $traceFile" -ForegroundColor Red
+}
 
 # ============================================================
 # 6. Ожидание дренажа → gcdump #2
@@ -243,6 +246,15 @@ $peakSize = if (Test-Path $peakFile) { "$([math]::Round((Get-Item $peakFile).Len
 $drainedSize = if (Test-Path $drainedFile) { "$([math]::Round((Get-Item $drainedFile).Length/1MB, 2)) MB" } else { "N/A" }
 $csvSize = if (Test-Path $csvFile) { "$([math]::Round((Get-Item $csvFile).Length/1MB, 2)) MB" } else { "N/A" }
 
+# Предупреждения об аномалиях сбора
+$reportWarnings = @()
+if (-not (Test-Path $traceFile)) {
+    $reportWarnings += "- nettrace НЕ создан ($traceFile). Трассировка аллокаций недоступна."
+}
+if (-not (Test-Path ([System.IO.Path]::ChangeExtension($traceFile, ".speedscope.json")))) {
+    $reportWarnings += "- speedscope.json НЕ создан. Визуализация трассы недоступна."
+}
+
 $reportContent = @"
 # Profiling Report — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 
@@ -264,6 +276,14 @@ $reportContent = @"
 | snapshot_peak_$timestamp.gcdump | $peakSize |
 | snapshot_drained_$timestamp.gcdump | $drainedSize |
 | counters_$timestamp.csv | $csvSize |
+
+$(if ($reportWarnings.Count -gt 0) {
+    @"
+## Предупреждения сбора
+
+$($reportWarnings -join "`n")
+"@
+})
 
 ## Анализ
 

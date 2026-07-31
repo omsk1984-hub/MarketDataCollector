@@ -185,9 +185,19 @@ function Start-TraceCollection {
     Write-Host "    Output: $OutputFilePath"
     Write-Host "    Duration: ${DurationSec}s"
 
+    # dotnet-trace интерпретирует голое число в --duration как ДНИ (TimeSpan default),
+    # а не секунды. Это приводило к System.ArgumentException 'Invalid value ... for
+    # parameter interval' (System.Timers.Timer не принимает интервал > Int32.MaxValue мс).
+    # Поэтому передаём длительность в явном формате hh:mm:ss.
+    $hours = [math]::Floor($DurationSec / 3600)
+    $minutes = [math]::Floor(($DurationSec % 3600) / 60)
+    $seconds = $DurationSec % 60
+    $durationArg = "{0:00}:{1:00}:{2:00}" -f $hours, $minutes, $seconds
+    Write-Host "    Duration (hh:mm:ss): $durationArg"
+
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "dotnet-trace"
-    $psi.Arguments = "collect --process-id $ProcessId --profile gc-verbose --duration $DurationSec --output `"$OutputFilePath`""
+    $psi.Arguments = "collect --process-id $ProcessId --profile gc-verbose --duration $durationArg --output `"$OutputFilePath`""
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
     $psi.RedirectStandardOutput = $true
@@ -215,11 +225,16 @@ function Start-TraceCollection {
 function Stop-TraceCollection {
     <#
     .SYNOPSIS
-        Останавливает dotnet-trace (WaitForExit → taskkill → Kill).
+        Останавливает dotnet-trace (WaitForExit → taskkill → Kill) с диагностикой ExitCode.
     .DESCRIPTION
         dotnet-trace запускается с --duration и завершается сам, финализируя .nettrace.
         Поэтому приоритет — дождаться естественного завершения (WaitForExit).
         Фолбэки taskkill/Kill — только страховка на случай зависания.
+
+        Параметр -TraceJob ожидает объект, возвращённый Start-TraceCollection
+        (поля Process, OutputPath, StdoutTask, StderrTask). По завершении процесса
+        читаются ExitCode и stdout/stderr, что позволяет диагностировать молчаливые
+        сбои (отказ attach, конфликт профиля, сбой финализации .nettrace).
 
         ВАЖНО: здесь НЕ используется AttachConsole/FreeConsole/GenerateConsoleCtrlEvent.
         Прикрепление PowerShell к консоли дочернего процесса без последующего
@@ -228,40 +243,73 @@ function Stop-TraceCollection {
     #>
     param(
         [System.Diagnostics.Process]$TraceProcess,
-        [int]$WaitSeconds = 15
+        [int]$WaitSeconds = 15,
+        [PSObject]$TraceJob = $null
     )
 
-    if ($TraceProcess -eq $null -or $TraceProcess.HasExited) {
+    if ($TraceProcess -eq $null) {
+        Write-Host "[!] dotnet-trace: объект Process не передан." -ForegroundColor Red
+        return
+    }
+
+    $exitedNaturally = $TraceProcess.HasExited
+    if (-not $exitedNaturally) {
+        Write-Host "[*] Ожидание завершения dotnet-trace (PID: $($TraceProcess.Id))..." -ForegroundColor Yellow
+
+        # 1. Ждём естественного завершения (dotnet-trace с --duration завершится сам и финализирует .nettrace)
+        if ($TraceProcess.WaitForExit($WaitSeconds * 1000)) {
+            $exitedNaturally = $true
+            Write-Host "[+] dotnet-trace остановлен (завершился по --duration)." -ForegroundColor Green
+        } else {
+            # 2. Фолбэк: taskkill без /F (более мягкий)
+            Write-Host "[!] dotnet-trace не завершился за ${WaitSeconds}s, пробую taskkill..." -ForegroundColor Yellow
+            try {
+                & taskkill /PID $TraceProcess.Id 2>$null | Out-Null
+            } catch { }
+            if ($TraceProcess.WaitForExit(5000)) {
+                Write-Host "[+] dotnet-trace остановлен." -ForegroundColor Green
+            } else {
+                # 3. Последний фолбэк
+                Write-Host "[!] Принудительное завершение dotnet-trace..." -ForegroundColor Yellow
+                try {
+                    $TraceProcess.Kill()
+                    $TraceProcess.WaitForExit(5000)
+                    Write-Host "[-] dotnet-trace принудительно завершён." -ForegroundColor DarkGray
+                } catch {
+                    Write-Host "[!] Не удалось завершить dotnet-trace: $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    } else {
         Write-Host "[*] dotnet-trace уже завершён." -ForegroundColor DarkGray
-        return
     }
 
-    Write-Host "[*] Ожидание завершения dotnet-trace (PID: $($TraceProcess.Id))..." -ForegroundColor Yellow
-
-    # 1. Ждём естественного завершения (dotnet-trace с --duration завершится сам и финализирует .nettrace)
-    if ($TraceProcess.WaitForExit($WaitSeconds * 1000)) {
-        Write-Host "[+] dotnet-trace остановлен (завершился по --duration)." -ForegroundColor Green
-        return
+    # Диагностика результата: ExitCode + stdout/stderr + наличие файла
+    $stdout = ""
+    $stderr = ""
+    if ($TraceJob -ne $null) {
+        try { $stdout = $TraceJob.StdoutTask.GetAwaiter().GetResult() } catch { }
+        try { $stderr = $TraceJob.StderrTask.GetAwaiter().GetResult() } catch { }
     }
 
-    # 2. Фолбэк: taskkill без /F (более мягкий)
-    Write-Host "[!] dotnet-trace не завершился за ${WaitSeconds}s, пробую taskkill..." -ForegroundColor Yellow
-    try {
-        & taskkill /PID $TraceProcess.Id 2>$null | Out-Null
-    } catch { }
-    if ($TraceProcess.WaitForExit(5000)) {
-        Write-Host "[+] dotnet-trace остановлен." -ForegroundColor Green
-        return
-    }
+    $exitCode = $null
+    try { $exitCode = $TraceProcess.ExitCode } catch { }
 
-    # 3. Последний фолбэк
-    Write-Host "[!] Принудительное завершение dotnet-trace..." -ForegroundColor Yellow
-    try {
-        $TraceProcess.Kill()
-        $TraceProcess.WaitForExit(5000)
-        Write-Host "[-] dotnet-trace принудительно завершён." -ForegroundColor DarkGray
-    } catch {
-        Write-Host "[!] Не удалось завершить dotnet-trace: $($_.Exception.Message)" -ForegroundColor Red
+    $tracePath = if ($TraceJob -ne $null -and $TraceJob.OutputPath) { $TraceJob.OutputPath } else { "" }
+    $fileOk = (-not [string]::IsNullOrWhiteSpace($tracePath)) -and (Test-Path $tracePath) -and ((Get-Item $tracePath).Length -gt 0)
+
+    if ($exitCode -ne $null -and $exitCode -ne 0) {
+        Write-Host "[!] dotnet-trace завершился с кодом $exitCode" -ForegroundColor Red
+        $errText = $stderr.Trim()
+        if (-not $errText) { $errText = $stdout.Trim() }
+        if ($errText) { Write-Host "    STDERR: $errText" -ForegroundColor Yellow }
+    } elseif (-not $fileOk) {
+        Write-Host "[!] dotnet-trace завершился, но файл трассировки не найден/пуст: $tracePath" -ForegroundColor Red
+        $errText = $stderr.Trim()
+        if (-not $errText) { $errText = $stdout.Trim() }
+        if ($errText) { Write-Host "    Вывод: $errText" -ForegroundColor Yellow }
+    } else {
+        Write-Host "[+] dotnet-trace: ExitCode=$exitCode, nettrace готов: $tracePath" -ForegroundColor Green
     }
 }
 
@@ -414,7 +462,8 @@ function WaitFor-Drain {
         if ($useMetrics -and -not $metricsFailed) {
             try {
                 $resp = Invoke-WebRequest -Uri $MetricsEndpoint -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-                if ($resp.Content -match 'processor_channel_backlog_count\s+(\d+)') {
+                # Prometheus format: метрика может содержать лейблы {...} между именем и значением.
+                if ($resp.Content -match 'processor_channel_backlog_count(?:\{[^}]*\})?\s+(\d+)') {
                     $backlog = [int]$Matches[1]
                     Write-Host "    Backlog: $backlog  (${([math]::Round($remaining,0))}s left)"
                     if ($backlog -eq 0) {
