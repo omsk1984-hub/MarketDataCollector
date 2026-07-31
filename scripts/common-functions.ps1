@@ -187,26 +187,44 @@ function Start-TraceCollection {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "dotnet-trace"
-    $psi.Arguments = "collect --process-id $ProcessId --profile gc-verbose --output `"$OutputFilePath`""
+    $psi.Arguments = "collect --process-id $ProcessId --profile gc-verbose --duration $DurationSec --output `"$OutputFilePath`""
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
 
     $proc = [System.Diagnostics.Process]::Start($psi)
+
+    # ВАЖНО: перенаправленный stdout/stderr нужно читать, иначе pipe-буфер переполнится
+    # и dotnet-trace заблокируется на записи (deadlock). Запускаем асинхронное чтение
+    # fire-and-forget и храним задачи в объекте, чтобы они не были собраны GC.
+    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+
     Write-Host "[+] dotnet-trace запущен (PID: $($proc.Id))" -ForegroundColor Green
 
     return [PSCustomObject]@{
         Process     = $proc
         OutputPath  = $OutputFilePath
         StartTime   = Get-Date
+        StdoutTask  = $stdoutTask
+        StderrTask  = $stderrTask
     }
 }
 
 function Stop-TraceCollection {
     <#
     .SYNOPSIS
-        Останавливает dotnet-trace (Ctrl+C через SendCtrlC или Kill).
+        Останавливает dotnet-trace (WaitForExit → taskkill → Kill).
+    .DESCRIPTION
+        dotnet-trace запускается с --duration и завершается сам, финализируя .nettrace.
+        Поэтому приоритет — дождаться естественного завершения (WaitForExit).
+        Фолбэки taskkill/Kill — только страховка на случай зависания.
+
+        ВАЖНО: здесь НЕ используется AttachConsole/FreeConsole/GenerateConsoleCtrlEvent.
+        Прикрепление PowerShell к консоли дочернего процесса без последующего
+        FreeConsole оставляет pwsh привязанным к умирающей консоли dotnet-trace,
+        что вызывает CLR crash процесса pwsh с кодом 0xE0434352.
     #>
     param(
         [System.Diagnostics.Process]$TraceProcess,
@@ -218,29 +236,32 @@ function Stop-TraceCollection {
         return
     }
 
-    Write-Host "[*] Остановка dotnet-trace (PID: $($TraceProcess.Id))..." -ForegroundColor Yellow
+    Write-Host "[*] Ожидание завершения dotnet-trace (PID: $($TraceProcess.Id))..." -ForegroundColor Yellow
 
-    try {
-        [Console]::TreatControlCAsInput = $false
-        & taskkill /PID $TraceProcess.Id 2>$null
-        $exited = $TraceProcess.WaitForExit($WaitSeconds * 1000)
-        if ($exited) {
-            Write-Host "[+] dotnet-trace остановлен." -ForegroundColor Green
-            return
-        }
-    } catch {
-        Write-Host "  Не удалось отправить Ctrl+C: $($_.Exception.Message)" -ForegroundColor DarkGray
+    # 1. Ждём естественного завершения (dotnet-trace с --duration завершится сам и финализирует .nettrace)
+    if ($TraceProcess.WaitForExit($WaitSeconds * 1000)) {
+        Write-Host "[+] dotnet-trace остановлен (завершился по --duration)." -ForegroundColor Green
+        return
     }
 
-    if (-not $TraceProcess.HasExited) {
-        Write-Host "[!] Принудительное завершение dotnet-trace..." -ForegroundColor Yellow
-        try {
-            $TraceProcess.Kill()
-            $TraceProcess.WaitForExit(5000)
-            Write-Host "[-] dotnet-trace принудительно завершён." -ForegroundColor DarkGray
-        } catch {
-            Write-Host "[!] Не удалось завершить dotnet-trace: $($_.Exception.Message)" -ForegroundColor Red
-        }
+    # 2. Фолбэк: taskkill без /F (более мягкий)
+    Write-Host "[!] dotnet-trace не завершился за ${WaitSeconds}s, пробую taskkill..." -ForegroundColor Yellow
+    try {
+        & taskkill /PID $TraceProcess.Id 2>$null | Out-Null
+    } catch { }
+    if ($TraceProcess.WaitForExit(5000)) {
+        Write-Host "[+] dotnet-trace остановлен." -ForegroundColor Green
+        return
+    }
+
+    # 3. Последний фолбэк
+    Write-Host "[!] Принудительное завершение dotnet-trace..." -ForegroundColor Yellow
+    try {
+        $TraceProcess.Kill()
+        $TraceProcess.WaitForExit(5000)
+        Write-Host "[-] dotnet-trace принудительно завершён." -ForegroundColor DarkGray
+    } catch {
+        Write-Host "[!] Не удалось завершить dotnet-trace: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
@@ -277,14 +298,34 @@ function Collect-GcDump {
     $psi.RedirectStandardError = $true
 
     $proc = [System.Diagnostics.Process]::Start($psi)
-    $proc.WaitForExit(60000)
+
+    # ВАЖНО: не используем event-based async чтение (add_OutputDataReceived / add_ErrorDataReceived
+    # со scriptblock'ами). При большом потоке вывода (dotnet-gcdump при длительном сборе пишет много)
+    # event-callback'и выполняются в разных контекстах и вызывают гонку -> необработанное исключение
+    # в CLR -> краш самого pwsh с кодом 0xE0434352 (-532462766).
+    # Вместо этого читаем stdout/stderr асинхронно через ReadToEndAsync (не блокирует процесс).
+    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+
+    # Ждём завершения (до 120 сек). При зависании — принудительно завершаем.
+    if (-not $proc.WaitForExit(120000)) {
+        Write-Host "[!] gcdump не завершился за 120s, принудительное завершение..." -ForegroundColor Yellow
+        try { $proc.Kill() } catch { }
+        $proc.WaitForExit(5000)
+    }
+
+    $stdout = ""
+    $stderr = ""
+    try { $stdout = $stdoutTask.GetAwaiter().GetResult() } catch { }
+    try { $stderr = $stderrTask.GetAwaiter().GetResult() } catch { }
 
     if ($proc.ExitCode -eq 0) {
         $fileSize = (Get-Item $OutputPath -ErrorAction SilentlyContinue).Length
         $sizeStr = if ($fileSize -gt 1MB) { "$([math]::Round($fileSize/1MB, 2)) MB" } else { "$([math]::Round($fileSize/1KB, 1)) KB" }
         Write-Host "[+] gcdump собран ($sizeStr)" -ForegroundColor Green
     } else {
-        $stdErr = $proc.StandardError.ReadToEnd()
+        $stdErr = $stderr.Trim()
+        if (-not $stdErr) { $stdErr = $stdout.Trim() }
         Write-Host "[!] gcdump завершился с кодом $($proc.ExitCode)" -ForegroundColor Red
         Write-Host "    STDERR: $stdErr" -ForegroundColor Yellow
     }
@@ -308,7 +349,11 @@ function Convert-TraceToSpeedScope {
     Write-Host "    Input: $TraceFile"
     Write-Host "    Output: $outputFile"
 
-    dotnet-trace convert --format speedscope "$TraceFile" --output "$outputFile" 2>&1
+    $convertOut = dotnet-trace convert --format speedscope "$TraceFile" --output "$outputFile" 2>&1
+    $convertText = ($convertOut | Out-String)
+    if ($convertText) {
+        Write-Host $convertText.Trim()
+    }
     if ($LASTEXITCODE -eq 0 -and (Test-Path $outputFile)) {
         $fileSize = (Get-Item $outputFile).Length
         $sizeStr = if ($fileSize -gt 1MB) { "$([math]::Round($fileSize/1MB, 2)) MB" } else { "$([math]::Round($fileSize/1KB, 1)) KB" }
@@ -316,6 +361,10 @@ function Convert-TraceToSpeedScope {
         Write-Host "    Откройте в браузере: https://www.speedscope.app" -ForegroundColor DarkGray
     } else {
         Write-Host "[!] Ошибка конвертации trace" -ForegroundColor Red
+        if ($convertText -match 'broken|best-effort') {
+            Write-Host "    Trace-файл, похоже, битый (не финализирован). Стеки будут неполными." -ForegroundColor Yellow
+            Write-Host "    Причина: dotnet-trace остановлен принудительно (taskkill/Kill) вместо Ctrl+C." -ForegroundColor Yellow
+        }
     }
 }
 
@@ -341,6 +390,9 @@ function WaitFor-Drain {
     <#
     .SYNOPSIS
         Ожидание дренажа канала (пауза + опционально проверка /metrics).
+    .DESCRIPTION
+        Использует единственный таймер TimeoutSec. Если /metrics недоступен,
+        переключается на простой countdown с предупреждением.
     #>
     param(
         [int]$TimeoutSec = 30,
@@ -349,30 +401,43 @@ function WaitFor-Drain {
 
     Write-Host "[*] Ожидание дренажа канала (${TimeoutSec}s)..." -ForegroundColor Cyan
 
-    if ($MetricsEndpoint) {
-        try {
-            for ($i = 0; $i -lt $TimeoutSec; $i += 5) {
-                $resp = Invoke-WebRequest -Uri $MetricsEndpoint -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+    $useMetrics = -not [string]::IsNullOrWhiteSpace($MetricsEndpoint)
+    $metricsFailed = $false
+    $startTime = Get-Date
+
+    while ($true) {
+        $elapsed = ((Get-Date) - $startTime).TotalSeconds
+        if ($elapsed -ge $TimeoutSec) { break }
+
+        $remaining = $TimeoutSec - $elapsed
+
+        if ($useMetrics -and -not $metricsFailed) {
+            try {
+                $resp = Invoke-WebRequest -Uri $MetricsEndpoint -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
                 if ($resp.Content -match 'processor_channel_backlog_count\s+(\d+)') {
                     $backlog = [int]$Matches[1]
-                    Write-Host "    Backlog: $backlog"
+                    Write-Host "    Backlog: $backlog  (${([math]::Round($remaining,0))}s left)"
                     if ($backlog -eq 0) {
                         Write-Host "[+] Канал дренирован." -ForegroundColor Green
                         return
                     }
+                } else {
+                    Write-Host "    /metrics доступен, но backlog не найден  (${([math]::Round($remaining,0))}s left)" -ForegroundColor DarkGray
                 }
-                Start-Sleep -Seconds 5
+            } catch {
+                $metricsFailed = $true
+                Write-Host "  /metrics недоступен, переключаюсь на таймер: $($_.Exception.Message)" -ForegroundColor DarkGray
             }
-        } catch {
-            Write-Host "  Проверка /metrics недоступна: $($_.Exception.Message)" -ForegroundColor DarkGray
+        } else {
+            # Fallback: простой countdown
+            $chunk = [math]::Min(5, [math]::Ceiling($remaining))
+            Write-Host "    Осталось ${([math]::Round($remaining,0))}s..." -NoNewline
+            Start-Sleep -Seconds $chunk
+            Write-Host " ✓" -ForegroundColor DarkGray
+            continue
         }
-    }
 
-    for ($i = $TimeoutSec; $i -gt 0; $i -= 5) {
-        $remaining = [math]::Min($i, 5)
-        Write-Host "    Осталось ${remaining}s..." -NoNewline
-        Start-Sleep -Seconds $remaining
-        Write-Host " ✓" -ForegroundColor DarkGray
+        Start-Sleep -Seconds 5
     }
     Write-Host "[+] Ожидание завершено." -ForegroundColor Green
 }

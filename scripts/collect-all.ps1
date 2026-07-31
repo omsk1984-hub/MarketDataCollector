@@ -219,6 +219,8 @@ Collect-GcDump -ProcessId $workerPid -OutputPath $drainedFile -Label "DRAINED"
 # 7. Конвертация trace → SpeedScope
 # ============================================================
 if (Test-Path $traceFile) {
+    Write-Host "[*] Пауза 2 сек перед конвертацией (финализация .nettrace)..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 2
     Convert-TraceToSpeedScope -TraceFile $traceFile
 }
 
