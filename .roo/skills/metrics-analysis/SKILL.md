@@ -37,6 +37,7 @@ author: You
 > ```powershell
 > Get-ChildItem -Path traces | Select-Object Name, Length, LastWriteTime | Sort-Object LastWriteTime -Descending | Format-Table -AutoSize
 > ```
+> Если `execute_command` недоступен в текущем наборе инструментов — используй `list_files`, но **пустой результат НЕ является доказательством отсутствия данных**: в `traces/` лежат большие бинарные файлы (`*.nettrace`, `*.gcdump`, `*.speedscope.json`), которые не индексируются. В таком случае продолжай анализ по имеющимся отчётам/CSV и укажи в отчёте, что состав `traces/` не подтверждён командой.
 > Если `traces/` нет или он пуст по выводу команды — **остановись и сообщи пользователю**, что данные для анализа отсутствуют, и уточни, где их взять (другая папка / запустить сбор). НЕ делай вывод «нет данных» на основе `list_files`.
 
 - По выводу команды определи актуальный набор файлов в `traces/` (по самой свежей временной метке `_<ts>`): `counters_<ts>.csv`, `profiling_report_<ts>.md`, бинарные файлы.
@@ -72,8 +73,9 @@ author: You
 
 ## Шаг 4. Состояние канала и WS
 
-- `processor_channel_backlog_count` (incoming - received) и `processor_channel_fill_level_count` (по `channel_index`): оцени бэклог на старте/пике/финале.
-- `ws_active_connections_count` и распределение `ws.messages.received` по символам (`Labels`).
+- `processor_channel_backlog_count` (incoming - received) и `processor_channel_fill_count` (histogram `processor.channel.fill` по `channel_index`): оцени бэклог и заполненность канала на старте/пике/финале.
+- `processor_batch_channel_fill_count` (histogram `processor.batch_channel.fill`) — **новая метрика** (очередь батчей, ожидающих записи в БД). Появляется в CSV только при фактическом наполнении очереди; не обновляется, когда очередь пуста.
+- `ws_active_connections_count` и распределение `ws_messages_received_count_total` по символам (`Labels`).
 - Сделай вывод о дисбалансе продюсер/консьюмер и причинах (например, узкое место записи в БД).
 
 ## Шаг 5. Длительность записи батчей в БД
