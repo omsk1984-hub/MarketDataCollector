@@ -2,7 +2,6 @@ using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Entities;
 using MarketDataCollector.Domain.Interfaces;
-using MarketDataCollector.Infrastructure.Kafka;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -48,7 +47,7 @@ namespace MarketDataCollector.Application.Services
         private readonly ILogger<TickAggregator> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly int _flushIntervalSeconds;
-        private readonly KafkaCandleProducer? _kafkaCandleProducer;
+        private readonly ICandlePublisher? _candlePublisher;
         private readonly KafkaOptions _kafkaOptions;
         private readonly bool _useKafka;
         private readonly bool _enabled;
@@ -88,7 +87,7 @@ namespace MarketDataCollector.Application.Services
             ILogger<TickAggregator> logger,
             IServiceScopeFactory scopeFactory,
             IOptions<TickAggregatorOptions> options,
-            KafkaCandleProducer? kafkaCandleProducer = null,
+            ICandlePublisher? candlePublisher = null,
             IOptions<KafkaOptions>? kafkaOptions = null)
         {
             _timeService = timeService ?? throw new ArgumentNullException(nameof(timeService));
@@ -99,9 +98,9 @@ namespace MarketDataCollector.Application.Services
             _flushIntervalSeconds = options.Value.FlushIntervalSeconds;
             _candleInterval = TimeSpan.FromSeconds(options.Value.CandleIntervalSeconds);
 
-            _kafkaCandleProducer = kafkaCandleProducer;
+            _candlePublisher = candlePublisher;
             _kafkaOptions = kafkaOptions?.Value ?? new KafkaOptions();
-            _useKafka = _kafkaOptions.Enabled && _kafkaCandleProducer != null;
+            _useKafka = _kafkaOptions.Enabled && _candlePublisher != null;
 
             _channel = Channel.CreateBounded<TickData>(new BoundedChannelOptions(options.Value.ChannelCapacity)
             {
@@ -298,7 +297,7 @@ namespace MarketDataCollector.Application.Services
         /// </summary>
         private async Task SaveCandlesAsync(List<KeyValuePair<AggregatorKey, InMemoryCandle>> candles)
         {
-            if (_useKafka && _kafkaCandleProducer != null)
+            if (_useKafka && _candlePublisher != null)
             {
                 try
                 {
@@ -327,7 +326,7 @@ namespace MarketDataCollector.Application.Services
             foreach (var pair in candles)
             {
                 var (key, candle) = pair;
-                await _kafkaCandleProducer!.ProduceAsync(
+                await _candlePublisher!.ProduceAsync(
                     key.Ticker,
                     interval,
                     candle.Open,

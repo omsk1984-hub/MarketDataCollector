@@ -1,58 +1,35 @@
 using System;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Domain.Utilities;
 
 namespace MarketDataCollector.Domain.Entities
 {
-    [Table("aggregateddata")]
+    /// <summary>
+    /// Агрегированная OHLCV-свеча. Чистая доменная сущность — без персистентностных атрибутов.
+    /// Маппинг в БД выполняется через Fluent API в Infrastructure.
+    /// </summary>
     public class AggregatedData
     {
-        [Key]
-        [Column("id")]
         public Guid Id { get; private set; }
 
-        [Column("ticker")]
-        [Required]
-        [MaxLength(20)]
         public string Ticker { get; private set; } = null!;
 
-        [Column("interval")]
-        [Required]
-        [MaxLength(10)]
         public string Interval { get; private set; } = null!;
 
-        [Column("openprice")]
-        [Required]
         public decimal OpenPrice { get; private set; }
 
-        [Column("highprice")]
-        [Required]
         public decimal HighPrice { get; private set; }
 
-        [Column("lowprice")]
-        [Required]
         public decimal LowPrice { get; private set; }
 
-        [Column("closeprice")]
-        [Required]
         public decimal ClosePrice { get; private set; }
 
-        [Column("volume")]
-        [Required]
         public decimal Volume { get; private set; }
 
-        [Column("starttime")]
-        [Required]
         public DateTime StartTime { get; private set; }
 
-        [Column("endtime")]
-        [Required]
         public DateTime EndTime { get; private set; }
 
-        [Column("createdat")]
-        [Required]
         public DateTime CreatedAt { get; private set; }
 
         private AggregatedData() { } // For EF Core

@@ -1,4 +1,5 @@
 using MarketDataCollector.Core.Configuration;
+using MarketDataCollector.Core.Exceptions;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Core.Utilities;
@@ -7,7 +8,6 @@ using MarketDataCollector.Domain.Interfaces;
 using TickData = MarketDataCollector.Domain.Entities.TickData;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -85,8 +85,7 @@ namespace MarketDataCollector.Application.Services
                 : new KeyValuePair<string, object?>("channel_index", index);
 
         // Cached exception type and sql_state tags
-        private static readonly KeyValuePair<string, object?> ExceptionTypePostgresTag = new("exception_type", "PostgresException");
-        private static readonly KeyValuePair<string, object?> ExceptionTypeNpgsqlTag = new("exception_type", "NpgsqlException");
+        private static readonly KeyValuePair<string, object?> ExceptionTypePersistenceTag = new("exception_type", "PersistenceException");
         private static readonly KeyValuePair<string, object?> SqlStateNoneTag = new("sql_state", "none");
 
         private Task _processingTask = null!;
@@ -879,7 +878,7 @@ namespace MarketDataCollector.Application.Services
                 var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
 
                 var sw = Stopwatch.StartNew();
-                var inserted = await repository.BulkCopyAsync(filteredSlice, _timeService, cancellationToken);
+                var inserted = await repository.BulkInsertFastAsync(filteredSlice, _timeService, cancellationToken);
                 sw.Stop();
 
                 activity?.SetTag("inserted.count", inserted);
@@ -916,28 +915,19 @@ namespace MarketDataCollector.Application.Services
                 LogBatchCancelled();
                 throw;
             }
-            catch (PostgresException pgEx)
+            catch (PersistenceException persEx)
             {
-                activity?.SetStatus(ActivityStatusCode.Error, pgEx.Message);
-                activity?.SetTag("exception.type", "PostgresException");
-                activity?.SetTag("exception.sql_state", pgEx.SqlState);
-                activity?.SetTag("exception.message", pgEx.Message);
+                activity?.SetStatus(ActivityStatusCode.Error, persEx.Message);
+                activity?.SetTag("exception.type", "PersistenceException");
+                activity?.SetTag("exception.message", persEx.Message);
                 activity?.SetTag("batch.size", batchCount);
-                LogPostgresError(pgEx, pgEx.SqlState, batchCount, channelIndex);
+
+                var sqlState = persEx.SqlState ?? "none";
+                activity?.SetTag("exception.sql_state", sqlState);
+                LogPersistenceError(persEx, sqlState, batchCount, channelIndex);
                 MarketDataTelemetry.ExceptionsByType.Add(1,
-                    ExceptionTypePostgresTag,
-                    new KeyValuePair<string, object?>("sql_state", pgEx.SqlState));
-            }
-            catch (NpgsqlException npgEx)
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, npgEx.Message);
-                activity?.SetTag("exception.type", "NpgsqlException");
-                activity?.SetTag("exception.message", npgEx.Message);
-                activity?.SetTag("batch.size", batchCount);
-                LogNpgsqlError(npgEx, batchCount, channelIndex);
-                MarketDataTelemetry.ExceptionsByType.Add(1,
-                    ExceptionTypeNpgsqlTag,
-                    SqlStateNoneTag);
+                    ExceptionTypePersistenceTag,
+                    new KeyValuePair<string, object?>("sql_state", sqlState));
             }
             catch (Exception ex)
             {

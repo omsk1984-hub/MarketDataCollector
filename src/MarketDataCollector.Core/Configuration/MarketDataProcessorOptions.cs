@@ -5,10 +5,10 @@ namespace MarketDataCollector.Core.Configuration
         public const string SectionName = "MarketDataProcessor";
         
         /// <summary>
-        /// Размер батча для записи в БД через Binary COPY protocol (legacy).
+        /// Размер батча для записи в БД (legacy).
         /// Используется как значение по умолчанию для MaxBatchSize, если MaxBatchSize = 0.
         /// По результатам бенчмарка: chunk=800 даёт ~53 775 ticks/sec
-        /// при 8 parallel consumer'ах через BulkCopyAsync.
+        /// при 8 parallel consumer'ах через BulkInsertFastAsync.
         /// </summary>
         public int BatchSize { get; set; } = 5000;
 
@@ -110,7 +110,7 @@ namespace MarketDataCollector.Core.Configuration
         /// <summary>
         /// Максимальный размер кэша дедупликации (количество записей).
         /// Тики с ключом (ticker, exchange, timestamp), попавшие в кэш,
-        /// пропускаются перед BulkCopyAsync — экономят INSERT.
+        /// пропускаются перед BulkInsertFastAsync — экономят INSERT.
         /// FIFO-эвикция: при превышении лимита самая старая запись удаляется.
         /// 0 = кэш отключён.
         /// 50000 ≈ 5 секунд при 10K ticks/sec — покрывает cross-batch дубли.

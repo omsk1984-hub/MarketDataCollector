@@ -296,7 +296,7 @@ public class KafkaIntegrationTests
             loggerMock.Object,
             scopeFactoryMock.Object,
             options,
-            kafkaCandleProducer: null,
+            candlePublisher: null,
             kafkaOptions: kafkaOptions);
 
         // Act

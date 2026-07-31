@@ -1,46 +1,29 @@
 using System;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Domain.Utilities;
 
 namespace MarketDataCollector.Domain.Entities
 {
-    [Table("rawticks")]
+    /// <summary>
+    /// Сырой тик с биржи. Чистая доменная сущность — без персистентностных атрибутов.
+    /// Маппинг в БД выполняется через Fluent API в Infrastructure.
+    /// </summary>
     public class RawTick
     {
-        [Key]
-        [Column("id")]
         public Guid Id { get; private set; }
 
-        [Column("ticker")]
-        [Required]
-        [MaxLength(20)]
         public string Ticker { get; private set; } = null!;
 
-        [Column("price")]
-        [Required]
         public decimal Price { get; private set; }
 
-        [Column("volume")]
-        [Required]
         public decimal Volume { get; private set; }
 
-        [Column("timestamp")]
-        [Required]
         public DateTime Timestamp { get; private set; }
 
-        [Column("exchange")]
-        [Required]
-        [MaxLength(50)]
         public string Exchange { get; private set; } = null!;
 
-        [Column("receivedat")]
-        [Required]
         public DateTime ReceivedAt { get; private set; }
 
-        [Column("normalized")]
-        [Required]
         public bool Normalized { get; private set; }
 
         private RawTick() { } // For EF Core

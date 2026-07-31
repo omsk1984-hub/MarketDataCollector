@@ -61,12 +61,8 @@ public partial class MarketDataProcessor
     partial void LogChannelCancelled(Guid sessionId, int channel);
 
     [LoggerMessage(EventId = 14, Level = LogLevel.Error,
-        Message = "PostgreSQL error SqlState={SqlState} writing batch {Count} ticks (channel={Channel})")]
-    partial void LogPostgresError(Exception ex, string sqlState, int count, int channel);
-
-    [LoggerMessage(EventId = 15, Level = LogLevel.Error,
-        Message = "Npgsql error writing batch {Count} ticks (channel={Channel})")]
-    partial void LogNpgsqlError(Exception ex, int count, int channel);
+        Message = "Persistence error SqlState={SqlState} writing batch {Count} ticks (channel={Channel})")]
+    partial void LogPersistenceError(Exception ex, string sqlState, int count, int channel);
 
     [LoggerMessage(EventId = 16, Level = LogLevel.Error,
         Message = "Неожиданная ошибка при обработке батча из {Count} тиков (channel={Channel})")]

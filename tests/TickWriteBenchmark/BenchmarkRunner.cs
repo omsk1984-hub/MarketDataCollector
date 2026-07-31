@@ -13,7 +13,7 @@ public sealed class BenchmarkRunner
     private static readonly (string Name, Func<string, List<RawTick>, Task<int>> WriteAsync)[] Methods =
     [
         ("BinaryCopyDirect", BinaryCopyDirectChunk),
-        ("BulkCopyAsync", BulkCopyAsyncChunk),
+        ("BulkInsertFastAsync", BulkInsertFastAsyncChunk),
         ("BulkInsertIgnoreConflicts", BulkInsertIgnoreConflictsChunk)
     ];
 
@@ -139,7 +139,7 @@ public sealed class BenchmarkRunner
 
     /// <summary>
     /// Production-путь: Binary COPY во временную таблицу + INSERT...ON CONFLICT DO NOTHING.
-    /// Воспроизводит логику RawTickRepository.BulkCopyAsync().
+    /// Воспроизводит логику RawTickRepository.BulkInsertFastAsync().
     ///
     /// Шаги:
     /// 1. CREATE TEMP TABLE rawticks_staging (DROP + CREATE для чистого стейта)
@@ -149,7 +149,7 @@ public sealed class BenchmarkRunner
     /// ПЛЮС: обработка дубликатов без ошибок.
     /// МИНУС: overhead от создания temp table и INSERT INTO...SELECT.
     /// </summary>
-    private static async Task<int> BulkCopyAsyncChunk(string connStr, List<RawTick> chunk)
+    private static async Task<int> BulkInsertFastAsyncChunk(string connStr, List<RawTick> chunk)
     {
         await using var conn = new NpgsqlConnection(connStr);
         await conn.OpenAsync();

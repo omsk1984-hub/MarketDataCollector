@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketDataCollector.Core.Configuration;
+using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -8,7 +9,7 @@ namespace MarketDataCollector.Infrastructure.Kafka;
 /// <summary>
 /// Producer для отправки OHLCV-свечей (AggregatedData) в Kafka topic aggregated-data.
 /// </summary>
-public class KafkaCandleProducer
+public class KafkaCandleProducer : ICandlePublisher
 {
     private readonly IKafkaProducer<string, string> _producer;
     private readonly KafkaOptions _options;

@@ -3,7 +3,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MarketDataCollector.Core\MarketDataCollector.Core.csproj" />
     <ProjectReference Include="..\MarketDataCollector.Domain\MarketDataCollector.Domain.csproj" />
-    <ProjectReference Include="..\MarketDataCollector.Infrastructure\MarketDataCollector.Infrastructure.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

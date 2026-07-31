@@ -1,3 +1,4 @@
+using MarketDataCollector.Core.Exceptions;
 using MarketDataCollector.Core.Interfaces;
 using MarketDataCollector.Domain.Interfaces;
 using MarketDataCollector.Domain.Entities;
@@ -23,7 +24,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
         private readonly DbSet<RawTick> _dbSet;
         private readonly ILogger<RawTickRepository> _logger;
 
-        // Reusable NpgsqlParameter[] for BulkCopyAsync(TickData) — pre-allocated once,
+        // Reusable NpgsqlParameter[] for BulkInsertFastAsync(TickData) — pre-allocated once,
         // avoids 8× new NpgsqlParameter per batch (~8.5 batches/sec).
         // Safe because RawTickRepository is Scoped + consumer processes batches sequentially.
         private readonly Npgsql.NpgsqlParameter[] _tickDataParameters;
@@ -33,7 +34,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
                    unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
             ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
 
-        // Reusable arrays for BulkCopyAsync(TickData) — zero per-batch allocations on steady state.
+        // Reusable arrays for BulkInsertFastAsync(TickData) — zero per-batch allocations on steady state.
         // Safe because RawTickRepository is Scoped + consumer processes batches sequentially.
         // Cannot use ArrayPool directly because Npgsql requires precise Array.Length
         // (Array.Length == number of elements via unnest), and Rent() may return a larger array.
@@ -195,6 +196,21 @@ namespace MarketDataCollector.Infrastructure.Repositories
         }
 
         /// <summary>
+        /// Оборачивает исключение конкретной СУБД (Npgsql) в нейтральное <see cref="PersistenceException"/>,
+        /// чтобы прикладной слой не зависел от технологии. Сохраняет SqlState при наличии.
+        /// </summary>
+        private static Exception WrapPersistenceException(Exception ex)
+        {
+            if (ex is PostgresException pg)
+                return new PersistenceException(pg.Message, pg.SqlState, ex);
+
+            if (ex is NpgsqlException npg)
+                return new PersistenceException(npg.Message, null, ex);
+
+            return ex;
+        }
+
+        /// <summary>
         /// Пул переиспользуемых массивов фиксированных размеров.
         /// Хранит несколько типичных размеров батча (в отличие от одиночного кэша),
         /// устраняя пересоздание 8 массивов при каждом колебании размера.
@@ -229,7 +245,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
             }
         }
 
-        [Obsolete("Use BulkCopyAsync (UNNEST-based) instead. This method uses per-row VALUES and is ~10-50x slower.")]
+        [Obsolete("Use BulkInsertFastAsync (UNNEST-based) instead. This method uses per-row VALUES and is ~10-50x slower.")]
         public async Task<int> BulkInsertIgnoreConflictsAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {
             var list = entities.ToList();
@@ -305,7 +321,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
         /// гарантирует disjoint наборы тикеров между consumer'ами,
         /// поэтому два INSERT'а никогда не конкурируют за один unique index.
         /// </summary>
-        public async Task<int> BulkCopyAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
+        public async Task<int> BulkInsertFastAsync(IEnumerable<RawTick> entities, CancellationToken cancellationToken = default)
         {
             var list = entities.ToList();
             if (list.Count == 0)
@@ -425,7 +441,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
         /// Price/Volume передаются как numeric[] (было text[], теперь decimal[] без string аллокаций).
         /// Использует UUID v7 для кластеризованных b-tree индексов.
         /// </summary>
-        public async Task<int> BulkCopyAsync(IReadOnlyList<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
+        public async Task<int> BulkInsertFastAsync(IReadOnlyList<TickData> ticks, ITimeService timeService, CancellationToken cancellationToken = default)
         {
             if (ticks.Count == 0)
                 return 0;
@@ -497,7 +513,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
                     _logger.LogError(ex,
                         "BulkCopy (TickData) failed permanently after {Attempt}/{MaxRetries} attempts, count={Count}",
                         attempt, BulkCopyMaxRetries, count);
-                    throw;
+                    throw WrapPersistenceException(ex);
                 }
             }
         }
