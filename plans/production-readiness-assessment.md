@@ -59,9 +59,11 @@
 
 ## 4. 🟡 Наблюдаемость — замечания
 
-- `/health` проверяет Postgres и Kafka, но **не** состояние WebSocket-клиентов и заполненность каналов — для оператора критично видеть отставание (backlog/дропы) через метрики.
-- Настройки OTLP (`localhost:18889` в [`appsettings.json`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.json:10)) — для dev; в prod должен быть доступный эндпоинт.
-- Endpoint `/metrics` (Prometheus) и `/health` не аутентифицированы — в продакшене их стоит закрыть либо вынести на внутреннюю сеть.
+> **Обновлено 2026-07-31:** пункты про WebSocket-клиентов/каналы и OTLP на `localhost` закрыты (см. чек-лист раздела 6). Актуальна только аутентификация `/metrics`/`/health` — теперь реализована.
+
+- `/health` проверяет Postgres, Kafka, состояние WebSocket-клиентов и заполненность каналов (backlog/дропы) — см. реализацию в [`Program.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Program.cs:100).
+- Настройки OTLP: для prod задаётся доступный эндпоинт в [`appsettings.Production.json`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.Production.json:10), в compose переопределяется через env.
+- Endpoint `/metrics` (Prometheus) и `/health` в production защищены Bearer/API-key токеном (`Authorization: Bearer <token>`, задаётся через `Auth__ApiKey` / env `AUTH_API_KEY`). В Development ключ не задан — эндпоинты открыты для локальной разработки. Docker healthcheck, blackbox-probe и Prometheus scrape передают токен.
 
 ---
 
@@ -71,7 +73,7 @@
 
 1. **`Application` не должен ссылаться на `Infrastructure`** (DIP) — ✅ подтверждено соблюдение. [`Application.csproj`](src/MarketDataCollector.Application/MarketDataCollector.Application.csproj:4) ссылается только на Core и Domain, без Infrastructure. Заявленные ранее нарушения в `TickAggregator`/`MarketDataProcessor` **не воспроизводятся**: они работают через абстракции Core (`IRawTickRepository`, `IAggregatedDataRepository`, `IConnectionLogRepository`, `ICandlePublisher`), а Npgsql/`KafkaCandleProducer` используются только в Infrastructure. Действий не требуется.
 2. **Domain зависит от EF/Npgsql-атрибутов** — ✅ не подтверждается (пункт закрыт). Сущности `RawTick`, `AggregatedData`, `ConnectionLog` чистые, без персистентностных атрибутов; маппинг полностью во Fluent API в [`MarketDataDbContext`](src/MarketDataCollector.Infrastructure/Data/MarketDataDbContext.cs:16).
-3. Мёртвый код `DataStorageService` — ✅ удалён из `src` и тестов. Остались только устаревшие упоминания в [`README.md`](README.md:185) — привести README в соответствие.
+3. Мёртвый код `DataStorageService` — ✅ удалён из `src` и тестов. Устаревшие упоминания в [`README.md`](README.md) убраны (обновлено 2026-07-31).
 
 ---
 
@@ -101,15 +103,18 @@
   - [`rules.yml`](docker/prometheus/rules.yml) + Alertmanager + blackbox-exporter в compose. Алерты: backlog канала, дропы, все WS-клиенты отключены, `/health` недоступен, всплеск исключений.
 
 ### Observability (P2)
-- [ ] Добавить в `/health` состояние WebSocket-клиентов и fill-level каналов.
-- [ ] Аутентификация/изоляция `/metrics` и `/health`.
-- [ ] Прод-адрес OTLP/Prometheus вместо `localhost`.
+- [x] Добавить в `/health` состояние WebSocket-клиентов и fill-level каналов.
+  - Реализовано в [`Program.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Program.cs:155): блок `websocket` (статус, total/connected/disconnected, per-client метрики из `IWebSocketClientRegistry`) и блок `channels` (fill-level, estimatedDropped, incoming/received, processedRps). Комбинированный HTTP-код: `503 degraded`, если Kafka/PostgreSQL unhealthy **или** все зарегистрированные WS-клиенты отключены; каналы — информационные. Реестр `IWebSocketClientRegistry` зарегистрирован singleton в [`DependencyInjection.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/DependencyInjection.cs:67), клиенты регистрируются в [`Worker.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Worker.cs:48) и очищаются в `CleanupAsync` (строка 140).
+- [x] Аутентификация/изоляция `/metrics` и `/health`.
+  - В production защищены Bearer/API-key токеном (`Authorization: Bearer <token>`, `Auth__ApiKey` / env `AUTH_API_KEY`). Middleware в [`Program.cs`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/Program.cs:84) активен только если ключ задан (в Development ключ не задан — открыто). Docker healthcheck ([`docker-compose.prod.yml`](docker/docker-compose.prod.yml:220)), blackbox-probe ([`blackbox.yml`](docker/prometheus/blackbox.yml:9)) и Prometheus scrape ([`prometheus.yml`](docker/prometheus/prometheus.yml:24)) передают токен.
+- [x] Прод-адрес OTLP/Prometheus вместо `localhost`.
+  - [`appsettings.Production.json`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.Production.json:10): `OtlpEndpoint: http://aspire-dashboard:18889` (вместо dev `localhost`). В [`docker-compose.prod.yml`](docker/docker-compose.prod.yml:202) endpoint переопределяется через env `OpenTelemetry__OtlpEndpoint`. Prometheus scrapes воркер по compose-имени `worker:5010` в [`prometheus.yml`](docker/prometheus/prometheus.yml:21), а не `localhost`.
 
 ### Технический долг (P2)
 - [x] Рефакторинг DIP: `Application → Infrastructure` (Kafka, Npgsql) за абстракции — подтверждено соблюдение (см. п.5.1).
 - [x] Очистить Domain от EF/Npgsql-атрибутов (Fluent API) — выполнено (см. п.5.2).
 - [x] Удалить мёртвый `DataStorageService` — выполнено (см. п.5.3).
-- [ ] Актуализировать [`README.md`](README.md:185) — убрать устаревшие упоминания `DataStorageService`.
+- [x] Актуализировать [`README.md`](README.md) — убрать устаревшие упоминания `DataStorageService` (выполнено 2026-07-31).
 
 ---
 
@@ -119,13 +124,13 @@
 |-----------|------------|
 | Ядро обработки потока | 🟢 Готово |
 | Персистентность | 🟢 Готово (без retention) |
-| Наблюдаемость | 🟡 Частично |
+| Наблюдаемость | 🟢 Готово (OTLP/Prometheus/`/health`+`/metrics`, WS-клиенты и каналы в `/health`, Bearer-аутентификация в prod) |
 | Безопасность | 🟢 Готово (P0: секреты вынесены в env, `trust` убран в prod) |
 | Деплой / контейнеризация | 🟢 Готово (P0: `Dockerfile.worker` + сервис `worker` с healthcheck) |
 | CI/CD | 🟢 Готово (P0: `ci.yml` + `deploy.yml`) |
 | Управление схемой БД | 🟢 Готово (миграции + авто `Database.Migrate` + партиционирование) |
 | Масштабируемость Kafka | 🟢 Готово (3-нодный кластер RF=3 в prod) |
 | Мониторинг-алерты | 🟢 Готово (rules.yml + Alertmanager + blackbox) |
-| **Итог** | **🟢 ~90% — P0 и P1-надёжность закрыты; остались P2 (observability, техдолг)** |
+| **Итог** | **🟢 ~95% — P0, P1-надёжность, наблюдаемость и P2-техдолг закрыты** |
 
-**Минимальный набор для запуска в prod:** P0 (секреты, продакшен-конфиг, Dockerfile, CI/CD) и P1-надёжность (миграции, партиционирование+retention, Kafka RF, мониторинг-алерты) **закрыты**. Система готова к эксплуатации под управляемой нагрузкой. Остались P2-улучшения (observability, аутентификация `/metrics`/`/health`, актуализация README).
+**Минимальный набор для запуска в prod:** P0 (секреты, продакшен-конфиг, Dockerfile, CI/CD), P1-надёжность (миграции, партиционирование+retention, Kafka RF, мониторинг-алерты), наблюдаемость (OTLP/Prometheus, `/health`+`/metrics`, Bearer-аутентификация в prod) и P2-техдолг (актуализация README) **закрыты**. Система готова к эксплуатации под управляемой нагрузкой.

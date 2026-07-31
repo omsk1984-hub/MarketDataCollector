@@ -21,6 +21,12 @@ scrape_configs:
       - targets: ['worker:5010']
     metrics_path: '/metrics'
     scrape_interval: 5s
+    # Bearer/API-key для доступа к /metrics воркера.
+    # Токен читается из docker secret (смонтирован в /run/secrets/auth_api_key),
+    # т.к. Prometheus не подставляет ${VAR} из env внутри конфига.
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/auth_api_key
 
   # Blackbox probe /health — для алерта недоступности worker.
   - job_name: 'blackbox-health'

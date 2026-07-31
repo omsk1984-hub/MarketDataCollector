@@ -8,6 +8,26 @@
 # хардкода паролей, POSTGRES_HOST_AUTH_METHOD: trust отключён — используется
 # полноценная SCRAM-аутентификация.
 
+# ===== Общие env-переменные 3-нодного KRaft-кластера Kafka (RF >= 3) =====
+# Каждая нода — combined broker+controller. QUORUM из 3 контроллеров
+# обеспечивает отказоустойчивость: кластер работает при падении одной ноды.
+# Анкор вынесен на верхний уровень (x-extension), т.к. docker-compose не допускает
+# объявление такого блока внутри services: — он трактовался бы как сервис.
+x-kafka-common-env: &kafka-common-env
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  # RF=3 для внутренних топиков (offsets, transaction state)
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_CLUSTER_ID: marketdata-kafka-cluster
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -28,24 +48,6 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-
-  # ===== 3-нодный KRaft-кластер Kafka с RF >= 3 =====
-  # Каждая нода — combined broker+controller. QUORUM из 3 контроллеров
-  # обеспечивает отказоустойчивость: кластер работает при падении одной ноды.
-  kafka-common-env: &kafka-common-env
-    KAFKA_PROCESS_ROLES: broker,controller
-    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-    KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-    KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-    # RF=3 для внутренних топиков (offsets, transaction state)
-    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
-    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
-    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
-    KAFKA_MIN_INSYNC_REPLICAS: 2
-    KAFKA_CLUSTER_ID: marketdata-kafka-cluster
 
   kafka-1:
     image: apache/kafka:3.9.0
@@ -146,6 +148,10 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus_data:/prometheus
+    # Токен для /metrics воркера берём из docker secret (создаётся автоматически,
+    # без shell в контейнере). Prometheus читает authorization.credentials_file.
+    secrets:
+      - auth_api_key
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=7d'
@@ -169,6 +175,8 @@ services:
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.25.0
     container_name: marketdata-blackbox
+    environment:
+      AUTH_API_KEY: ${AUTH_API_KEY:?AUTH_API_KEY required in .env}
     command:
       - '--config.file=/etc/blackbox_exporter/blackbox.yml'
     volumes:
@@ -201,6 +209,7 @@ services:
       Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
       OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-http://aspire-dashboard:18889}
       ExchangeOptions__Exchanges__0__WebSocketUrl: ${EXCHANGE_WEBSOCKET_URL:-wss://stream.binance.com:9443/ws/{symbol}@trade}
+      Auth__ApiKey: ${AUTH_API_KEY:?AUTH_API_KEY required in .env}
     ports:
       - "5010:5010"  # /health и /metrics
     networks:
@@ -217,7 +226,7 @@ services:
       kafka-init-topics:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5010/health"]
+      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${AUTH_API_KEY:?AUTH_API_KEY required in .env}", "http://localhost:5010/health"]
       interval: 30s
       timeout: 5s
       start_period: 60s
@@ -230,6 +239,12 @@ volumes:
   kafka_data_2:
   kafka_data_3:
   prometheus_data:
+
+secrets:
+  # Docker secret для Bearer/API-key доступа к /metrics и /health воркера.
+  # Значение берётся из AUTH_API_KEY в docker/.env.
+  auth_api_key:
+    environment: AUTH_API_KEY
 
 networks:
   marketdata-network:

@@ -11,6 +11,9 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 
 // ===== GC Optimization =====
 GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
@@ -81,6 +84,48 @@ builder.Services.AddMarketDataPipeline();
 builder.Services.AddHostedService<MarketDataCollector.Worker.Worker>();
 
 var app = builder.Build();
+
+// ===== Bearer/API-key аутентификация для /metrics и /health (только Production) =====
+// В Development токен не задан (пустой) — middleware пропускает запросы без проверки,
+// чтобы не мешать локальной разработке и тестам. В Production задаётся Auth__ApiKey,
+// и доступ к защищаемым эндпоинтам требует заголовка Authorization: Bearer <token>.
+var apiKey = builder.Configuration["Auth:ApiKey"];
+if (!string.IsNullOrWhiteSpace(apiKey))
+{
+    var protectedPaths = new[] { "/metrics", "/health" };
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        var isProtected = protectedPaths.Any(p =>
+            path.Equals(p, StringComparison.OrdinalIgnoreCase));
+
+        if (!isProtected)
+        {
+            await next();
+            return;
+        }
+
+        if (context.Request.Headers.TryGetValue("Authorization", out StringValues authHeader) &&
+            authHeader.Count == 1 &&
+            authHeader[0] is { } headerValue &&
+            headerValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var providedToken = headerValue.Substring("Bearer ".Length).Trim();
+            var expectedBytes = System.Text.Encoding.UTF8.GetBytes(apiKey);
+            var providedBytes = System.Text.Encoding.UTF8.GetBytes(providedToken);
+            var isValid = expectedBytes.Length == providedBytes.Length &&
+                          CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
+            if (isValid)
+            {
+                await next();
+                return;
+            }
+        }
+
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsync("Unauthorized");
+    });
+}
 
 // ===== Авто-миграция схемы БД при старте =====
 // Применяет все ожидающие EF Core миграции. Это упрощает деплой (не нужен

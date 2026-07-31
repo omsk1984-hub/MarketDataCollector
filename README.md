@@ -182,7 +182,6 @@ MarketDataCollector/
 │   │   └── Services/
 │   │       ├── MarketDataProcessor.cs         # Процессор тиков (Channel + batch + дедупликация)
 │   │       ├── MarketDataProcessor.Logging.cs # Логирование процессора (partial class)
-│   │       ├── DataStorageService.cs          # Сервис хранения данных (обёртка над репозиторием)
 │   │       ├── DeduplicationCache.cs          # In-memory FIFO кэш дедупликации
 │   │       ├── TickAggregator.cs              # Агрегатор OHLCV-свечей (Channel + Kafka/DB)
 │   │       └── MonitoringService.cs           # Сервис мониторинга (счётчики + ConnectionLog)
@@ -197,7 +196,6 @@ MarketDataCollector/
 │   ├── MarketDataCollector.Tests/             # xUnit модульные тесты (16+ файлов)
 │   │   ├── Application/Services/
 │   │   │   ├── MarketDataProcessorTests.cs
-│   │   │   ├── DataStorageServiceTests.cs
 │   │   │   ├── MonitoringServiceTests.cs
 │   │   │   ├── DeduplicationCacheTests.cs
 │   │   │   └── TickAggregatorTests.cs
@@ -324,12 +322,9 @@ MarketDataCollector/
 │  │  DeduplicationCache)    │  ┌────────────────────────────┐                      │
 │  └─────────────────────────┘  │ TickAggregator             │                      │
 │  ┌─────────────────────────┐  │ (OHLCV Candles:           │                      │
-│  │ DataStorageService      │  │  Channel → Kafka/DB)      │                      │
-│  │ (обёртка над            │  └────────────────────────────┘                      │
-│  │  IRawTickRepository)    │  ┌────────────────────────────┐                      │
-│  └─────────────────────────┘  │ DeduplicationCache         │                      │
-│                               │ (in-memory FIFO, 10000/item)│                     │
-│                               └────────────────────────────┘                      │
+│  │ DeduplicationCache      │  │  Channel → Kafka/DB)      │                      │
+│  └─────────────────────────┘  └────────────────────────────┘                      │
+│                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────┘
           ▲ реализует интерфейсы Domain
 ┌─────────┴────────────────────────────────────────────────────────────────────────┐
@@ -794,7 +789,7 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 
 | Категория | Файлы | Описание |
 |-----------|-------|----------|
-| **Application/Services** | `MarketDataProcessorTests.cs` (34 теста), `DataStorageServiceTests.cs`, `MonitoringServiceTests.cs`, `DeduplicationCacheTests.cs`, `TickAggregatorTests.cs` | Бизнес-логика |
+| **Application/Services** | `MarketDataProcessorTests.cs` (34 теста), `MonitoringServiceTests.cs`, `DeduplicationCacheTests.cs`, `TickAggregatorTests.cs` | Бизнес-логика |
 | **Core/Clients** | `BaseWebSocketClientTests.cs`, `ExponentialReconnectStrategyTests.cs`, `SubscriptionManagerTests.cs`, `WebSocketConnectionManagerTests.cs`, `WebSocketMessageReceiverTests.cs` | Базовые компоненты |
 | **Core/Configuration** | | Конфигурация |
 | **DomainUtilities** | `DecimalHelperTests.cs` | Хелперы домена |

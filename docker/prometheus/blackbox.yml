@@ -10,3 +10,8 @@ modules:
       method: GET
       no_follow_redirects: false
       fail_if_ssl: false
+      # Bearer/API-key для доступа к /health воркера.
+      # blackbox-exporter подставляет ${AUTH_API_KEY} из окружения контейнера
+      # (задаётся через environment: AUTH_API_KEY в docker-compose.prod.yml).
+      headers:
+        Authorization: "Bearer ${AUTH_API_KEY}"
