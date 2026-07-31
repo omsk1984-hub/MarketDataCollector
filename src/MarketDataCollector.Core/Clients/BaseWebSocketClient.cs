@@ -266,11 +266,12 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
     /// <summary>
     /// Обрабатывает полученное сообщение.
     /// </summary>
-    /// <param name="message">Текст сообщения.</param>
+    /// <param name="message">Сырые UTF-8 байты сообщения (без аллокации строки).</param>
     /// <remarks>
     /// Переопределите этот метод в производных классах для парсинга специфичных форматов сообщений.
+    /// Используйте <see cref="Utf8JsonReader"/> для zero-alloc парсинга.
     /// </remarks>
-    protected internal virtual Task ProcessMessageAsync(string message)
+    protected internal virtual Task ProcessMessageAsync(ReadOnlyMemory<byte> message)
     {
         // По умолчанию ничего не делает — наследники переопределяют
         return Task.CompletedTask;
@@ -390,9 +391,10 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
     /// <summary>
     /// Вызывается при получении сообщения.
+    /// Декодирует UTF-8 байты в string только для событий MessageReceived (не hot path).
     /// </summary>
-    /// <param name="message">Текст сообщения.</param>
-    protected internal virtual void OnMessageReceived(string message)
+    /// <param name="rawBytes">Сырые UTF-8 байты сообщения.</param>
+    protected internal virtual void OnMessageReceived(ReadOnlyMemory<byte> rawBytes)
     {
         _msgRpsCounter.Increment();
         Interlocked.Increment(ref _totalMessagesCount);
@@ -402,6 +404,8 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
             new KeyValuePair<string, object?>("exchange", ExchangeName),
             new KeyValuePair<string, object?>("symbol", Symbol));
 
+        // Декодируем в string только для подписчиков события (не hot path).
+        var message = System.Text.Encoding.UTF8.GetString(rawBytes.Span);
         MessageReceived?.Invoke(this, message);
     }
 

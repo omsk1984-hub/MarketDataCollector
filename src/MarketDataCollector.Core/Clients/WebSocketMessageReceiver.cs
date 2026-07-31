@@ -36,8 +36,8 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
 
     /// <inheritdoc />
     public async Task StartReceiveLoopAsync(
-        Func<string, Task> processMessage,
-        Action<string>? onMessageReceived,
+        Func<ReadOnlyMemory<byte>, Task> processMessage,
+        Action<ReadOnlyMemory<byte>>? onMessageReceived,
         Action<Exception>? onError,
         CancellationToken cancellationToken)
     {
@@ -71,8 +71,8 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
     /// Основной цикл приёма сообщений.
     /// </summary>
     private async Task RunLoopCoreAsync(
-        Func<string, Task> processMessage,
-        Action<string>? onMessageReceived,
+        Func<ReadOnlyMemory<byte>, Task> processMessage,
+        Action<ReadOnlyMemory<byte>>? onMessageReceived,
         Action<Exception>? onError,
         CancellationToken cancellationToken)
     {
@@ -126,11 +126,13 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     {
                         try
                         {
-                            // Декодируем сообщение из потока
-                            var message = Encoding.UTF8.GetString(messageStream.GetBuffer(), 0, (int)messageStream.Length);
+                            // Передаём сырые UTF-8 байты без декодирования в string —
+                            // экономим одну аллокацию string на сообщение (~21K/сек).
+                            var rawBytes = new ReadOnlyMemory<byte>(
+                                messageStream.GetBuffer(), 0, (int)messageStream.Length);
 
-                            onMessageReceived?.Invoke(message);
-                            await processMessage(message).ConfigureAwait(false);
+                            onMessageReceived?.Invoke(rawBytes);
+                            await processMessage(rawBytes).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {

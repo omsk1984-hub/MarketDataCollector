@@ -260,7 +260,8 @@ public class BinanceWebSocketClientTests
         // Assert
         errorOccurred.Should().BeTrue();
         capturedException.Should().NotBeNull();
-        capturedException.Should().BeOfType<JsonException>();
+        // Utf8JsonReader бросает JsonReaderException (наследник JsonException) при невалидном JSON
+        capturedException.Should().BeAssignableTo<JsonException>();
     }
 
     [Fact(Timeout = 5000)]
@@ -375,6 +376,7 @@ public class TestableBinanceWebSocketClient : BinanceWebSocketClient
 
     public Task TestProcessMessageAsync(string message)
     {
-        return ProcessMessageAsync(message);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(message);
+        return ProcessMessageAsync(new ReadOnlyMemory<byte>(bytes));
     }
 }

@@ -237,7 +237,8 @@ public class WebSocketClientFactoryTests
         binanceClient.OnErrorOccurred(testEx);
         _monitoringServiceMock.Verify(m => m.UpdateConnectionStatus("Binance", MarketDataCollector.Core.Interfaces.ConnectionStatus.Error, It.IsAny<string>()), Times.AtLeastOnce);
 
-        binanceClient.OnMessageReceived("test message");
+        var utf8Bytes = System.Text.Encoding.UTF8.GetBytes("test message");
+        binanceClient.OnMessageReceived(new ReadOnlyMemory<byte>(utf8Bytes));
         _monitoringServiceMock.Verify(m => m.IncrementTickCounter("Binance"), Times.AtLeastOnce);
     }
 

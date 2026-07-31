@@ -55,17 +55,17 @@ public class WebSocketMessageReceiverTests
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
-        var receivedMessages = new List<string>();
+        var receivedBytes = new List<ReadOnlyMemory<byte>>();
         var processMessageCalled = false;
         
-        var processMessage = (string message) =>
+        var processMessage = (ReadOnlyMemory<byte> message) =>
         {
-            receivedMessages.Add(message);
+            receivedBytes.Add(message);
             processMessageCalled = true;
             return Task.CompletedTask;
         };
 
-        var onMessageReceived = new Action<string>(msg => { });
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
         using var cts = new CancellationTokenSource();
@@ -85,7 +85,7 @@ public class WebSocketMessageReceiverTests
 
         // Assert
         processMessageCalled.Should().BeTrue();
-        receivedMessages.Should().HaveCount(1);
+        receivedBytes.Should().HaveCount(1);
         _connectionManagerMock.Verify(cm => cm.ReceiveAsync(It.IsAny<ArraySegment<byte>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
@@ -101,8 +101,8 @@ public class WebSocketMessageReceiverTests
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(false);
         
-        var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
-        var onMessageReceived = new Action<string>(msg => { });
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg => Task.CompletedTask);
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
         // Используем неотменённый токен — цикл выйдет по проверке IsConnected
@@ -144,12 +144,12 @@ public class WebSocketMessageReceiverTests
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
         var processMessageCalled = false;
-        var processMessage = new Func<string, Task>(msg =>
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg =>
         {
             processMessageCalled = true;
             return Task.CompletedTask;
         });
-        var onMessageReceived = new Action<string>(msg => { });
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
         using var cts = new CancellationTokenSource();
@@ -205,8 +205,8 @@ public class WebSocketMessageReceiverTests
             capturedException = ex;
         });
 
-        var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
-        var onMessageReceived = new Action<string>(msg => { });
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg => Task.CompletedTask);
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
 
         using var cts = new CancellationTokenSource();
 
@@ -267,11 +267,11 @@ public class WebSocketMessageReceiverTests
             ex.Should().NotBeNull();
         });
 
-        var processMessage = new Func<string, Task>(msg =>
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg =>
         {
             throw new Exception("Test process error");
         });
-        var onMessageReceived = new Action<string>(msg => { });
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         
@@ -312,8 +312,8 @@ public class WebSocketMessageReceiverTests
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
-        var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
-        var onMessageReceived = new Action<string>(msg => { });
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg => Task.CompletedTask);
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
@@ -352,8 +352,8 @@ public class WebSocketMessageReceiverTests
 
         _connectionManagerMock.SetupGet(cm => cm.IsConnected).Returns(true);
         
-        var processMessage = new Func<string, Task>(msg => Task.CompletedTask);
-        var onMessageReceived = new Action<string>(msg => { });
+        var processMessage = new Func<ReadOnlyMemory<byte>, Task>(msg => Task.CompletedTask);
+        var onMessageReceived = new Action<ReadOnlyMemory<byte>>(msg => { });
         var onError = new Action<Exception>(ex => { });
 
         using var cts = new CancellationTokenSource();

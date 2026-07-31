@@ -3,7 +3,10 @@ using MarketDataCollector.Core.Configuration;
 using MarketDataCollector.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System;
+using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace MarketDataCollector.Infrastructure.Clients;
@@ -67,31 +70,24 @@ public class BinanceWebSocketClient : BaseWebSocketClient
                     }
     */
     /// </remarks>
-    protected override async Task ProcessMessageAsync(string message)
+    /// <inheritdoc />
+    /// <remarks>
+    /// Zero-alloc парсинг через <see cref="Utf8JsonReader"/> (ref struct).
+    /// Извлекает только нужные поля: e, s, p, q, T.
+    /// Price/Volume парсятся из ReadOnlySpan<byte> без аллокации строки.
+    /// </remarks>
+    protected override async Task ProcessMessageAsync(ReadOnlyMemory<byte> message)
     {
         try
         {
-            using var doc = JsonDocument.Parse(message);
-            var root = doc.RootElement;
+            // Парсинг Utf8JsonReader — ref struct, не может быть в async методе.
+            // Выносим синхронный разбор в отдельный метод.
+            var parsed = ParseTradeMessage(message.Span);
 
-            if (root.TryGetProperty("e", out var eventType) && eventType.GetString() == "trade")
+            if (parsed.IsTrade && parsed.Ticker != null)
             {
-                var ticker = root.TryGetProperty("s", out var s) ? s.GetString() : null;
-                var price = root.TryGetProperty("p", out var p)
-                    ? decimal.Parse(p.GetString() ?? "0", CultureInfo.InvariantCulture)
-                    : 0m;
-                var volume = root.TryGetProperty("q", out var q)
-                    ? decimal.Parse(q.GetString() ?? "0", CultureInfo.InvariantCulture)
-                    : 0m;
-                var timeMs = root.TryGetProperty("T", out var T)
-                    ? T.GetInt64()
-                    : 0L;
-                var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime;
-
-                if (ticker != null)
-                {
-                    await _dataProcessor.ProcessTickAsync(ticker, price, volume, timestamp, ExchangeName);
-                }
+                var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(parsed.TradeTimeMs).UtcDateTime;
+                await _dataProcessor.ProcessTickAsync(parsed.Ticker, parsed.Price, parsed.Volume, timestamp, ExchangeName);
             }
         }
         catch (JsonException ex)
@@ -102,5 +98,107 @@ public class BinanceWebSocketClient : BaseWebSocketClient
         {
             OnErrorOccurred(ex);
         }
+    }
+
+    /// <summary>
+    /// Результат zero-alloc парсинга trade-сообщения Binance.
+    /// </summary>
+    private readonly record struct TradeParseResult(
+        string? Ticker,
+        decimal Price,
+        decimal Volume,
+        long TradeTimeMs,
+        bool IsTrade);
+
+    /// <summary>
+    /// Zero-alloc парсинг trade-сообщения Binance через <see cref="Utf8JsonReader"/>.
+    /// Ref struct — не может быть в async, поэтому вынесен в отдельный метод.
+    /// </summary>
+    private static TradeParseResult ParseTradeMessage(ReadOnlySpan<byte> json)
+    {
+        var reader = new Utf8JsonReader(json);
+
+        string? ticker = null;
+        decimal price = 0m;
+        decimal volume = 0m;
+        long timeMs = 0;
+        bool isTrade = false;
+
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            return default;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+                break;
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+                continue;
+
+            var prop = reader.ValueSpan;
+
+            // Все свойства Binance trade stream — односимвольные: e,s,p,q,T,E,t,m,M
+            if (prop.Length == 1)
+            {
+                switch ((char)prop[0])
+                {
+                    case 'e':
+                        // eventType — строка "trade"
+                        if (reader.Read() && reader.TokenType == JsonTokenType.String)
+                            isTrade = reader.ValueSpan.SequenceEqual("trade"u8);
+                        break;
+                    case 's':
+                        // symbol — строка "BTCUSDT"
+                        if (reader.Read() && reader.TokenType == JsonTokenType.String)
+                            ticker = reader.GetString();
+                        break;
+                    case 'p':
+                        // price — строка "1000.50"
+                        if (reader.Read())
+                            price = ParseDecimalFromUtf8(reader.ValueSpan);
+                        break;
+                    case 'q':
+                        // quantity — строка "0.5"
+                        if (reader.Read())
+                            volume = ParseDecimalFromUtf8(reader.ValueSpan);
+                        break;
+                    case 'T':
+                        // tradeTime — число (ms)
+                        if (reader.Read() && reader.TokenType == JsonTokenType.Number)
+                            timeMs = reader.GetInt64();
+                        break;
+                    default:
+                        // E, t, m, M и пр. — пропускаем значение
+                        if (reader.Read()) reader.Skip();
+                        break;
+                }
+            }
+            else
+            {
+                // Неизвестные длинные свойства — пропускаем
+                reader.Skip();
+            }
+        }
+
+        return new TradeParseResult(ticker, price, volume, timeMs, isTrade);
+    }
+
+    /// <summary>
+    /// Парсинг decimal из UTF-8 байт без аллокации строки.
+    /// Поддерживает: целые, дробные (через '.'), отрицательные.
+    /// Binance price/quantity — всегда строки вида "0.001", "100", "12345.678".
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static decimal ParseDecimalFromUtf8(ReadOnlySpan<byte> utf8)
+    {
+        // Копируем UTF-8 байты в стековый буфер char[] — без аллокации string.
+        Span<char> chars = stackalloc char[utf8.Length];
+        for (int i = 0; i < utf8.Length; i++)
+            chars[i] = (char)utf8[i];
+
+        if (decimal.TryParse(chars, NumberStyles.Number, CultureInfo.InvariantCulture, out var result))
+            return result;
+
+        return 0m;
     }
 }

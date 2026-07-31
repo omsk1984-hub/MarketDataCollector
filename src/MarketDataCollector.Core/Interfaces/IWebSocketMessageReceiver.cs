@@ -13,13 +13,13 @@ public interface IWebSocketMessageReceiver
     /// <summary>
     /// Запускает цикл приёма сообщений.
     /// </summary>
-    /// <param name="processMessage">Функция обработки полного сообщения.</param>
-    /// <param name="onMessageReceived">Callback при получении сообщения (для событий).</param>
+    /// <param name="processMessage">Функция обработки полного сообщения (байты UTF-8 без аллокации строки).</param>
+    /// <param name="onMessageReceived">Callback при получении сообщения (байты UTF-8).</param>
     /// <param name="onError">Callback при ошибке.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
     Task StartReceiveLoopAsync(
-        Func<string, Task> processMessage,
-        Action<string>? onMessageReceived,
+        Func<ReadOnlyMemory<byte>, Task> processMessage,
+        Action<ReadOnlyMemory<byte>>? onMessageReceived,
         Action<Exception>? onError,
         CancellationToken cancellationToken);
 

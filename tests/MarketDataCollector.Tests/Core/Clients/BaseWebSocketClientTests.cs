@@ -29,7 +29,7 @@ public class TestableWebSocketClient : BaseWebSocketClient
 
     protected override Uri GetWebSocketUri() => _testUri;
 
-    protected internal override Task ProcessMessageAsync(string message)
+    protected internal override Task ProcessMessageAsync(ReadOnlyMemory<byte> message)
     {
         return Task.CompletedTask;
     }
@@ -324,8 +324,8 @@ public class BaseWebSocketClientTests
         // Assert
         _connectionManagerMock.Verify(cm => cm.ConnectAsync(_testUri, cancellationToken), Times.Once);
         _messageReceiverMock.Verify(mr => mr.StartReceiveLoopAsync(
-            It.IsAny<Func<string, Task>>(),
-            It.IsAny<Action<string>>(),
+            It.IsAny<Func<ReadOnlyMemory<byte>, Task>>(),
+            It.IsAny<Action<ReadOnlyMemory<byte>>>(),
             It.IsAny<Action<Exception>>(),
             It.IsAny<CancellationToken>()), Times.Once);
         // Проверяем, что OnConnected() был вызван
@@ -575,7 +575,8 @@ public class BaseWebSocketClientTests
         };
 
         // Act
-        client.OnMessageReceived("test message");
+        var utf8Bytes = System.Text.Encoding.UTF8.GetBytes("test message");
+        client.OnMessageReceived(new ReadOnlyMemory<byte>(utf8Bytes));
 
         // Assert
         messageReceivedRaised.Should().BeTrue();
