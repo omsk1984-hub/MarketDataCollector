@@ -76,8 +76,11 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     /// Извлекает только нужные поля: e, s, p, q, T.
     /// Price/Volume парсятся из ReadOnlySpan<byte> без аллокации строки.
     /// </remarks>
-    protected override async Task ProcessMessageAsync(ReadOnlyMemory<byte> message)
+    protected override Task ProcessMessageAsync(ReadOnlyMemory<byte> message)
     {
+        // Не-async: тело полностью синхронно, а async-метод боксует state machine в heap-Task на каждый вызов
+        // (~40-80 байт/тик при 21K сообщений/сек). ProcessTickAsync синхронен (TryWrite в Channel) и возвращает
+        // завершённый Task, поэтому не await'им — данные гарантированно в Channel до возврата.
         try
         {
             // Парсинг Utf8JsonReader — ref struct, не может быть в async методе.
@@ -87,7 +90,9 @@ public class BinanceWebSocketClient : BaseWebSocketClient
             if (parsed.IsTrade && parsed.Ticker != null)
             {
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(parsed.TradeTimeMs).UtcDateTime;
-                await _dataProcessor.ProcessTickAsync(parsed.Ticker, parsed.Price, parsed.Volume, timestamp, ExchangeName);
+                // Fire-and-forget безопасен: ProcessTickAsync полностью синхронен (Interlocked + TryWrite в Channel),
+                // Task уже завершён, дроп при полном канале фиксируется TryWrite синхронно.
+                _dataProcessor.ProcessTickAsync(parsed.Ticker, parsed.Price, parsed.Volume, timestamp, ExchangeName);
             }
         }
         catch (JsonException ex)
@@ -98,6 +103,8 @@ public class BinanceWebSocketClient : BaseWebSocketClient
         {
             OnErrorOccurred(ex);
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -148,9 +155,18 @@ public class BinanceWebSocketClient : BaseWebSocketClient
                             isTrade = reader.ValueSpan.SequenceEqual("trade"u8);
                         break;
                     case 's':
-                        // symbol — строка "BTCUSDT"
+                        // symbol — строка в верхнем регистре, напр. "BTCUSDT"
                         if (reader.Read() && reader.TokenType == JsonTokenType.String)
-                            ticker = reader.GetString();
+                        {
+                            // Интернирование известных символов: ноль аллокаций на тик.
+                            // Строковые литералы заинтернированы компилятором, сравнение —
+                            // по байтам ValueSpan (без вызова GetString/TranscodeHelper).
+                            var span = reader.ValueSpan;
+                            if (span.SequenceEqual("BTCUSDT"u8)) ticker = "BTCUSDT";
+                            else if (span.SequenceEqual("ETHUSDT"u8)) ticker = "ETHUSDT";
+                            else if (span.SequenceEqual("SOLUSDT"u8)) ticker = "SOLUSDT";
+                            else ticker = reader.GetString(); // fallback для неизвестных символов
+                        }
                         break;
                     case 'p':
                         // price — строка "1000.50"

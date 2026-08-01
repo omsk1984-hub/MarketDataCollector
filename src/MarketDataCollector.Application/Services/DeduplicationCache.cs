@@ -9,21 +9,49 @@ namespace MarketDataCollector.Application.Services
     /// Хранит (Ticker, Exchange, TimestampTicks) как value-type с кастомным GetHashCode.
     /// Избегает аллокаций ValueTuple и boxing DateTime при хэшировании.
     /// </summary>
-    internal readonly record struct DedupKey(string Ticker, string Exchange, long TimestampTicks)
-        : IEquatable<DedupKey>
+    /// <summary>
+    /// Композитный ключ (Ticker, Exchange, TimestampTicks) как value-type с
+    /// кэшированным хэшем. Хэш вычисляется ОДИН раз при создании ключа и
+    /// переиспользуется при вставке в Dictionary и Queue, вместо повторного
+    /// HashCode.Combine на каждый вызов GetHashCode.
+    /// StringComparison.Ordinal для Ticker и Exchange.
+    /// </summary>
+    internal readonly struct DedupKey : IEquatable<DedupKey>
     {
+        public string Ticker { get; }
+        public string Exchange { get; }
+        public long TimestampTicks { get; }
+
+        private readonly int _hashCode;
+
+        public DedupKey(string ticker, string exchange, long timestampTicks)
+        {
+            Ticker = ticker;
+            Exchange = exchange;
+            TimestampTicks = timestampTicks;
+            _hashCode = HashCode.Combine(
+                ticker?.GetHashCode(StringComparison.Ordinal) ?? 0,
+                exchange?.GetHashCode(StringComparison.Ordinal) ?? 0,
+                timestampTicks);
+        }
+
         /// <summary>
-        /// Комбинированный хэш через HashCode.Combine — быстрее ValueTuple.
-        /// StringComparison.Ordinal для Ticker и Exchange.
+        /// Сравнение полей — без повторного хэширования. StringComparison.Ordinal
+        /// для строк (как в кэшированном хэше).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(
-                Ticker?.GetHashCode(StringComparison.Ordinal) ?? 0,
-                Exchange?.GetHashCode(StringComparison.Ordinal) ?? 0,
-                TimestampTicks);
-        }
+        public bool Equals(DedupKey other) =>
+            TimestampTicks == other.TimestampTicks
+            && string.Equals(Ticker, other.Ticker, StringComparison.Ordinal)
+            && string.Equals(Exchange, other.Exchange, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is DedupKey other && Equals(other);
+
+        /// <summary>
+        /// Возвращает кэшированный хэш — O(1), без пересчёта HashCode.Combine.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode() => _hashCode;
     }
 
     /// <summary>
@@ -56,7 +84,7 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Проверяет, содержится ли ключ в кэше.
-        /// O(1) — Dictionary.ContainsKey.
+        /// O(1) — Dictionary.ContainsKey (кэшированный хэш DedupKey).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Contains(string ticker, string exchange, DateTime timestamp)
@@ -64,8 +92,7 @@ namespace MarketDataCollector.Application.Services
             if (_maxSize <= 0)
                 return false;
 
-            var key = new DedupKey(ticker, exchange, timestamp.Ticks);
-            return _cache.ContainsKey(key);
+            return _cache.ContainsKey(new DedupKey(ticker, exchange, timestamp.Ticks));
         }
 
         /// <summary>
@@ -74,18 +101,30 @@ namespace MarketDataCollector.Application.Services
         /// </summary>
         public void Add(string ticker, string exchange, DateTime timestamp)
         {
+            TryAdd(ticker, exchange, timestamp);
+        }
+
+        /// <summary>
+        /// Проверяет и добавляет ключ за один проход (один lookup Dictionary).
+        /// Возвращает true, если ключ был добавлен, false — если уже существовал.
+        /// Использует кэшированный хэш DedupKey — единственный HashCode на элемент батча.
+        /// При превышении maxSize выполняет batch-эвикцию (10% от maxSize) ДО вставки,
+        /// сохраняя FIFO-порядок (вновь добавленный ключ не эвиктируется в этом же вызове).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryAdd(string ticker, string exchange, DateTime timestamp)
+        {
             if (_maxSize <= 0)
-                return;
+                return false;
 
             var key = new DedupKey(ticker, exchange, timestamp.Ticks);
-            // ContainsKey вместо TryAdd — совместимость с .NET Standard 2.0
-            if (_cache.ContainsKey(key))
-                return;
 
-            // Эвикция: при каждом превышении лимита пакетно (10% от maxSize, но не меньше 1)
-            // удаляем самые старые записи. Гарантирует, что Count не превышает maxSize.
-            // Пакетная эвикция дешевле поодновременной, а частый вызов здесь — редкий случай
-            // (наступает только когда кэш заполнен), поэтому накладные расходы минимальны.
+            // Проверяем уникальность (кэшированный хэш — единственный lookup).
+            if (_cache.ContainsKey(key))
+                return false;
+
+            // Эвикция при переполнении выполняется ДО вставки: удаляем самые старые записи
+            // (10% от maxSize, но не меньше 1), чтобы вновь добавляемый ключ гарантированно остался.
             if (_cache.Count >= _maxSize)
             {
                 for (int i = 0; i < _evictionBatchSize && _order.Count > 0; i++)
@@ -97,6 +136,7 @@ namespace MarketDataCollector.Application.Services
 
             _cache[key] = 0;
             _order.Enqueue(key);
+            return true;
         }
 
         /// <summary>

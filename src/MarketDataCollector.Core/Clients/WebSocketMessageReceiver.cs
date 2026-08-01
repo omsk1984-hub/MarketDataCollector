@@ -78,7 +78,10 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
     {
         // Используем ArrayPool для эффективного управления памятью
         var tempBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
-        var messageStream = new MemoryStream(_options.MaxMessageSize);
+        // Переиспользуемый буфер сообщения: ArrayBufferWriter растёт при необходимости
+        // и переиспользует внутренний массив между сообщениями — без аллокаций на тик
+        // и без перераспределений MemoryStream при росте сообщения.
+        var messageBuffer = new ArrayBufferWriter<byte>(_options.MaxMessageSize);
 
         try
         {
@@ -102,7 +105,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     }
 
                     // Проверяем, не превышает ли фрагмент максимальный размер сообщения
-                    if (messageStream.Length + result.Count > _options.MaxMessageSize)
+                    if (messageBuffer.WrittenCount + result.Count > _options.MaxMessageSize)
                     {
                         _logger.LogWarning(
                             "Сообщение превышает максимальный размер ({0} байт). Отбрасываем сообщение.",
@@ -115,12 +118,15 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                                 new ArraySegment<byte>(tempBuffer), cancellationToken).ConfigureAwait(false);
                         }
 
-                        messageStream.SetLength(0);
+                        messageBuffer.Clear();
                         continue;
                     }
 
-                    // Записываем фрагмент в поток
-                    messageStream.Write(tempBuffer, 0, result.Count);
+                    // Записываем фрагмент в буфер (без копирования излишней ёмкости).
+                    // GetMemory возвращает Memory (не ref struct) — безопасно в async.
+                    var writeMemory = messageBuffer.GetMemory(result.Count);
+                    tempBuffer.AsMemory(0, result.Count).CopyTo(writeMemory);
+                    messageBuffer.Advance(result.Count);
 
                     if (result.EndOfMessage)
                     {
@@ -128,8 +134,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         {
                             // Передаём сырые UTF-8 байты без декодирования в string —
                             // экономим одну аллокацию string на сообщение (~21K/сек).
-                            var rawBytes = new ReadOnlyMemory<byte>(
-                                messageStream.GetBuffer(), 0, (int)messageStream.Length);
+                            var rawBytes = messageBuffer.WrittenMemory;
 
                             onMessageReceived?.Invoke(rawBytes);
                             await processMessage(rawBytes).ConfigureAwait(false);
@@ -141,7 +146,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         }
                         finally
                         {
-                            messageStream.SetLength(0);
+                            messageBuffer.Clear();
                         }
                     }
                 }
@@ -169,7 +174,6 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
         finally
         {
             ArrayPool<byte>.Shared.Return(tempBuffer);
-            messageStream.Dispose();
             _logger.LogDebug("Цикл приёма сообщений завершён.");
         }
     }

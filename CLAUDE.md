@@ -27,6 +27,7 @@
 - Использовать `dotnet format` перед коммитом
 
 ## 🤖 Инструкции для AI
+- Всегда явно спрашивай меня перед выполнением нагрузовного тестирования и FakeTickServer.exe 
 - Консольные команды выполняй через pwsh -Command. example: pwsh -Command "docker info 2>&1 | Select-String 'Server Version'"
 - Не генерируй `Program.cs` целиком, если не просили
 - При добавлении NuGet: покажи команду `dotnet add package`

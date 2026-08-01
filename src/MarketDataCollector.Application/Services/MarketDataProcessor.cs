@@ -865,14 +865,15 @@ namespace MarketDataCollector.Application.Services
                     for (int i = 0; i < batchCount; i++)
                     {
                         var t = batchArray[i];
-                        if (dedupCache.Contains(t.Ticker, t.Exchange, t.Timestamp))
+                        // TryAdd: проверка и вставка за один проход (один lookup,
+                        // кэшированный хэш DedupKey). Возвращает true — ключ новый.
+                        if (dedupCache.TryAdd(t.Ticker, t.Exchange, t.Timestamp))
                         {
-                            cachedCount++;
+                            batchArray[writeIdx++] = t;
                         }
                         else
                         {
-                            batchArray[writeIdx++] = t;
-                            dedupCache.Add(t.Ticker, t.Exchange, t.Timestamp);
+                            cachedCount++;
                         }
                     }
                 }
