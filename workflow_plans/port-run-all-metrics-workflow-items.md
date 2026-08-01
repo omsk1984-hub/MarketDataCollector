@@ -15,7 +15,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Profiler.csproj`, `tools/Profiler/Options/ProfilerOptions.cs`.
 - Риски: лишние/отсутствующие пакеты, несоответствие дефолтов.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -26,7 +26,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Cli/CommandLineParser.cs`.
 - Риски: неверный разбор значений, отсутствие валидации.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -37,7 +37,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Cli/DiContainer.cs`.
 - Риски: пропущенная регистрация, неверный порядок стратегий.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -48,7 +48,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/ConsoleUI.cs`, `tools/Profiler/Core/Interfaces/IConsoleUI.cs`.
 - Риски: отсутствие логирования, нарушение цветовой схемы.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -59,7 +59,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/EnsureDotnetTools.cs`.
 - Риски: неправильные команды, отсутствие асинхронности.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -70,7 +70,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/ProcessIdSources/*.cs`, `tools/Profiler/Core/ProcessFinder.cs`, `tools/Profiler/Core/Interfaces/IProcessIdSource.cs`, `IProcessFinder.cs`.
 - Риски: WMI/System.Management на Windows, некорректный парсинг dotnet-trace ps.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -81,7 +81,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/ToolRunner.cs`, `tools/Profiler/Core/Interfaces/IToolRunner.cs`.
 - Риски: синхронное чтение (deadlock), отсутствие таймаутов.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -92,7 +92,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/TraceCollector.cs`, `tools/Profiler/Core/GcDumpCollector.cs`, интерфейсы.
 - Риски: неверный формат длительности, зависание при остановке.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -103,7 +103,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/SpeedScopeConverter.cs`, `ISpeedScopeConverter.cs`.
 - Риски: задвоенный суффикс, битый/нефинализированный trace.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -114,7 +114,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/Waiters/*.cs`, `IPeakLoadWaiter.cs`, `IDrainWaiter.cs`.
 - Риски: неверный парсинг метрики backlog, отсутствие фолбэка.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -125,7 +125,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/HealthCheckService.cs`, `IHealthCheckService.cs`.
 - Риски: неверная интерпретация статусов.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -136,7 +136,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/HttpLoggingHandler.cs`.
 - Риски: засорение логов, неучтённый уровень None.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -147,7 +147,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Core/PrometheusParser.cs`, `tools/Profiler/Core/Models.cs`, `IPrometheusParser.cs`.
 - Риски: неверный regex, пропуск особых значений.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -158,7 +158,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Services/CountersCollector.cs`, `ICountersCollector.cs`.
 - Риски: кодировка CSV, зависание фонового цикла.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -169,7 +169,7 @@
 - Затрагиваемые файлы: `tools/Profiler/Services/ProfilerOrchestrator.cs`, `IProfilerOrchestrator.cs`.
 - Риски: нарушение порядка шагов, пропуск шага.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 
@@ -191,7 +191,7 @@
 - Затрагиваемые файлы: весь `tools/Profiler`.
 - Риски: предупреждения сборки, нарушение SOLID.
 
-Статус: [ ]
+Статус: [x]
 
 ---
 

@@ -28,7 +28,7 @@
 | 13. PrometheusParser и Models | ✅ | Соответствует плану | Уже выполнено |
 | 14. CountersCollector | ✅ | Соответствует плану | Уже выполнено |
 | 15. ProfilerOrchestrator | ✅ | Соответствует плану | Уже выполнено |
-| 16. ReportGenerator и Program.cs | ✅ | Соответствует плану | Уже выполнено |
+| 16. ReportGenerator и Program.cs | ✅ | Соответствует плану; build ok; --help работает | Уже выполнено |
 | 17. Финальная проверка и критерии готовности | ✅ | build 0W/0E; --help работает; format ok | `dotnet build tools/Profiler` — 0 Warning/0 Error; `--help` выводит справку; `dotnet format --verify-no-changes` — без замечаний. SOLID соблюдён (SRP/OCP/ISP/DIP) |
 
 ---
