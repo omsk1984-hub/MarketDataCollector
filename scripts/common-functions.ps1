@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Общие функции для скриптов сбора метрик MarketDataCollector.
 .DESCRIPTION
@@ -168,7 +168,9 @@ function Start-TraceCollection {
     param(
         [int]$ProcessId,
         [int]$DurationSec = 60,
-        [string]$OutputFilePath
+        [string]$OutputFilePath,
+        [ValidateSet("gc-verbose", "cpu-sampling", "contention", "contention-cpu")]
+        [string]$Profile = "gc-verbose"
     )
 
     $traceDir = Split-Path $OutputFilePath -Parent
@@ -180,10 +182,29 @@ function Start-TraceCollection {
         Remove-Item $OutputFilePath -Force
     }
 
-    Write-Host "[*] Запуск dotnet-trace collect (gc-verbose)..." -ForegroundColor Cyan
+    # Профиль сбора определяет набор провайдеров/ключевых слов dotnet-trace.
+    #   - gc-verbose      : аллокации/GC (по умолчанию, прошлое поведение)
+    #   - cpu-sampling    : CPU-стеки (topN)
+    #   - contention      : ТОЛЬКО contention-события (0x4000) — report topN не даст
+    #                       CPU-стеков («No method calls found»), пригодно для количественной
+    #                       проверки contention через событие Contention/ContentionStop.
+    #   - contention-cpu  : contention + CPU-sampling ОДНОВРЕМЕННО. Собираются и
+    #                       contention-события (0x4000), и CPU-сэмплы (SampleProfiler),
+    #                       поэтому dotnet-trace report topN даёт стеки, а по событию
+    #                       Contention можно локализовать, в каких методах происходит
+    #                       конкуренция за lock (требование Этапа 0 плана).
+    $traceArgs = switch ($Profile.ToLowerInvariant()) {
+        "cpu-sampling"    { "--profile cpu-sampling" }
+        "contention"      { "--providers Microsoft-Windows-DotNETRuntime:0x4000:5" }
+        "contention-cpu"  { "--providers Microsoft-Windows-DotNETRuntime:0x4000:5,Microsoft-DotNETCore-SampleProfiler:0:5" }
+        default           { "--profile gc-verbose" }
+    }
+
+    Write-Host "[*] Запуск dotnet-trace collect (profile: $Profile)..." -ForegroundColor Cyan
     Write-Host "    PID: $ProcessId"
     Write-Host "    Output: $OutputFilePath"
     Write-Host "    Duration: ${DurationSec}s"
+    Write-Host "    Args: $traceArgs"
 
     # dotnet-trace интерпретирует голое число в --duration как ДНИ (TimeSpan default),
     # а не секунды. Это приводило к System.ArgumentException 'Invalid value ... for
@@ -197,7 +218,7 @@ function Start-TraceCollection {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "dotnet-trace"
-    $psi.Arguments = "collect --process-id $ProcessId --profile gc-verbose --duration $durationArg --output `"$OutputFilePath`""
+    $psi.Arguments = "collect --process-id $ProcessId $traceArgs --duration $durationArg --output `"$OutputFilePath`""
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
     $psi.RedirectStandardOutput = $true
@@ -358,20 +379,24 @@ function Collect-GcDump {
 
     $proc = [System.Diagnostics.Process]::Start($psi)
     Write-Host "    [DIAG] dotnet-gcdump запущен (PID: $($proc.Id), t=$([math]::Round((Get-Date -DisplayHint Time).TimeOfDay.TotalSeconds))s)" -ForegroundColor DarkGray
+    [Console]::Out.Flush()
 
     # ВАЖНО: не используем event-based async чтение (add_OutputDataReceived / add_ErrorDataReceived
-    # со scriptblock'ами). При большом потоке вывода (dotnet-gcdump при длительном сборе пишет много)
+    # со scriptblock'ами). При большом потоке вывода (dotnet-gcdump при длительном сбое пишет много)
     # event-callback'и выполняются в разных контекстах и вызывают гонку -> необработанное исключение
     # в CLR -> краш самого pwsh с кодом 0xE0434352 (-532462766).
     # Вместо этого читаем stdout/stderr асинхронно через ReadToEndAsync (не блокирует процесс).
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
     $stderrTask = $proc.StandardError.ReadToEndAsync()
+    Write-Host "    [DIAG] ReadToEndAsync стартовал, начинаю WaitForExit..." -ForegroundColor DarkGray
+    [Console]::Out.Flush()
 
     # Ждём завершения (до 120 сек). При зависании — принудительно завершаем.
     $waitStart = Get-Date
     $waitResult = $proc.WaitForExit(120000)
     Write-Host "    [DIAG] DEBUG waitStart type=$($waitStart.GetType().Name) waitResult type=$($waitResult.GetType().Name)" -ForegroundColor DarkGray
     Write-Host "    [DIAG] WaitForExit вернул $waitResult (t=$([math]::Round(((Get-Date) - $waitStart).TotalSeconds))s)" -ForegroundColor DarkGray
+    [Console]::Out.Flush()
     if (-not $waitResult) {
         Write-Host "[!] gcdump не завершился за 120s, принудительное завершение..." -ForegroundColor Yellow
         try { $proc.Kill() } catch { }

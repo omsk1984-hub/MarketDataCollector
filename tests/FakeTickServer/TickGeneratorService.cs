@@ -184,6 +184,10 @@ public class TickGeneratorService : BackgroundService
 
         _logger.LogInformation("Первый клиент подключился, запуск генерации тиков");
 
+        // Пауза 1 секунда перед началом генерации, чтобы тики не генерировались сразу
+        // после подключения клиента, а stopwatch запускался уже от реального старта.
+        await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+
         // Таймер для логирования статистики раз в 5 секунд
         using var statsTimer = new PeriodicTimer(TimeSpan.FromSeconds(5));
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();

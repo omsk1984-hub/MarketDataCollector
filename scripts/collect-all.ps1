@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Полное профилирование MarketDataCollector.Worker: counters + trace + gcdump.
 
@@ -46,7 +46,9 @@ param(
     [int]$RefreshSeconds = 5,
     [int]$TraceDuration = 60,
     [int]$GcDumpAtPeakSec = 40,
-    [int]$DrainWaitSec = 30
+    [int]$DrainWaitSec = 30,
+    [ValidateSet("gc-verbose", "cpu-sampling", "contention", "contention-cpu")]
+    [string]$TraceProfile = "gc-verbose"
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,6 +81,7 @@ $workerPid = Find-ProcessId -ProcessName $WorkerProcessName
 Write-Host "[*] Параметры запуска:" -ForegroundColor Cyan
 Write-Host "    Worker PID:       $workerPid"
 Write-Host "    Trace duration:   ${TraceDuration}s"
+Write-Host "    Trace profile:    $TraceProfile"
 Write-Host "    GcDump at peak:   ${GcDumpAtPeakSec}s"
 Write-Host "    Drain wait:       ${DrainWaitSec}s"
 Write-Host "    Output dir:       $resolveDir"
@@ -87,7 +90,7 @@ Write-Host ""
 # ============================================================
 # 1. Запуск dotnet-trace в фоне
 # ============================================================
-$traceJob = Start-TraceCollection -ProcessId $workerPid -DurationSec $TraceDuration -OutputFilePath $traceFile
+$traceJob = Start-TraceCollection -ProcessId $workerPid -DurationSec $TraceDuration -OutputFilePath $traceFile -Profile $TraceProfile
 
 # ============================================================
 # 2. Запуск сбора метрик в фоне
@@ -263,6 +266,7 @@ $reportContent = @"
 | Параметр | Значение |
 |----------|----------|
 | Mode | all |
+| Trace Profile | $TraceProfile |
 | Trace Duration | ${TraceDuration}s |
 | GcDump at Peak | ${GcDumpAtPeakSec}s |
 | Drain Wait | ${DrainWaitSec}s |

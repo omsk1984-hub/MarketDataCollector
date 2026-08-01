@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Диспетчер сбора метрик и/или профилирования MarketDataCollector.Worker.
 
@@ -39,6 +39,15 @@
 .PARAMETER DrainWaitSec
     Сколько секунд ждать дренажа перед вторым gcdump (gcdump/all). По умолчанию 30.
 
+.PARAMETER TraceProfile
+    Профиль сбора dotnet-trace для режимов trace/all:
+      gc-verbose     — аллокации/GC (по умолчанию)
+      cpu-sampling   — CPU-стеки (topN)
+      contention     — только contention-события (0x4000), без CPU-стеков
+      contention-cpu — contention + CPU-sampling ОДНОВРЕМЕННО (для локализации
+                       lock contention по стекам; требование Этапа 0 плана
+                       gen2-loh-and-lock-contention)
+
 .PARAMETER Duration
     Максимальная длительность сбора метрик в секундах (counters). 0 = без ограничений.
 
@@ -54,6 +63,9 @@
 
     # Всё сразу
     .\metrics.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50
+
+    # Всё сразу с contention + CPU-sampling (подтверждение источника lock contention)
+    .\metrics.ps1 -Mode all -TraceDuration 90 -GcDumpAtPeakSec 50 -TraceProfile contention-cpu
 
     # Запуск отдельного скрипта напрямую
     .\scripts\collect-counters.ps1 -Duration 120
@@ -73,6 +85,16 @@ param(
     [int]$TraceDuration = 60,
     [int]$GcDumpAtPeakSec = 40,
     [int]$DrainWaitSec = 30,
+
+    # Профиль сбора dotnet-trace для режимов trace/all:
+    #   gc-verbose     — аллокации/GC (по умолчанию)
+    #   cpu-sampling   — CPU-стеки (topN)
+    #   contention     — только contention-события (0x4000), без CPU-стеков
+    #   contention-cpu — contention + CPU-sampling ОДНОВРЕМЕННО (для локализации
+    #                    lock contention по стекам; требование Этапа 0 плана
+    #                    gen2-loh-and-lock-contention)
+    [ValidateSet("gc-verbose", "cpu-sampling", "contention", "contention-cpu")]
+    [string]$TraceProfile = "gc-verbose",
 
     # Устаревшие/совместимость
     [int]$Duration = 0,
@@ -122,7 +144,7 @@ switch ($Mode) {
         & "$scriptsDir\collect-all.ps1" -WorkerProcessName $WorkerProcessName `
             -MetricsUrl $MetricsUrl -OutputDir $OutputDir -RefreshSeconds $RefreshSeconds `
             -TraceDuration $TraceDuration -GcDumpAtPeakSec $GcDumpAtPeakSec `
-            -DrainWaitSec $DrainWaitSec
+            -DrainWaitSec $DrainWaitSec -TraceProfile $TraceProfile
     }
 }
 
