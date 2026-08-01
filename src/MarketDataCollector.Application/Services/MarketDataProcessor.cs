@@ -904,7 +904,7 @@ namespace MarketDataCollector.Application.Services
 
                 _processedRpsCounter.IncrementBatch(inserted);
                 
-                if (totalInserted % 10000 < inserted)
+                if (totalInserted % 20000 < inserted)
                 {
                     LogPeriodicProgress(totalInserted, totalReceived, batchSize, writeIdx, cachedCount, inserted);
                 }

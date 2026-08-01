@@ -9,7 +9,7 @@ namespace MarketDataCollector.Application.Services;
 public partial class MarketDataProcessor
 {
     [LoggerMessage(EventId = 1, Level = LogLevel.Information,
-        Message = "Всего: {TotalInserted}")]// вставлено, {TotalReceived} получено (batch={BatchSize}, filtered={Filtered}, cached={Cached}, вставлено={Inserted})
+        Message = "Всего: {TotalInserted} вставлено, {TotalReceived} получено (batch={BatchSize}, filtered={Filtered}, cached={Cached}, вставлено={Inserted}")]
     partial void LogPeriodicProgress(int totalInserted, int totalReceived, int batchSize, int filtered, int cached, int inserted);
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Warning,
