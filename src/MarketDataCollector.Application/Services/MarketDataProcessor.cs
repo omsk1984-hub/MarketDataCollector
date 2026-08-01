@@ -491,6 +491,10 @@ namespace MarketDataCollector.Application.Services
                     while (channel.Reader.TryRead(out var tick))
                     {
                         batchArray[batchCount++] = tick;
+                        // Фиксируем факт вычитывания из канала здесь (а не после записи в БД),
+                        // чтобы GetEstimatedDroppedCount() = incoming - received - channelCount
+                        // давал точную оценку реальных потерь (DropOldest), а не inflight-тиков.
+                        Interlocked.Increment(ref _totalReceivedCount);
                         if (batchCount >= adaptiveBatchSize)
                         {
                             // Send full batch to Writer
@@ -717,6 +721,8 @@ namespace MarketDataCollector.Application.Services
                     while (channel.Reader.TryRead(out var tick))
                     {
                         batchArray[batchCount++] = tick;
+                        // Точный счётчик вычитывания из канала (см. комментарий в CollectorLoopAsync).
+                        Interlocked.Increment(ref _totalReceivedCount);
                         if (batchCount >= _maxBatchSize)
                         {
                             await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
@@ -891,8 +897,11 @@ namespace MarketDataCollector.Application.Services
 
                 // Thread-safe инкремент: счётчики читаются из фонового мониторинга /
                 // GetProcessedCountAsync параллельно с записью в hot path (всегда безопасно).
-                int totalReceived = Interlocked.Add(ref _totalReceivedCount, batchSize);
                 int totalInserted = Interlocked.Add(ref _processedCount, inserted);
+                // _totalReceivedCount инкрементируется в readTicks (при вычитывании из канала),
+                // здесь только читаем для логирования — чтобы GetEstimatedDroppedCount() не завышал
+                // дропы inflight-тиками (прочитанными, но ещё не записанными в БД).
+                int totalReceived = Volatile.Read(ref _totalReceivedCount);
 
                 MarketDataTelemetry.TicksReceived.Add(
                     batchSize,
@@ -901,6 +910,21 @@ namespace MarketDataCollector.Application.Services
                 MarketDataTelemetry.TicksProcessed.Add(
                     inserted,
                     batchCount > 0 ? GetExchangeTag(batchArray[0].Exchange) : ExchangeUnknownTag);
+
+                // Разделение отсева дедупликации на два уровня внутри одного батча:
+                //   cachedCount               — отсеял in-process DeduplicationCache,
+                //   batchSize - cachedCount - inserted — отсеял ON CONFLICT DO NOTHING в БД.
+                // Инвариант: received - processed == deduplicated.cache + deduplicated.db.
+                int deduplicatedByCache = cachedCount;
+                int deduplicatedByDb = batchSize - cachedCount - inserted;
+
+                MarketDataTelemetry.TicksDeduplicatedByCache.Add(
+                    deduplicatedByCache,
+                    ChannelTag(channelIndex));
+
+                MarketDataTelemetry.TicksDeduplicatedByDb.Add(
+                    deduplicatedByDb,
+                    ChannelTag(channelIndex));
 
                 _processedRpsCounter.IncrementBatch(inserted);
                 

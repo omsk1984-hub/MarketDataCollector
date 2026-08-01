@@ -1,0 +1,1355 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  MarketDataCollector.Domain -> d:\work\MarketDataCollector\src\MarketDataCollector.Domain\bin\Debug\net8.0\MarketDataCollector.Domain.dll
+  MarketDataCollector.Core -> d:\work\MarketDataCollector\src\MarketDataCollector.Core\bin\Debug\net8.0\MarketDataCollector.Core.dll
+  MarketDataCollector.Application -> d:\work\MarketDataCollector\src\MarketDataCollector.Application\bin\Debug\net8.0\MarketDataCollector.Application.dll
+  MarketDataCollector.Infrastructure -> d:\work\MarketDataCollector\src\MarketDataCollector.Infrastructure\bin\Debug\net8.0\MarketDataCollector.Infrastructure.dll
+  MarketDataCollector.Tests -> d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\bin\Debug\net8.0\MarketDataCollector.Tests.dll
+Test run for d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\bin\Debug\net8.0\MarketDataCollector.Tests.dll (.NETCoreApp,Version=v8.0)
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.5+28b46ff510 (64-bit .NET 8.0.5)
+[xUnit.net 00:00:00.09]   Discovering: MarketDataCollector.Tests (method display = ClassAndMethod, method display options = None)
+[xUnit.net 00:00:00.15]   Discovered:  MarketDataCollector.Tests (found 254 test cases)
+[xUnit.net 00:00:00.16]   Starting:    MarketDataCollector.Tests (parallel test collections = on [16 threads], stop on fail = off)
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ExtremeSmallValue_DoesNotOverflow [15 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Count_ReflectsActualSize [18 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_Exactly8Decimals_Unchanged [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ExactMinValue_Unchanged [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_Zero_ReturnsZero [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsFalse_WhenMaxSizeIsZero [1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ExtremeLargeValue_DoesNotOverflow [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_NormalValue_TruncatedTo8Decimals [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ValueBelowMin_ReturnsMinValue [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_MidRangeValue_RoundTripWorks [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ExactMaxValue_Unchanged [< 1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_ValueAboveMax_ReturnsMaxValue [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsTrue_AfterAdd [1 ms]
+  Passed MarketDataCollector.Tests.DomainUtilities.DecimalHelperTests.TruncateForDatabase_NegativeValue_TruncatedCorrectly [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsFalse_ForDifferentTicker [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsFalse_ForDifferentExchange [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsFalse_ForDifferentTimestamp [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.Constructor_NullCounter_Throws [26 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.Flush_WithZeroRemainder_IsNoOp_NoAddToCounter [7 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.ConcurrentAdds_TotalCount_IsCorrect_AfterFlush [10 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.Increment_WithoutFlush_NoValuePublished_ToCounter [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.Constructor_NullTags_Throws [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.MultipleFlush_AccumulatesTotals [1 ms]
+  Passed MarketDataCollector.Tests.Core.Telemetry.CounterBatcherTests.Flush_PublishesAccumulatedValue_AndResetsLocal [9 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_WithLargeAttempt_ReturnsMaxDelay [85 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.ShouldRetry_WithZeroMaxAttempts_ReturnsTrueAlways [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_ExceedsMaxDelay_ReturnsCappedDelay [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_FourthAttempt_ReturnsExponentialDelay [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_ThirdAttempt_ReturnsExponentialDelay [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_FirstAttempt_ReturnsBaseDelay [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleConsumerService_Constructor_WithNullLogger_ThrowsArgumentNullException [92 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.Constructor_WithNullLogger_ThrowsArgumentNullException [99 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryDeadlockTests.BulkInsertIgnoreConflictsAsync_EmptyList_ReturnsZero [100 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryDeadlockTests.BulkInsertIgnoreConflictsAsync_NoDeadlock_InsertsSuccessfully [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.Reset_LogsDebugMessage [21 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.Constructor_WithValidOptions_SetsProperties [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.Constructor_WithNullOptions_ThrowsArgumentNullException [110 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_WithZeroAttempt_ThrowsArgumentOutOfRangeException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_SecondAttempt_ReturnsDoubleDelay [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryDeadlockTests.BulkInsertIgnoreConflictsAsync_WhenDeadlockExceedsRetry_ThrowsPostgresException [4 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.SendAsync_WhenNotOpen_ThrowsInvalidOperationException [125 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.StopAsync_WithoutStart_DoesNotThrow [27 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ReceiveAsync_WhenNotOpen_ThrowsInvalidOperationException [5 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_WithJitter_ReturnsDelayWithinRange [23 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.GetDelay_WithNegativeAttempt_ThrowsArgumentOutOfRangeException [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.ExponentialReconnectStrategyTests.ShouldRetry_WithMaxAttempts_RespectsLimit [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ReceiveAsync_WhenOpen_ReturnsResult [7 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateAllClients_CreatesAllClients [143 ms]
+[xUnit.net 00:00:00.35]     MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_EvictsOldest_WhenMaxSizeReached [FAIL]
+[xUnit.net 00:00:00.35]       Expected cache.Contains("BTCUSDT", "binance", ts1) to be false, but found True.
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.35]            at FluentAssertions.Primitives.BooleanAssertions`1.BeFalse(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.35]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\DeduplicationCacheTests.cs(91,0): at MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_EvictsOldest_WhenMaxSizeReached()
+[xUnit.net 00:00:00.35]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+[xUnit.net 00:00:00.35]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.35]     MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_DoesNotGrowBeyondMaxSize [FAIL]
+[xUnit.net 00:00:00.35]       Expected cache.Count to be 5, but found 10 (difference of 5).
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.36]            at FluentAssertions.Numeric.NumericAssertions`2.Be(T expected, String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.36]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\DeduplicationCacheTests.cs(112,0): at MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_DoesNotGrowBeyondMaxSize()
+[xUnit.net 00:00:00.36]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+[xUnit.net 00:00:00.36]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_EvictsOldest_WhenMaxSizeReached [108 ms]
+  Error Message:
+   Expected cache.Contains("BTCUSDT", "binance", ts1) to be false, but found True.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Primitives.BooleanAssertions`1.BeFalse(String because, Object[] becauseArgs)
+   at MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_EvictsOldest_WhenMaxSizeReached() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\DeduplicationCacheTests.cs:line 91
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.StateChanged_Event_FiresOnConnect [8 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.Constructor_WithNullMonitoringService_ThrowsArgumentNullException [4 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_MissingFields_UsesDefaultValues [148 ms]
+  Failed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_DoesNotGrowBeyondMaxSize [4 ms]
+  Error Message:
+   Expected cache.Count to be 5, but found 10 (difference of 5).
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Numeric.NumericAssertions`2.Be(T expected, String because, Object[] becauseArgs)
+   at MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_DoesNotGrowBeyondMaxSize() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\DeduplicationCacheTests.cs:line 112
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.Constructor_WithNullExchangeOptions_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Add_IgnoresDuplicateKey [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.Constructor_WithNullWsOptions_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Clear_RemovesAllEntries [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.DeduplicationCacheTests.Contains_ReturnsFalse_WhenEmpty [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.DisconnectAsync_WhenOpen_ClosesGracefully [4 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_CreatesClientWithMonitoringIntegration [4 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_CreatesClientWithDefaultState [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_CreatesClientWithCorrectExchangeName [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_CreatesClientWithCorrectSymbol [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_CreatesClientWithCorrectName [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.Constructor_WithValidParameters_CreatesFactory [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ConnectAsync_WhenCancelled_ThrowsOperationCanceledException [5 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.Constructor_WithNullDataProcessor_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues(symbol: "ETHUSDT", priceStr: "2500.75", volumeStr: "1.25", tradeId: "67890") [9 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateBinanceClient_WithValidParameters_CreatesClient [18 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues(symbol: "BTCUSDT", priceStr: "1000.50", volumeStr: "0.5", tradeId: "12345") [18 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.GetWebSocketUri_ReturnsConstructorUri [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Factories.WebSocketClientFactoryTests.CreateAllClients_CreatesBinanceClients [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.DisconnectAsync_WhenCloseThrows_LogsWarning [22 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_MissingTicker_DoesNotCallDataProcessor [5 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ConnectAsync_WhenAlreadyConnected_DoesNothing [5 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.IsConnected_WhenClosed_ReturnsFalse [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.DisconnectAsync_WhenClosed_DoesNothing [3 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_InvalidJson_CallsOnErrorOccurred [6 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.Constructor_SetsPropertiesCorrectly [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.OnMessageReceived_RaisesMessageReceivedEvent [191 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ConnectAsync_ThreadSafety_ConcurrentCallsDoNotDeadlock [4 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.ProcessMessageAsync_NonTradeMessage_DoesNothing [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.DisposeCurrentSocket_DisposesOldSocketAndCreatesNewOne [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.Constructor_WithNullWebSocket_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.IsConnected_WhenOpen_ReturnsTrue [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.ConnectAsync_WhenNotConnected_CreatesNewWebSocketAndConnects [2 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.SubscribeToTickerAsync_SendsLowercaseSymbol [7 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketConnectionManagerTests.SendAsync_WhenOpen_SendsMessage [4 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.Constructor_WithNullDataProcessor_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Clients.BinanceWebSocketClientTests.SubscribeToTickerAsync_SendsCorrectJsonMessage [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StopReceiveLoopAsync_StopsRunningLoop [228 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_ConnectionLost_BreaksLoop [6 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_ProcessMessageThrows_CallsOnError [10 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StopReceiveLoopAsync_Completes_WhenNoLoopRunning [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentExchanges_CreatesSeparateCandles [134 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_SavesConnectionLogToDatabase [318 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.GetTotalTicksProcessed_ReturnsZeroInitially [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.ResetCounters_ResetsTickCounters [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_WhenDbFails_DoesNotThrow [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_UpdatesStatusToConnected [1 ms]
+[testcontainers.org 00:00:00.18] Connected to Docker:
+  Host: npipe://./pipe/docker_engine
+  Server Version: 29.3.1
+  Kernel Version: 6.6.87.2-microsoft-standard-WSL2
+  API Version: 1.54
+  Operating System: Docker Desktop
+  Total Memory: 7.61 GB
+  Labels: 
+    com.docker.desktop.address=npipe://\\.\pipe\docker_cli
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.Constructor_WithNullTimeService_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentIntervals_CreatesCorrectBuckets(intervalSeconds: 120) [128 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.StartAsync_StartsBackgroundRecoveryLoop [222 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.IsConnected_ReturnsConnectionManagerIsConnected [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_WithNullLogger_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_WithNullMessageReceiver_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.SendAsync_DelegatesToConnectionManager [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_WithNullOptions_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.ConnectAsync_WhenNotConnected_CallsConnectionManagerAndStartsReceiveLoop [4 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.ConnectAsync_WhenAlreadyConnected_DoesNothing [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_WithNullReconnectStrategy_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.OnConnected_RaisesConnectedEvent [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.ConnectAsync_WithSubscriptionManager_CallsSubscribeWithRetryAsync [4 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_WithNullConnectionManager_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.SetSubscriptionManager_SetsManagerCorrectly [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentIntervals_CreatesCorrectBuckets(intervalSeconds: 30) [105 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_Error_SavesConnectionLogToDatabase [207 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.IncrementTickCounter_IncrementsTotalCount [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_LogsConnectedEvent [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.IncrementTickCounter_DifferentExchangesHaveSeparateCounters [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.GetTickCount_WhenNotSet_ReturnsZero [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.StopMonitoring_StopsStatusTimer [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.Constructor_WithNullScopeFactory_ThrowsArgumentNullException [17 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.StopMonitoring_CanBeCalledMultipleTimes [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentIntervals_CreatesCorrectBuckets(intervalSeconds: 60) [105 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.IncrementTickCounter_IncrementsCounterMultipleTimes [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.SingleConsumerMode_ProcessesTicksSequentially [632 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StopProcessingAsync_LogsProcessedCount [11 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_WithDifferentValues_WritesMultipleTicks [4 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.StopAsync_StopsBackgroundRecoveryLoop [207 ms]
+[testcontainers.org 00:00:00.48] Docker container 458b18a99028 created
+[testcontainers.org 00:00:00.57] Start Docker container 458b18a99028
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.OnErrorOccurred_RaisesErrorOccurredEvent [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.DisconnectAsync_WhenConnected_ClosesConnection [5 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.DisconnectAsync_WhenNotConnected_DoesNothing [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Constructor_SetsPropertiesCorrectly [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.Dispose_DisposesResources [20 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.SetSubscriptionManager_WithNull_ThrowsArgumentNullException [1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.OnDisconnected_RaisesDisconnectedEvent [3 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.BaseWebSocketClientTests.DisposeAsync_DisposesResources [7 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_MultipleTicks_UpdatesCorrectOHLCV [217 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_ErrorWithoutMessage_SavesDefaultErrorLog [218 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.Constructor_CreatesService [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_SingleTick_CreatesCandle [108 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByTickerAsync_ReturnsTicksForTicker [944 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByTickerAsync_WithFromDate_ReturnsTicksFromThatDate [45 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.ExistsAsync_WithDifferentTicker_ReturnsFalse [40 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_Disconnected_SavesConnectionLogToDatabase [214 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentTickers_CreatesSeparateCandles [110 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.Constructor_WithNullOptions_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_LogsDisconnectedEvent [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.IncrementTickCounter_IncrementsCounter [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.GetConnectionStatus_WhenNotSet_ReturnsDisconnected [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.Constructor_WithNullLogger_ThrowsArgumentNullException [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_UpdatesStatusToError [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_UpdatesStatusToDisconnected [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.StartMonitoring_CanBeCalledMultipleTimes [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.ResetCounters_LogsResetEvent [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.StartMonitoring_StartsStatusTimer [4 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_LogsErrorMessage [1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.Remove_RemovesTickFromDatabase [34 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_LogsErrorEvent [3 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.ExistsAsync_WithDifferentExchange_ReturnsFalse [5 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetCountAsync_ReturnsTotalCount [10 ms]
+[testcontainers.org 00:00:00.90] Wait for Docker container 458b18a99028 to complete readiness checks
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetCountAsync_WithDateRange_ReturnsCountInRange [6 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.FindAsync_WithPredicate_ReturnsMatchingTicks [11 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.AddRangeAsync_AddsMultipleTicksToDatabase [21 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByTickerAsync_ReturnsTicksOrderedByTimestamp [2 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.Update_UpdatesTickInDatabase [3 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByExchangeAsync_WithDateRange_ReturnsTicksInRange [12 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.ExistsAsync_WhenTickExists_ReturnsTrue [1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.AddAsync_AddsTickToDatabase [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_DifferentMinutes_CreatesSeparateCandles [107 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.ExistsAsync_WhenTickDoesNotExist_ReturnsFalse [2 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByIdAsync_WhenNotExists_ReturnsNull [1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByExchangeAsync_ReturnsTicksForExchange [9 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByTickerAsync_WithToDate_ReturnsTicksUntilThatDate [8 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetAllAsync_ReturnsAllTicks [1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByIdAsync_WhenExists_ReturnsTick [3 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Repositories.RawTickRepositoryTests.GetByTickerAsync_WithDateRange_ReturnsTicksInRange [8 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_WithTicksAtIntervalBoundary_RoundsDownCorrectly [106 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MonitoringServiceTests.UpdateConnectionStatus_WhenDbSaveFails_LogsError [219 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_SingleTickOnEdge_FlushesCompletedCandleOnly [108 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.Constructor_WithValidParameters_CreatesAggregator [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_WithZeroVolume_DoesNotThrow [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.StartAndStop_DoesNotThrow [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.Constructor_WithNullTimeService_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.Constructor_WithNullScopeFactory_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.StartAsync_StartsProcessing [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.TickAggregatorTests.OnTickAsync_ManyTicksInSameBucket_UpdatesVolumeCorrectly [102 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.TickAggregator_WithKafkaDisabled_WritesToDatabase [1 s]
+[xUnit.net 00:00:01.87]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchesAsync_ConsumerError_LoggedAndContinues [FAIL]
+[xUnit.net 00:00:01.87]       Moq.MockException : Каждая ошибка батча должна быть залогирована
+[xUnit.net 00:00:01.87]       Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:01.87]       
+[xUnit.net 00:00:01.87]       Performed invocations:
+[xUnit.net 00:00:01.87]       
+[xUnit.net 00:00:01.87]          Mock<ILogger<MarketDataProcessor>:4> (x):
+[xUnit.net 00:00:01.87]       
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int>>(LogLevel.Information, LogSingleConsumerStart, Session=4d8786bf-33e4-440d-bf09-4ac467f41d22: Обработчик рыночных данных запущен: Single Consumer mode, batchSize=5, ChannelCapacity=100, null, Func<LoggerMessage.LogValues<Guid, int, int>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50000.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50001.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50002.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50003.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50004.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50005.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50006.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50007.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50008.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50009.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50010.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50011.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50012.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50013.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50014.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50015.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50016.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50017.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50018.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50019.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:01.87]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:01.87]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.87]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:01.88]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:01.88]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:01.88]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:01.88]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+[xUnit.net 00:00:01.88]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:01.88]       
+[xUnit.net 00:00:01.88]       Stack Trace:
+[xUnit.net 00:00:01.88]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:01.88]         /_/src/Moq/Mock`1.cs(979,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage)
+[xUnit.net 00:00:01.88]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(1416,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchesAsync_ConsumerError_LoggedAndContinues()
+[xUnit.net 00:00:01.88]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:01.88]       Output:
+[xUnit.net 00:00:01.88]         === Running: ProcessBatchesAsync_ConsumerError_LoggedAndContinues ===
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleProducer_ProduceAsync_CallsUnderlyingProducerWithCorrectTopic [10 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleProducer_ProduceAsync_ReturnsJsonWithAllRequiredFields [6 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleProducer_Constructor_WithNullProducer_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleProducer_Constructor_WithNullOptions_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.CandleMessage_Serialization_MatchesConsumerDeserialization [4 ms]
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchesAsync_ConsumerError_LoggedAndContinues [1 s]
+  Error Message:
+   Moq.MockException : Каждая ошибка батча должна быть залогирована
+Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:4> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int>>(LogLevel.Information, LogSingleConsumerStart, Session=4d8786bf-33e4-440d-bf09-4ac467f41d22: Обработчик рыночных данных запущен: Single Consumer mode, batchSize=5, ChannelCapacity=100, null, Func<LoggerMessage.LogValues<Guid, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50000.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50001.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50002.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50003.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50004.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50005.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50006.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50007.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50008.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50009.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50010.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50011.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50012.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50013.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50014.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50015.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50016.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50017.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50018.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50019.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 5 тиков (channel=0), System.InvalidOperationException: Database connection lost
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage) in /_/src/Moq/Mock`1.cs:line 979
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchesAsync_ConsumerError_LoggedAndContinues() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 1416
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchesAsync_ConsumerError_LoggedAndContinues ===
+
+
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_SavesNewTicksToRepository [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.SingleConsumerMode_BatchSizeRespected [3 ms]
+[xUnit.net 00:00:02.35]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_DbException_ContinuesProcessing [FAIL]
+[xUnit.net 00:00:02.35]       Moq.MockException : Первые два батча должны залогировать ошибку
+[xUnit.net 00:00:02.35]       Expected invocation on the mock exactly 2 times, but was 0 times: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:02.35]       
+[xUnit.net 00:00:02.35]       Performed invocations:
+[xUnit.net 00:00:02.35]       
+[xUnit.net 00:00:02.35]          Mock<ILogger<MarketDataProcessor>:11> (x):
+[xUnit.net 00:00:02.35]       
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=3, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50000.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50001.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50002.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50003.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50004.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50005.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50006.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50007.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50008.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Остановка обработчика. Остаток в каналах: 9, всего входящих: 9, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 3 тиков (channel=2), System.InvalidOperationException: DB connection lost
+[xUnit.net 00:00:02.35]          at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass29_0.<ProcessBatchAsync_DbException_ContinuesProcessing>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 648
+[xUnit.net 00:00:02.35]          at InvokeStub_Func`4.Invoke(Object, Span`1)
+[xUnit.net 00:00:02.35]          at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:02.35]       --- End of stack trace from previous location ---
+[xUnit.net 00:00:02.35]          at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+[xUnit.net 00:00:02.35]          at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+[xUnit.net 00:00:02.35]          at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+[xUnit.net 00:00:02.35]          at Moq.MethodCall.ExecuteCore(Invocation invocation) in /_/src/Moq/MethodCall.cs:line 230
+[xUnit.net 00:00:02.35]          at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+[xUnit.net 00:00:02.35]          at Moq.FindAndExecuteMatchingSetup.Handle(Invocation invocation, Mock mock) in /_/src/Moq/Interception/InterceptionAspects.cs:line 263
+[xUnit.net 00:00:02.35]          at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+[xUnit.net 00:00:02.35]          at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+[xUnit.net 00:00:02.35]          at Castle.DynamicProxy.AbstractInvocation.Proceed()
+[xUnit.net 00:00:02.35]          at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.35]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:02.35]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 3 тиков (channel=2), System.InvalidOperationException: DB connection lost
+[xUnit.net 00:00:02.35]          at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass29_0.<ProcessBatchAsync_DbException_ContinuesProcessing>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 648
+[xUnit.net 00:00:02.35]          at InvokeStub_Func`4.Invoke(Object, Span`1)
+[xUnit.net 00:00:02.35]          at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:02.35]       --- End of stack trace from previous location ---
+[xUnit.net 00:00:02.35]          at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+[xUnit.net 00:00:02.35]          at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+[xUnit.net 00:00:02.35]          at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+[xUnit.net 00:00:02.35]          at Moq.MethodCall.ExecuteCore(Invocation invocation) in /_/src/Moq/MethodCall.cs:line 230
+[xUnit.net 00:00:02.35]          at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+[xUnit.net 00:00:02.35]          at Moq.FindAndExecuteMatchingSetup.Handle(Invocation invocation, Mock mock) in /_/src/Moq/Interception/InterceptionAspects.cs:line 263
+[xUnit.net 00:00:02.35]          at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+[xUnit.net 00:00:02.35]          at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+[xUnit.net 00:00:02.35]          at Castle.DynamicProxy.AbstractInvocation.Proceed()
+[xUnit.net 00:00:02.35]          at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.35]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:02.35]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:02.35]             ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Обработчик рыночных данных остановлен. Входящих: 9, получено из канала: 9, вставлено в БД: 3, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+[xUnit.net 00:00:02.35]       
+[xUnit.net 00:00:02.35]       Stack Trace:
+[xUnit.net 00:00:02.35]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:02.35]         /_/src/Moq/Mock`1.cs(963,0): at Moq.Mock`1.Verify(Expression`1 expression, Times times, String failMessage)
+[xUnit.net 00:00:02.35]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(678,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_DbException_ContinuesProcessing()
+[xUnit.net 00:00:02.35]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:02.35]       Output:
+[xUnit.net 00:00:02.35]         === Running: ProcessBatchAsync_DbException_ContinuesProcessing ===
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_SingleReader_ProcessesBatchesSequentially [451 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StartProcessingAsync_LogsBatchSize [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchesAsync_NormalProcessing_WithNewCatchBlock [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.Constructor_WithUseSingleConsumer_CreatesProcessor [< 1 ms]
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_DbException_ContinuesProcessing [11 ms]
+  Error Message:
+   Moq.MockException : Первые два батча должны залогировать ошибку
+Expected invocation on the mock exactly 2 times, but was 0 times: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:11> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=3, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50000.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50001.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50002.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50003.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50004.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50005.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50006.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50007.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 50008.00 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Остановка обработчика. Остаток в каналах: 9, всего входящих: 9, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 3 тиков (channel=2), System.InvalidOperationException: DB connection lost
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass29_0.<ProcessBatchAsync_DbException_ContinuesProcessing>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 648
+   at InvokeStub_Func`4.Invoke(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+--- End of stack trace from previous location ---
+   at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+   at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+   at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+   at Moq.MethodCall.ExecuteCore(Invocation invocation) in /_/src/Moq/MethodCall.cs:line 230
+   at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+   at Moq.FindAndExecuteMatchingSetup.Handle(Invocation invocation, Mock mock) in /_/src/Moq/Interception/InterceptionAspects.cs:line 263
+   at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+   at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+   at Castle.DynamicProxy.AbstractInvocation.Proceed()
+   at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 3 тиков (channel=2), System.InvalidOperationException: DB connection lost
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass29_0.<ProcessBatchAsync_DbException_ContinuesProcessing>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 648
+   at InvokeStub_Func`4.Invoke(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+--- End of stack trace from previous location ---
+   at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+   at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+   at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+   at Moq.MethodCall.ExecuteCore(Invocation invocation) in /_/src/Moq/MethodCall.cs:line 230
+   at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+   at Moq.FindAndExecuteMatchingSetup.Handle(Invocation invocation, Mock mock) in /_/src/Moq/Interception/InterceptionAspects.cs:line 263
+   at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+   at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+   at Castle.DynamicProxy.AbstractInvocation.Proceed()
+   at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=575e993e-ab62-4a7e-952c-37b6ef649848: Обработчик рыночных данных остановлен. Входящих: 9, получено из канала: 9, вставлено в БД: 3, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Times times, String failMessage) in /_/src/Moq/Mock`1.cs:line 963
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_DbException_ContinuesProcessing() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 678
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchAsync_DbException_ContinuesProcessing ===
+
+
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_AllRetriesExhausted_Throws [2 s]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.Constructor_WithNullSubscribeAction_ThrowsArgumentNullException [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.Constructor_WithNullConnectionManager_ThrowsArgumentNullException [1 ms]
+[testcontainers.org 00:00:01.96] Docker container 458b18a99028 ready
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StartProcessingAsync_MultipleConsumers_LogsCorrectMode [5 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.Constructor_WithNullLogger_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_Success_NoRetries [5 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StartProcessingAsync_StartsBackgroundTask [6 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_ReceiveThrowsException_CallsOnErrorAndContinues [2 s]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_ReceivesCompleteMessage_CallsProcessMessage [3 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_ReceiveCloseMessage_BreaksLoop [3 ms]
+[testcontainers.org 00:00:02.07] Docker container b8e72083b76a created
+[testcontainers.org 00:00:02.09] Start Docker container b8e72083b76a
+[testcontainers.org 00:00:02.41] Add file to tar archive: Content length: 390 byte(s), Target file: "/testcontainers.sh", UID: 0, GID: 0, Mode: 0755
+[testcontainers.org 00:00:02.42] Copy tar archive to container: Content length: 390 byte(s), Docker container: b8e72083b76a
+[testcontainers.org 00:00:02.43] Wait for Docker container b8e72083b76a to complete readiness checks
+[xUnit.net 00:00:03.06]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSavedCount [FAIL]
+[xUnit.net 00:00:03.06]       Moq.MockException : 
+[xUnit.net 00:00:03.06]       Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Батч сохранён")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:03.06]       
+[xUnit.net 00:00:03.06]       Performed invocations:
+[xUnit.net 00:00:03.06]       
+[xUnit.net 00:00:03.06]          Mock<ILogger<MarketDataProcessor>:17> (x):
+[xUnit.net 00:00:03.06]       
+[xUnit.net 00:00:03.06]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.06]             ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+[xUnit.net 00:00:03.06]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:03.06]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:03.06]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:03.06]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:03.06]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.06]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Остановка обработчика. Остаток в каналах: 2, всего входящих: 2, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+[xUnit.net 00:00:03.06]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.06]             ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Обработчик рыночных данных остановлен. Входящих: 2, получено из канала: 2, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+[xUnit.net 00:00:03.06]       
+[xUnit.net 00:00:03.06]       Stack Trace:
+[xUnit.net 00:00:03.06]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:03.06]         /_/src/Moq/Mock`1.cs(920,0): at Moq.Mock`1.Verify(Expression`1 expression, Times times)
+[xUnit.net 00:00:03.06]         /_/src/Moq/Mock`1.cs(934,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times)
+[xUnit.net 00:00:03.06]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(496,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSavedCount()
+[xUnit.net 00:00:03.06]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:03.06]       Output:
+[xUnit.net 00:00:03.06]         === Running: ProcessBatchAsync_LogsSavedCount ===
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.Constructor_WithValidDependencies_SetsProperties [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_CancellationTokenRequested_StopsLoop [2 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.WebSocketMessageReceiverTests.StartReceiveLoopAsync_MessageExceedsMaxSize_SkipsMessage [3 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.SingleConsumerMode_WithAggregator_ProcessesTicksSequentially [170 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WithDedupCache_SkipsDuplicateTicks [513 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_LogsTickerDetails [7 ms]
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSavedCount [9 ms]
+  Error Message:
+   Moq.MockException : 
+Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Батч сохранён")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:17> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Остановка обработчика. Остаток в каналах: 2, всего входящих: 2, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=bf2fd24a-5f31-4774-a61f-799c2b8baa1d: Обработчик рыночных данных остановлен. Входящих: 2, получено из канала: 2, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Times times) in /_/src/Moq/Mock`1.cs:line 920
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times) in /_/src/Moq/Mock`1.cs:line 934
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSavedCount() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 496
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchAsync_LogsSavedCount ===
+
+
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_WithFlushIntervalZero_DoesNotStartTimer [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_SkipsDuplicateTicks [3 ms]
+[xUnit.net 00:00:03.08]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSkippedDuplicates [FAIL]
+[xUnit.net 00:00:03.08]       Moq.MockException : 
+[xUnit.net 00:00:03.08]       Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("дубликатов")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:03.08]       
+[xUnit.net 00:00:03.08]       Performed invocations:
+[xUnit.net 00:00:03.08]       
+[xUnit.net 00:00:03.08]          Mock<ILogger<MarketDataProcessor>:22> (x):
+[xUnit.net 00:00:03.08]       
+[xUnit.net 00:00:03.08]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.08]             ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+[xUnit.net 00:00:03.08]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:03.08]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:03.08]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:03.08]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:03.08]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.08]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Остановка обработчика. Остаток в каналах: 2, всего входящих: 2, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+[xUnit.net 00:00:03.08]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:03.08]             ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Обработчик рыночных данных остановлен. Входящих: 2, получено из канала: 2, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+[xUnit.net 00:00:03.08]       
+[xUnit.net 00:00:03.08]       Stack Trace:
+[xUnit.net 00:00:03.08]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:03.08]         /_/src/Moq/Mock`1.cs(920,0): at Moq.Mock`1.Verify(Expression`1 expression, Times times)
+[xUnit.net 00:00:03.08]         /_/src/Moq/Mock`1.cs(934,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times)
+[xUnit.net 00:00:03.08]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(409,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSkippedDuplicates()
+[xUnit.net 00:00:03.08]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:03.08]       Output:
+[xUnit.net 00:00:03.08]         === Running: ProcessBatchAsync_LogsSkippedDuplicates ===
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_WritesToChannel [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WithDedupCacheDisabled_ProcessesAllTicks [2 ms]
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSkippedDuplicates [5 ms]
+  Error Message:
+   Moq.MockException : 
+Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("дубликатов")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:22> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Остановка обработчика. Остаток в каналах: 2, всего входящих: 2, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=5ac42053-6cfb-4bc4-a50d-1de2a5e8295a: Обработчик рыночных данных остановлен. Входящих: 2, получено из канала: 2, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Times times) in /_/src/Moq/Mock`1.cs:line 920
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times) in /_/src/Moq/Mock`1.cs:line 934
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsSkippedDuplicates() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 409
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchAsync_LogsSkippedDuplicates ===
+
+
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_DoesNotBlockWhenAggregatorChannelIsFull [28 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_WithFlushIntervalPositive_LogsCorrectMode [2 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StopProcessingAsync_StopsProcessing [6 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.Constructor_DefaultOptions_ChannelSingleReaderFalse [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.FullCycle_ProduceThroughTickAggregator_ConsumerCanDeserializeAndStore [1 s]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleProducer_ProduceAsync_WithCancellation_ThrowsOperationCanceled [4 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_RetryDelayIsExponential [2 s]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_CancellationToken_CancelsOperation [3 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_SymbolPassedToAction [< 1 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.TickAggregator_WithKafkaEnabled_PublishesCandlesToKafka [1 s]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleConsumerService_Constructor_WithNullOptions_ThrowsArgumentNullException [3 ms]
+  Passed MarketDataCollector.Tests.Infrastructure.Kafka.KafkaIntegrationTests.KafkaCandleConsumerService_Constructor_WithNullScopeFactory_ThrowsArgumentNullException [< 1 ms]
+  Passed MarketDataCollector.Tests.Core.Clients.SubscriptionManagerTests.SubscribeWithRetryAsync_ThrowsException_RetriesUpToMax [2 s]
+[testcontainers.org 00:00:07.73] Docker container b8e72083b76a ready
+[xUnit.net 00:00:08.24]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_MultipleTimerTicks_OnlyOneFlush [FAIL]
+[xUnit.net 00:00:08.24]       Expected callCount to be greater than or equal to 2 because должно быть минимум 2 сброса (3 + 2), but found 1.
+[xUnit.net 00:00:08.24]       Stack Trace:
+[xUnit.net 00:00:08.24]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:08.24]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:08.24]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:08.24]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:08.24]            at FluentAssertions.Numeric.NumericAssertions`2.BeGreaterThanOrEqualTo(T expected, String because, Object[] becauseArgs)
+[xUnit.net 00:00:08.24]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(1370,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_MultipleTimerTicks_OnlyOneFlush()
+[xUnit.net 00:00:08.24]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:08.24]       Output:
+[xUnit.net 00:00:08.24]         === Running: FlushTimer_MultipleTimerTicks_OnlyOneFlush ===
+[xUnit.net 00:00:08.24]         BulkInsertFastAsync call #1 with 5 ticks
+[xUnit.net 00:00:08.24]         Processed count: 5, BulkCopy calls: 1
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_MultipleTimerTicks_OnlyOneFlush [5 s]
+  Error Message:
+   Expected callCount to be greater than or equal to 2 because должно быть минимум 2 сброса (3 + 2), but found 1.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Numeric.NumericAssertions`2.BeGreaterThanOrEqualTo(T expected, String because, Object[] becauseArgs)
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.FlushTimer_MultipleTimerTicks_OnlyOneFlush() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 1370
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: FlushTimer_MultipleTimerTicks_OnlyOneFlush ===
+ BulkInsertFastAsync call #1 with 5 ticks
+ Processed count: 5, BulkCopy calls: 1
+
+
+[TestSetup] Topic 'aggregated-data' created with 3 partitions
+[xUnit.net 00:00:08.68]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues [FAIL]
+[xUnit.net 00:00:08.68]       Moq.MockException : 
+[xUnit.net 00:00:08.68]       Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:08.68]       
+[xUnit.net 00:00:08.68]       Performed invocations:
+[xUnit.net 00:00:08.68]       
+[xUnit.net 00:00:08.68]          Mock<ILogger<MarketDataProcessor>:36> (x):
+[xUnit.net 00:00:08.68]       
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=53807e93-32d0-43de-b786-e385f38bffb7: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: ETHUSDT 2000.00 1.0 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: ETHUSDT 2001.00 0.8 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=53807e93-32d0-43de-b786-e385f38bffb7: Остановка обработчика. Остаток в каналах: 4, всего входящих: 4, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Error)
+[xUnit.net 00:00:08.68]             ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 2 тиков (channel=2), System.InvalidOperationException: Database error
+[xUnit.net 00:00:08.68]          at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass25_0.<ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 431
+[xUnit.net 00:00:08.68]          at InvokeStub_Func`4.Invoke(Object, Span`1)
+[xUnit.net 00:00:08.68]          at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:08.68]       --- End of stack trace from previous location ---
+[xUnit.net 00:00:08.68]          at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+[xUnit.net 00:00:08.68]          at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+[xUnit.net 00:00:08.68]          at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+[xUnit.net 00:00:08.68]          at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+[xUnit.net 00:00:08.68]          at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+[xUnit.net 00:00:08.68]          at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+[xUnit.net 00:00:08.68]          at Castle.DynamicProxy.AbstractInvocation.Proceed()
+[xUnit.net 00:00:08.68]          at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+[xUnit.net 00:00:08.68]          at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+[xUnit.net 00:00:08.68]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.68]             ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=53807e93-32d0-43de-b786-e385f38bffb7: Обработчик рыночных данных остановлен. Входящих: 4, получено из канала: 4, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+[xUnit.net 00:00:08.68]       
+[xUnit.net 00:00:08.68]       Stack Trace:
+[xUnit.net 00:00:08.68]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:08.68]         /_/src/Moq/Mock`1.cs(920,0): at Moq.Mock`1.Verify(Expression`1 expression, Times times)
+[xUnit.net 00:00:08.68]         /_/src/Moq/Mock`1.cs(934,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times)
+[xUnit.net 00:00:08.68]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(455,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues()
+[xUnit.net 00:00:08.68]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:08.68]       Output:
+[xUnit.net 00:00:08.68]         === Running: ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues ===
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_DoesNotBlockWhenAggregatorIsSlow [36 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WithAggregator_SingleReaderStillSequential [189 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_LogsDebugMessage [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.Constructor_WithZeroBatchSize_CreatesProcessor [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessTickAsync_DoesNotBlockWhenMainChannelIsFull [202 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.StartProcessingAsync_SingleConsumer_LogsCorrectMode [1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.GetProcessedCountAsync_ReturnsZeroInitially [< 1 ms]
+  Passed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.Constructor_WithValidParameters_CreatesProcessor [< 1 ms]
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues [4 ms]
+  Error Message:
+   Moq.MockException : 
+Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Error, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Критическая ошибка")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:36> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=53807e93-32d0-43de-b786-e385f38bffb7: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=2, ChannelCapacity=100, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.00 0.3 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: ETHUSDT 2000.00 1.0 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: ETHUSDT 2001.00 0.8 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=53807e93-32d0-43de-b786-e385f38bffb7: Остановка обработчика. Остаток в каналах: 4, всего входящих: 4, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Error)
+      ILogger.Log<LoggerMessage.LogValues<int, int>>(LogLevel.Error, LogUnexpectedBatchError, Неожиданная ошибка при обработке батча из 2 тиков (channel=2), System.InvalidOperationException: Database error
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.<>c__DisplayClass25_0.<ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues>b__1(IReadOnlyList`1 ticks, ITimeService ts, CancellationToken ct) in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 431
+   at InvokeStub_Func`4.Invoke(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+--- End of stack trace from previous location ---
+   at Moq.Extensions.InvokePreserveStack(Delegate del, IReadOnlyList`1 args) in /_/src/Moq/Extensions.cs:line 184
+   at Moq.MethodCall.<>c__DisplayClass23_0.<SetReturnComputedValueBehavior>b__2(IInvocation invocation) in /_/src/Moq/MethodCall.cs:line 389
+   at Moq.Behaviors.ReturnComputedValue.Execute(Invocation invocation) in /_/src/Moq/Behaviors/ReturnComputedValue.cs:line 64
+   at Moq.Setup.Execute(Invocation invocation) in /_/src/Moq/Setup.cs:line 144
+   at Moq.Mock.Moq.IInterceptor.Intercept(Invocation invocation) in /_/src/Moq/Interception/Mock.cs:line 17
+   at Moq.CastleProxyFactory.Interceptor.Intercept(IInvocation underlying) in /_/src/Moq/Interception/CastleProxyFactory.cs:line 218
+   at Castle.DynamicProxy.AbstractInvocation.Proceed()
+   at Castle.Proxies.IRawTickRepositoryProxy.BulkInsertFastAsync(IReadOnlyList`1 ticks, ITimeService timeService, CancellationToken cancellationToken)
+   at MarketDataCollector.Application.Services.MarketDataProcessor.ProcessBatchAsync(TickData[] batchArray, Int32 batchCount, FilteredTickSlice filteredSlice, DeduplicationCache dedupCache, CancellationToken cancellationToken, Int32 channelIndex) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 887, Func<LoggerMessage.LogValues<int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=53807e93-32d0-43de-b786-e385f38bffb7: Обработчик рыночных данных остановлен. Входящих: 4, получено из канала: 4, вставлено в БД: 2, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Times times) in /_/src/Moq/Mock`1.cs:line 920
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times) in /_/src/Moq/Mock`1.cs:line 934
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 455
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues ===
+
+
+[xUnit.net 00:00:08.69]     MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsTotalProcessedEvery100 [FAIL]
+[xUnit.net 00:00:08.69]       Moq.MockException : 
+[xUnit.net 00:00:08.69]       Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Батч сохранён")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+[xUnit.net 00:00:08.69]       
+[xUnit.net 00:00:08.69]       Performed invocations:
+[xUnit.net 00:00:08.69]       
+[xUnit.net 00:00:08.69]          Mock<ILogger<MarketDataProcessor>:37> (x):
+[xUnit.net 00:00:08.69]       
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=1, ChannelCapacity=200, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1002.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1003.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1004.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1005.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1006.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1007.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1008.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1009.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1010.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1011.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1012.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1013.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1014.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1015.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1016.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1017.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1018.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1019.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1020.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1021.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1022.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1023.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1024.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1025.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1026.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1027.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1028.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1029.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1030.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1031.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1032.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1033.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1034.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1035.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1036.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1037.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1038.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1039.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1040.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1041.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1042.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1043.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1044.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1045.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1046.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1047.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1048.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1049.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1050.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1051.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1052.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1053.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1054.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1055.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1056.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1057.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1058.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1059.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1060.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1061.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1062.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1063.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1064.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1065.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1066.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1067.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1068.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1069.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1070.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1071.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1072.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1073.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1074.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1075.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1076.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1077.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1078.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1079.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1080.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1081.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1082.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1083.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1084.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1085.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1086.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1087.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1088.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1089.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1090.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1091.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1092.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1093.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1094.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1095.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1096.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1097.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1098.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Debug)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1099.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.69]             ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Остановка обработчика. Остаток в каналах: 100, всего входящих: 100, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+[xUnit.net 00:00:08.69]             ILogger.IsEnabled(LogLevel.Information)
+[xUnit.net 00:00:08.69]             ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Обработчик рыночных данных остановлен. Входящих: 100, получено из канала: 100, вставлено в БД: 100, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+[xUnit.net 00:00:08.69]       
+[xUnit.net 00:00:08.69]       Stack Trace:
+[xUnit.net 00:00:08.69]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:08.69]         /_/src/Moq/Mock`1.cs(920,0): at Moq.Mock`1.Verify(Expression`1 expression, Times times)
+[xUnit.net 00:00:08.69]         /_/src/Moq/Mock`1.cs(934,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times)
+[xUnit.net 00:00:08.69]         d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs(724,0): at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsTotalProcessedEvery100()
+[xUnit.net 00:00:08.69]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:08.69]       Output:
+[xUnit.net 00:00:08.69]         === Running: ProcessBatchAsync_LogsTotalProcessedEvery100 ===
+[TestSetup] Kafka container ready at plaintext://127.0.0.1:56464/
+[TestSetup] Topic: aggregated-data
+[TestSetup] GroupId: marketdata-aggregated-group
+  Failed MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsTotalProcessedEvery100 [11 ms]
+  Error Message:
+   Moq.MockException : 
+Expected invocation on the mock at least once, but was never performed: x => x.Log<It.IsAnyType>(LogLevel.Debug, It.IsAny<EventId>(), It.Is<It.IsAnyType>((o, t) => o.ToString().Contains("Батч сохранён")), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>())
+
+Performed invocations:
+
+   Mock<ILogger<MarketDataProcessor>:37> (x):
+
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, string, int, int>>(LogLevel.Information, LogMultiConsumerStart, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Обработчик рыночных данных запущен: 4 consumer'ов (auto), batchSize=1, ChannelCapacity=200, routing=roundRobin, null, Func<LoggerMessage.LogValues<Guid, int, string, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1000.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1001.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1002.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1003.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1004.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1005.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1006.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1007.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1008.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1009.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1010.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1011.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1012.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1013.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1014.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1015.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1016.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1017.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1018.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1019.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1020.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1021.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1022.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1023.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1024.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1025.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1026.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1027.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1028.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1029.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1030.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1031.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1032.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1033.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1034.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1035.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1036.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1037.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1038.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1039.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1040.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1041.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1042.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1043.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1044.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1045.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1046.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1047.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1048.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1049.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1050.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1051.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1052.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1053.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1054.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1055.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1056.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1057.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1058.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1059.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1060.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1061.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1062.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1063.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1064.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1065.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1066.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1067.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1068.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1069.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1070.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1071.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1072.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1073.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1074.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1075.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1076.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1077.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1078.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1079.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1080.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1081.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1082.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1083.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1084.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1085.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1086.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1087.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1088.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1089.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1090.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1091.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1092.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1093.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1094.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1095.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1096.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1097.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1098.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Debug)
+      ILogger.Log<LoggerMessage.LogValues<string, decimal, decimal, string>>(LogLevel.Debug, LogProcessTickDebug, Тик добавлен в очередь: BTCUSDT 1099.50 0.5 Binance, null, Func<LoggerMessage.LogValues<string, decimal, decimal, string>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<LoggerMessage.LogValues<Guid, int, int, int, int>>(LogLevel.Information, LogStopStatistics, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Остановка обработчика. Остаток в каналах: 100, всего входящих: 100, получено из канала: 0, вставлено: 0, null, Func<LoggerMessage.LogValues<Guid, int, int, int, int>, Exception, string>)
+      ILogger.IsEnabled(LogLevel.Information)
+      ILogger.Log<MarketDataProcessor.__LogFinalStopStatisticsStruct>(LogLevel.Information, LogFinalStopStatistics, Session=43e7bf3f-1885-40fd-86e9-dfa343db50f3: Обработчик рыночных данных остановлен. Входящих: 100, получено из канала: 100, вставлено в БД: 100, реально дропнуто: 0, backlog (incoming-received): 0, остаток в каналах: 0, null, Func<MarketDataProcessor.__LogFinalStopStatisticsStruct, Exception, string>)
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Times times) in /_/src/Moq/Mock`1.cs:line 920
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times) in /_/src/Moq/Mock`1.cs:line 934
+   at MarketDataCollector.Tests.Application.Services.MarketDataProcessorTests.ProcessBatchAsync_LogsTotalProcessedEvery100() in d:\work\MarketDataCollector\tests\MarketDataCollector.Tests\Application\Services\MarketDataProcessorTests.cs:line 724
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ === Running: ProcessBatchAsync_LogsTotalProcessedEvery100 ===
+
+
+The active test run was aborted. Reason: Test host process crashed : %4|1785568394.384|GETPID|rdkafka#producer-2| [thrd:main]: Failed to acquire idempotence PID from broker 127.0.0.1:56464/1: Broker: Coordinator load in progress: retrying
+Unhandled exception. System.ObjectDisposedException: The CancellationTokenSource has been disposed.
+   at System.Threading.CancellationTokenSource.Cancel()
+   at MarketDataCollector.Application.Services.MarketDataProcessor.<>c__DisplayClass45_0.<CollectorLoopAsync>b__0(Object _) in d:\work\MarketDataCollector\src\MarketDataCollector.Application\Services\MarketDataProcessor.cs:line 424
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.TimerQueueTimer.Fire(Boolean isThreadPool)
+   at System.Threading.TimerQueue.FireNextTimers()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+
+
+Test Run Aborted.
+Total tests: Unknown
+     Passed: 239
+     Failed: 9
+ Total time: 10,8898 Seconds

@@ -78,6 +78,24 @@ public static class MarketDataTelemetry
         description: "Total ticks successfully written to database");
 
     /// <summary>
+    /// Количество тиков, отсеянных in-process DeduplicationCache внутри батча.
+    /// Теги: channel_index
+    /// </summary>
+    public static readonly Counter<long> TicksDeduplicatedByCache = Instance.CreateCounter<long>(
+        name: "ticks.deduplicated.cache",
+        unit: "count",
+        description: "Ticks filtered by in-process DeduplicationCache within a batch");
+
+    /// <summary>
+    /// Количество тиков, отсеянных на уровне БД (ON CONFLICT DO NOTHING).
+    /// Теги: channel_index
+    /// </summary>
+    public static readonly Counter<long> TicksDeduplicatedByDb = Instance.CreateCounter<long>(
+        name: "ticks.deduplicated.db",
+        unit: "count",
+        description: "Ticks skipped by database ON CONFLICT DO NOTHING");
+
+    /// <summary>
     /// Количество тиков, дропнутых каналом (TryWrite=false из-за DropOldest).
     /// Теги: exchange
     /// </summary>
