@@ -5,11 +5,17 @@
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python.analysis.extraPaths": ["./src"],
-    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.defaultProfile.windows": "PowerShell 7",
     "terminal.integrated.env.windows": {
         "PYTHONIOENCODING": "utf-8"
     },
     "terminal.integrated.profiles.windows": {
+        "PowerShell 7": {
+            "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+            "icon": "terminal-powershell",
+            "args": ["-NoExit", "-File", "${workspaceFolder}\\scripts\\vscode-terminal-init.ps1"],
+            "overrideName": true
+        },
         "PowerShell": {
             "source": "PowerShell",
             "icon": "terminal-powershell",
