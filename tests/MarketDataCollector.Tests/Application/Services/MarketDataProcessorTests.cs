@@ -451,12 +451,12 @@ public class MarketDataProcessorTests
         // Ждём обработки через StopProcessingAsync
         await processor.StopProcessingAsync(cts.Token);
 
-        // Assert — ошибка залогирована, consumer продолжил работу
+        // Assert — ошибка залогирована (LogUnexpectedBatchError), consumer продолжил работу
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Неожиданная ошибка при обработке батча")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
@@ -679,7 +679,7 @@ public class MarketDataProcessorTests
             x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Неожиданная ошибка при обработке батча")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Exactly(2),
@@ -1322,7 +1322,8 @@ public class MarketDataProcessorTests
             BatchSize = 100,
             ChannelCapacity = 1000,
             UseSingleConsumer = true,
-            FlushIntervalSeconds = 1 // таймер каждую секунду
+            FlushIntervalSeconds = 1, // таймер каждую секунду
+            MinPartialBatchSize = 1   // разрешаем сброс маленьких частичных батчей (3 и 2 тика)
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1417,7 +1418,7 @@ public class MarketDataProcessorTests
             x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Критическая ошибка")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("Неожиданная ошибка при обработке батча")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce,

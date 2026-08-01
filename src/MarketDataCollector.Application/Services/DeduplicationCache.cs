@@ -41,10 +41,6 @@ namespace MarketDataCollector.Application.Services
         private readonly int _maxSize;
         private readonly int _evictionBatchSize;
 
-        // Счётчик добавлений — эвикция раз в N добавлений
-        private int _addCount;
-        private const int EvictionCheckInterval = 100;
-
         /// <summary>
         /// Создаёт кэш дедупликации.
         /// </summary>
@@ -74,8 +70,7 @@ namespace MarketDataCollector.Application.Services
 
         /// <summary>
         /// Добавляет ключ в кэш. Если ключ уже есть — пропускает.
-        /// При превышении maxSize выполняет batch-эвикцию (10% от maxSize) 
-        /// раз в EvictionCheckInterval добавлений.
+        /// При превышении maxSize выполняет batch-эвикцию (10% от maxSize).
         /// </summary>
         public void Add(string ticker, string exchange, DateTime timestamp)
         {
@@ -87,10 +82,11 @@ namespace MarketDataCollector.Application.Services
             if (_cache.ContainsKey(key))
                 return;
 
-            // Эвикция: проверяем только каждый EvictionCheckInterval-й Add
-            // и только если превышен лимит. За один раз удаляем _evictionBatchSize записей.
-            _addCount++;
-            if (_addCount % EvictionCheckInterval == 0 && _cache.Count >= _maxSize)
+            // Эвикция: при каждом превышении лимита пакетно (10% от maxSize, но не меньше 1)
+            // удаляем самые старые записи. Гарантирует, что Count не превышает maxSize.
+            // Пакетная эвикция дешевле поодновременной, а частый вызов здесь — редкий случай
+            // (наступает только когда кэш заполнен), поэтому накладные расходы минимальны.
+            if (_cache.Count >= _maxSize)
             {
                 for (int i = 0; i < _evictionBatchSize && _order.Count > 0; i++)
                 {
@@ -115,7 +111,6 @@ namespace MarketDataCollector.Application.Services
         {
             _cache.Clear();
             _order.Clear();
-            _addCount = 0;
         }
     }
 }

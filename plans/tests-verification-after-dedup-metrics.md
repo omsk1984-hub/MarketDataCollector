@@ -1,57 +1,47 @@
-# Перепроверка тестов после изменений по плану add-dedup-metrics
+# Реализация: исправление падающих тестов + покрытие метрик дедупликации
 
-## Контекст
+## Результат
 
-Изменения по [`add-dedup-metrics-plan.md`](plans/add-dedup-metrics-plan.md) добавляют две метрики:
-- [`TicksDeduplicatedByCache`](src/MarketDataCollector.Core/Telemetry/MarketDataTelemetry.cs:84) — `ticks.deduplicated.cache`
-- [`TicksDeduplicatedByDb`](src/MarketDataCollector.Core/Telemetry/MarketDataTelemetry.cs:93) — `ticks.deduplicated.db`
+До правок: **239 passed / 9 failed / прогон прерван крашем тест-хоста**.
+После правок: **256 passed / 0 failed / Skipped: 0 — ВСЕ тесты проходят.**
 
-Запись в `ProcessBatchAsync` (строки 914-927). Изменения затрагивают ТОЛЬКО блок успешной обработки и
-НЕ трогают логирование и не влияют на тесты.
+## Дополнительно: тестовая конфигурация Kafka
 
-## Результат прогона
+Добавлен отдельный [`appsettings.json`](tests/MarketDataCollector.Tests/appsettings.json) для
+тестового проекта с `Kafka.Enabled=true` (в общем appsettings Worker'а Kafka выключен).
+`.csproj` подключён к копированию локального файла вместо Worker-файла. Это устранило
+4 инфраструктурных падения `KafkaRealConnectionTests`.
 
-- Passed: 239
-- Failed: 9
-- Прогон прерван крашем тест-хоста (`ObjectDisposedException` в `CollectorLoopAsync`).
+## Выполненные изменения
 
-## Вывод: ни одно из 9 падений НЕ вызвано изменениями add-dedup-metrics
+### 1. Краш таймера в CollectorLoopAsync (`MarketDataProcessor.cs`)
+Колбэк `Timer` вызывал `flushTimerCts.Cancel()` после `Dispose` из `using`-блока →
+`ObjectDisposedException`, ронявший тест-хост. Обёрнуто в try/catch(ObjectDisposedException).
+Устранён краш всего прогона.
 
-Новые метрики корректно компилируются и инкрементируются в успешном пути. Тесты на метрики
-дедупликации отсутствуют (поиск `DeduplicatedByCache|deduplicated.cache|deduplicated.db` в тестах — 0 совпадений),
-поэтому новые изменения не имеют тестового покрытия.
+### 2. Актуализация «мёртвых» тестов на логи
+- `MarketDataProcessor.Logging.cs`: добавлены Debug-`LoggerMessage` `LogBatchSaved` (EventId 19,
+  «Батч сохранён») и `LogBatchDeduplicated` (EventId 20, «дубликатов»).
+- `MarketDataProcessor.cs`: вызовы `LogBatchSaved`/`LogBatchDeduplicated` в `ProcessBatchAsync`
+  после успешной записи.
+- Тесты, ожидавшие несуществующее Error-сообщение «Критическая ошибка», переведены на реальное
+  `LogUnexpectedBatchError` («Неожиданная ошибка при обработке батча»).
+- `FlushTimer_MultipleTimerTicks_OnlyOneFlush`: добавлен `MinPartialBatchSize=1`, чтобы тимерный
+  сброс маленьких частичных батчей (3 и 2 тика) реально срабатывал.
 
-## Классификация падений
+### 3. Расхождение DeduplicationCache (`DeduplicationCache.cs`)
+Эвикция срабатывала только раз в `EvictionCheckInterval` (100) добавлений, из-за чего кэш превышал
+`maxSize`. Заменено на эвикцию при каждом превышении лимита (пакетно, 10% за раз).
+Удалены неиспользуемые `_addCount` и `EvictionCheckInterval`.
 
-### A. Предсуществующие «мёртвые» тесты на лог-сообщения (5 шт.)
+### 4. Тесты на метрики дедупликации (`DeduplicationMetricsTests.cs`)
+Добавлены unit-тесты через `MeterListener` на глобальный `MarketDataTelemetry.Instance`:
+- `TicksDeduplicatedByCache_Exists_And_Accumulates` (ticks.deduplicated.cache)
+- `TicksDeduplicatedByDb_Exists_And_Accumulates` (ticks.deduplicated.db)
 
-Проверяют сообщения, которых НЕТ в [`MarketDataProcessor.Logging.cs`](src/MarketDataCollector.Application/Services/MarketDataProcessor.Logging.cs).
+## Kafka-тесты (устранены тестовой конфигурацией)
 
-| Тест | Ожидает | Реальность |
-|---|---|---|
-| ProcessBatchAsync_LogsSkippedDuplicates (стр. 383) | Debug «дубликатов» | нет такого LoggerMessage |
-| ProcessBatchAsync_LogsSavedCount (стр. 470) | Debug «Батч сохранён» | нет такого LoggerMessage |
-| ProcessBatchAsync_LogsTotalProcessedEvery100 (стр. 695) | Debug «Батч сохранён» | нет такого LoggerMessage |
-| ProcessBatchAsync_DbException_ContinuesProcessing (стр. 636) | Error «Критическая ошибка» ×2 | LogUnexpectedBatchError |
-| ProcessBatchAsync_WhenRepositoryThrows_LogsErrorAndConsumerContinues (стр. 420) | Error «Критическая ошибка» | LogUnexpectedBatchError |
-
-### B. Дефект в обработчике — краш тест-хоста
-
-[`CollectorLoopAsync`](src/MarketDataCollector.Application/Services/MarketDataProcessor.cs:424):
-`flushTimerCts` в `using`, но `Timer`-колбэк может сработать после Dispose →
-`ObjectDisposedException: The CancellationTokenSource has been disposed`. Роняет весь прогон.
-
-Отдельно тест FlushTimer_MultipleTimerTicks_OnlyOneFlush (стр. 1306) падает по таймингу: callCount=1 вместо ≥2.
-
-### C. Падение кэша дедупликации
-
-[`DeduplicationCache.Add`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs:80):
-эвикция только при `_addCount % EvictionCheckInterval(100) == 0`. Для теста
-Add_EvictsOldest_WhenMaxSizeReached (maxSize=3, 4 добавления) эвикция не срабатывает → ts1 не вытесняется.
-
-## Рекомендации
-
-1. (Критично) Защитить Timer-колбэк в CollectorLoopAsync от вызова после Dispose — устранит краш хоста.
-2. Решить судьбу 5 «мёртвых» тестов: обновить под реальные LoggerMessage или удалить.
-3. Решить судьбу DeduplicationCache: либо тест, либо эвикция при каждом Add при превышении лимита.
-4. Добавить unit-тест на новые метрики TicksDeduplicatedByCache/Db (покрытие отсутствует).
+Ранее 4 теста `KafkaRealConnectionTests` падали, т.к. читали общий `appsettings.json` Worker'а
+с `Kafka.Enabled=false`. Исправлено добавлением отдельного тестового [`appsettings.json`](tests/MarketDataCollector.Tests/appsettings.json)
+с `Enabled=true` и подключением его в `.csproj`. Тесты поднимают собственный Kafka-контейнер
+через Testcontainers, поэтому требуют Docker. Итог — все 256 тестов проходят.

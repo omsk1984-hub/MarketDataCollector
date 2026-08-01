@@ -75,4 +75,12 @@ public partial class MarketDataProcessor
     [LoggerMessage(EventId = 18, Level = LogLevel.Debug,
         Message = "Session={SessionId}: Flush timer skip — partial batch too small: {Count} < {MinSize} ticks (channel={Channel})")]
     partial void LogTimerFlushSkipped(Guid sessionId, int count, int minSize, int channel);
+
+    [LoggerMessage(EventId = 19, Level = LogLevel.Debug,
+        Message = "Батч сохранён: {Inserted} из {BatchSize} тиков (channel={Channel})")]
+    partial void LogBatchSaved(int inserted, int batchSize, int channel);
+
+    [LoggerMessage(EventId = 20, Level = LogLevel.Debug,
+        Message = "Батч: {Cached} дубликатов отсеяно кэшем дедупликации (channel={Channel})")]
+    partial void LogBatchDeduplicated(int cached, int channel);
 }

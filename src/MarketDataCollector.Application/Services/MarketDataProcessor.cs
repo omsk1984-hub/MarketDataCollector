@@ -421,7 +421,13 @@ namespace MarketDataCollector.Application.Services
             Timer? flushTimer = null;
             if (_flushIntervalSeconds > 0)
             {
-                flushTimer = new Timer(_ => flushTimerCts.Cancel(),
+                // Колбэк может сработать после Dispose из using-блока (тонкая гонка при остановке).
+                // ObjectDisposedException нельзя пускать наружу из потока пула — это роняет процесс.
+                flushTimer = new Timer(_ =>
+                    {
+                        try { flushTimerCts.Cancel(); }
+                        catch (ObjectDisposedException) { }
+                    },
                     null, Timeout.Infinite, Timeout.Infinite);
             }
 
@@ -927,7 +933,12 @@ namespace MarketDataCollector.Application.Services
                     ChannelTag(channelIndex));
 
                 _processedRpsCounter.IncrementBatch(inserted);
-                
+
+                // Debug-логи по батчу: сохранённые и отсеянные кэшем дубликаты.
+                // (Включаются только при включённом IsEnabled(Debug) — source-gen не аллоцирует строку иначе.)
+                LogBatchSaved(inserted, batchSize, channelIndex);
+                LogBatchDeduplicated(cachedCount, channelIndex);
+
                 if (totalInserted % 20000 < inserted)
                 {
                     LogPeriodicProgress(totalInserted, totalReceived, batchSize, writeIdx, cachedCount, inserted);
