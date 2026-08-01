@@ -9,4 +9,4 @@ traces/*
 # Секреты и локальные env
 docker/.env
 *.local.env
-output.txt
+*output.txt
