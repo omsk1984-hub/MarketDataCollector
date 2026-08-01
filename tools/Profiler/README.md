@@ -1,8 +1,6 @@
-# Profiler
+# Profiler - профайлер
 
 Standalone .NET 8 console-утилита профилирования `MarketDataCollector.Worker`.
-Портирует цепочку PowerShell-скриптов (`run_all_metrics.ps1` → `collect-all.ps1` →
-`common-functions.ps1`) в чистый C#.
 
 Проект **не входит** в `MarketDataCollector.sln` и собирается отдельно.
 
@@ -108,12 +106,12 @@ tools/Profiler/
 ├── Options/            ProfilerOptions (record)
 ├── Cli/                CommandLineParser, DiContainer
 ├── Core/
-│   ├── Interfaces/     контракты (SOLID), в т.ч. IProfilerMetricsRegistry, IProfilerHttpServer
+│   ├── Interfaces/     контракты (SOLID)
 │   ├── Models.cs       DTO (record)
 │   ├── ProfilerMetricsSnapshot.cs, ProfilerHealthResponse.cs   DTO встроенного /health
-│   ├── ConsoleUI.cs
+│   ├── ConsoleUI.cs, PlainConsoleFormatter.cs
 │   ├── EnsureDotnetTools.cs
-│   ├── ProcessFinder.cs + ProcessIdSources/{TracePs,TargetProcess,Wmi}Source.cs
+│   ├── ProcessFinder.cs + ProcessIdSources/{Null,TracePs,TargetProcess,Wmi}Source.cs
 │   ├── ToolRunner.cs
 │   ├── TraceCollector.cs
 │   ├── GcDumpCollector.cs
