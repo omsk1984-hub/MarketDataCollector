@@ -7,7 +7,7 @@ namespace MarketDataCollector.Profiler.Core.Waiters;
 
 /// <summary>
 /// Ожидание дренажа очередей перед вторым gcdump. Опрашивает /metrics на наличие
-/// <c>processor_channel_backlog_count{...} <число></c>; обнуление всех backlog
+/// <c>processor_channel_fill_level_count{...} <число></c>; обнуление всех fill_level
 /// означает завершение дренажа. При недоступности метрик — обратный отсчёт таймаута.
 /// </summary>
 public sealed partial class DrainWaiter : IDrainWaiter
@@ -61,7 +61,7 @@ public sealed partial class DrainWaiter : IDrainWaiter
     }
 
     /// <summary>
-    /// Читает /metrics и определяет, обнулён ли суммарный backlog.
+    /// Читает /metrics и определяет, обнулён ли суммарный fill_level по каналам.
     /// Возвращает кортеж (метрика доступна, дренировано).
     /// </summary>
     private async Task<(bool MetricsAvailable, bool Drained)> TryReadBacklogAsync(
@@ -79,7 +79,7 @@ public sealed partial class DrainWaiter : IDrainWaiter
             double total = 0;
             bool found = false;
 
-            foreach (Match match in BacklogRegex().Matches(body))
+            foreach (Match match in FillLevelRegex().Matches(body))
             {
                 if (double.TryParse(match.Groups["value"].Value, out double value))
                 {
@@ -104,6 +104,6 @@ public sealed partial class DrainWaiter : IDrainWaiter
         }
     }
 
-    [GeneratedRegex(@"processor_channel_backlog_count\{[^}]*\}\s+(?<value>[+\-]?[\d.]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex BacklogRegex();
+    [GeneratedRegex(@"processor_channel_fill_level_count\{[^}]*\}\s+(?<value>[+\-]?[\d.]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex FillLevelRegex();
 }

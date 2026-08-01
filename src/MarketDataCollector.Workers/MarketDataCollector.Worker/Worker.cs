@@ -234,9 +234,14 @@ public class Worker : BackgroundService
                 _lastEstimatedDropped = estimatedDropped;
             }
 
-            // Per-channel fill через уже существующую гистограмму ChannelFill,
-            // которая записывается в ProcessBatchesAsync раз в 10 сек.
-            // Здесь не дублируем — гистограмма точнее для распределения.
+            // Per-channel fill как мгновенная метрика (ObservableGauge) — текущая глубина очереди.
+            // Гистограмма ChannelFill не подходит для контроля дренажа (кумулятивная),
+            // поэтому записываем актуальный fill_level по каждому каналу. ObservableGauge
+            // экспортируется при каждом сборе, даже когда значение 0.
+            for (int i = 0; i < fillLevels.Length; i++)
+            {
+                MarketDataTelemetry.SetChannelFillLevel(i, fillLevels[i].Count);
+            }
 
             // Compact health-check log
             _logger.LogInformation(

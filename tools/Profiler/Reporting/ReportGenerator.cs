@@ -24,6 +24,7 @@ public sealed class ReportGenerator : IReportGenerator
 
     public async Task<string> GenerateAsync(
         string outputDir,
+        string runTimestamp,
         IReadOnlyList<(string Name, string Path)> outputFiles,
         IReadOnlyList<string> warnings,
         CancellationToken cancellationToken)
@@ -31,7 +32,7 @@ public sealed class ReportGenerator : IReportGenerator
         ArgumentNullException.ThrowIfNull(outputFiles);
         ArgumentNullException.ThrowIfNull(warnings);
 
-        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string timestamp = runTimestamp;
         string reportPath = Path.Combine(outputDir, $"profiling_report_{timestamp}.md");
 
         var sb = new StringBuilder();

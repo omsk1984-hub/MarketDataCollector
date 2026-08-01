@@ -20,14 +20,13 @@ public static class DiContainer
         ServiceCollection services = new();
 
         // Логирование в консоль, одна строка, минимальный уровень Debug.
+        // Используем PlainConsoleFormatter — без категории и уровня в выводе,
+        // чтобы убрать префикс вида MarketDataCollector.Profiler.Core.ConsoleUI[0].
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
-            builder.AddSimpleConsole(c =>
-            {
-                c.SingleLine = true;
-                c.TimestampFormat = "HH:mm:ss ";
-            });
+            builder.AddConsoleFormatter<PlainConsoleFormatter, PlainConsoleFormatterOptions>();
+            builder.AddConsole(c => c.FormatterName = nameof(PlainConsoleFormatter));
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 

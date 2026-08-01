@@ -152,11 +152,23 @@ public static class MarketDataTelemetry
     // ========================================================================
 
     /// <summary>
-    /// Текущий fill level по каждому каналу (instant).
+    /// Текущий fill level по каждому каналу (instant). ObservableGauge — экспортируется
+    /// при каждом сборе, даже когда значение 0 (в отличие от UpDownCounter, который
+    /// не создаёт инструмент при нулевой дельте). Значения обновляет Worker.
     /// Теги: channel_index
     /// </summary>
-    public static readonly UpDownCounter<long> ChannelFillLevel = Instance.CreateUpDownCounter<long>(
+    private static readonly ConcurrentDictionary<int, long> ChannelFillLevelValues = new();
+
+    public static void SetChannelFillLevel(int channelIndex, long value)
+    {
+        ChannelFillLevelValues[channelIndex] = value;
+    }
+
+    public static readonly ObservableGauge<long> ChannelFillLevel = Instance.CreateObservableGauge(
         name: "processor.channel.fill_level",
+        observeValues: () => ChannelFillLevelValues.Select(kv => new Measurement<long>(
+            kv.Value,
+            new KeyValuePair<string, object?>("channel_index", kv.Key))),
         unit: "count",
         description: "Current ticks in channel by channel_index");
 

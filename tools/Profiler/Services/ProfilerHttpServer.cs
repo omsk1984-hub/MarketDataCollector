@@ -43,11 +43,8 @@ public sealed class ProfilerHttpServer : IProfilerHttpServer
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.Logging.AddSimpleConsole(c =>
-        {
-            c.SingleLine = true;
-            c.TimestampFormat = "HH:mm:ss ";
-        });
+        builder.Logging.AddConsoleFormatter<PlainConsoleFormatter, PlainConsoleFormatterOptions>();
+        builder.Logging.AddConsole(c => c.FormatterName = nameof(PlainConsoleFormatter));
         builder.Logging.SetMinimumLevel(LogLevel.Information);
         builder.WebHost.ConfigureKestrel(k =>
         {

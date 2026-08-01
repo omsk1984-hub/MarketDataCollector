@@ -163,7 +163,7 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
             ("Counters (.csv)", countersPath),
         };
 
-        string reportPath = await _reportGenerator.GenerateAsync(_options.OutputDir, outputFiles, warnings, cancellationToken);
+        string reportPath = await _reportGenerator.GenerateAsync(_options.OutputDir, ts, outputFiles, warnings, cancellationToken);
 
         _metrics.SetCurrentStep("Завершено");
         _ui.SectionHeader("Итог");
