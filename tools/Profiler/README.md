@@ -16,6 +16,8 @@ Standalone .NET 8 console-утилита профилирования `MarketDat
   (после дренажа очередей).
 - Конвертация trace в SpeedScope-формат.
 - Markdown-отчёт `profiling_report_*.md`.
+- Встроенный HTTP-сервер профайлера (`http://localhost:5100/health`) с собственным
+  JSON-статусом и live-метриками для ручного просмотра.
 
 ## Требования
 
@@ -54,6 +56,8 @@ dotnet run --project tools/Profiler
 | `--output-dir` | Директория результатов | `./traces` |
 | `--refresh-seconds` | Интервал опроса метрик | `5` |
 | `--http-log-level` | Уровень HTTP-логирования | `Debug` |
+| `--http-port` | Порт встроенного health-сервера профайлера | `5100` |
+| `--http-enabled` | Включить встроенный health-сервер профайлера | `true` |
 | `--help`, `-h` | Справка | — |
 
 Поддерживаются форматы `--name value` и `--name=value`; имена регистронезависимы
@@ -65,6 +69,36 @@ dotnet run --project tools/Profiler
 dotnet run --project tools/Profiler -- --trace-profile contention-cpu --trace-duration 120 --output-dir ./traces
 ```
 
+## Встроенный health-сервер
+
+Во время работы профайлер поднимает собственный HTTP-сервер (Kestrel) на
+`http://localhost:5100/health` (порт настраивается через `--http-port`, отключается
+через `--http-enabled=false`). Сервер отдаёт JSON со статусом и live-метриками цикла
+профилирования для ручного просмотра (браузер/curl):
+
+```bash
+curl http://localhost:5100/health
+```
+
+```json
+{
+  "status": "healthy",
+  "currentStep": "6. Сбор счётчиков",
+  "metrics": {
+    "traceDurationSeconds": 90.0,
+    "gcdumpPeakSuccess": true,
+    "gcdumpDrainedSuccess": true,
+    "countersSamples": 12,
+    "speedScopeSuccess": true,
+    "elapsedSeconds": 135.4
+  },
+  "timestamp": "2026-08-01T..."
+}
+```
+
+HTTP-код 200, пока оркестратор работает; при завершении/ошибке — 503 и `status: "degraded"`.
+Сервер останавливается в `finally`, в том числе при Ctrl+C.
+
 ## Структура проекта
 
 ```
@@ -74,8 +108,9 @@ tools/Profiler/
 ├── Options/            ProfilerOptions (record)
 ├── Cli/                CommandLineParser, DiContainer
 ├── Core/
-│   ├── Interfaces/     контракты (SOLID)
+│   ├── Interfaces/     контракты (SOLID), в т.ч. IProfilerMetricsRegistry, IProfilerHttpServer
 │   ├── Models.cs       DTO (record)
+│   ├── ProfilerMetricsSnapshot.cs, ProfilerHealthResponse.cs   DTO встроенного /health
 │   ├── ConsoleUI.cs
 │   ├── EnsureDotnetTools.cs
 │   ├── ProcessFinder.cs + ProcessIdSources/{TracePs,TargetProcess,Wmi}Source.cs
@@ -87,6 +122,6 @@ tools/Profiler/
 │   ├── HttpLoggingHandler.cs
 │   ├── HealthCheckService.cs
 │   └── PrometheusParser.cs
-├── Services/           CountersCollector, ProfilerOrchestrator
+├── Services/           CountersCollector, ProfilerOrchestrator, ProfilerMetricsRegistry, ProfilerHttpServer
 └── Reporting/          ReportGenerator
 ```

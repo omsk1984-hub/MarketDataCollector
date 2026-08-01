@@ -38,4 +38,10 @@ public sealed record ProfilerOptions
 
     /// <summary>Уровень логирования HTTP-запросов (Trace/Debug/Information/None).</summary>
     public string HttpLogLevel { get; init; } = "Debug";
+
+    /// <summary>Порт встроенного health-сервера профайлера (отдельный от Worker'а 5010).</summary>
+    public int HttpPort { get; init; } = 5100;
+
+    /// <summary>Включён ли встроенный health-сервер профайлера.</summary>
+    public bool HttpEnabled { get; init; } = true;
 }

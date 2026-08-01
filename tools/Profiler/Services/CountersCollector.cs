@@ -20,19 +20,22 @@ public sealed class CountersCollector : ICountersCollector
     private readonly IConsoleUI _ui;
     private readonly ILogger<CountersCollector> _logger;
     private readonly ProfilerOptions _options;
+    private readonly IProfilerMetricsRegistry _metrics;
 
     public CountersCollector(
         IHttpClientFactory httpClientFactory,
         IPrometheusParser parser,
         IConsoleUI ui,
         ILogger<CountersCollector> logger,
-        ProfilerOptions options)
+        ProfilerOptions options,
+        IProfilerMetricsRegistry metrics)
     {
         _httpClientFactory = httpClientFactory;
         _parser = parser;
         _ui = ui;
         _logger = logger;
         _options = options;
+        _metrics = metrics;
     }
 
     public async Task StartAsync(string outputCsvPath, CancellationToken cancellationToken)
@@ -71,6 +74,7 @@ public sealed class CountersCollector : ICountersCollector
 
                 await writer.FlushAsync(cancellationToken);
                 sampleNumber++;
+                _metrics.SetCountersSamples(sampleNumber);
 
                 _logger.LogInformation(
                     "[COUNTERS] Sample #{Sample} | {MetricCount} metrics | {Elapsed}s elapsed",

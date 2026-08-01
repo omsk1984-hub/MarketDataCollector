@@ -28,10 +28,14 @@ public static class Program
 
         IConsoleUI ui = provider.GetRequiredService<IConsoleUI>();
         IProfilerOrchestrator orchestrator = provider.GetRequiredService<IProfilerOrchestrator>();
+        IProfilerHttpServer httpServer = provider.GetRequiredService<IProfilerHttpServer>();
 
         PrintBanner(ui);
         ui.Info($"Trace profile: {options.TraceProfile}, duration: {options.TraceDuration}с, " +
                 $"output: {options.OutputDir}");
+
+        // Встроенный health-сервер профайлера (http://localhost:{HttpPort}/health).
+        await httpServer.StartAsync(cts.Token);
 
         try
         {
@@ -48,6 +52,11 @@ public static class Program
             ui.Error($"Непредвиденная ошибка: {ex.Message}");
             ui.Detail(ex.ToString());
             return 1;
+        }
+        finally
+        {
+            // Гарантированная остановка сервера, включая Ctrl+C.
+            await httpServer.StopAsync(CancellationToken.None);
         }
     }
 

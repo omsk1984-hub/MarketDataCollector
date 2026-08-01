@@ -146,6 +146,14 @@ public static class CommandLineParser
                 options = options with { HttpLogLevel = value };
                 break;
 
+            case "httpport":
+                options = options with { HttpPort = ParseInt(name, value) };
+                break;
+
+            case "httpenabled":
+                options = options with { HttpEnabled = ParseBool(name, value) };
+                break;
+
             default:
                 PrintError($"Неизвестный аргумент: --{name}");
                 Environment.Exit(1);
@@ -162,6 +170,18 @@ public static class CommandLineParser
         }
 
         return result;
+    }
+
+    private static bool ParseBool(string name, string value)
+    {
+        if (bool.TryParse(value, out bool result))
+        {
+            return result;
+        }
+
+        PrintError($"Аргумент --{name} ожидает true/false, получено: \"{value}\".");
+        Environment.Exit(1);
+        return false;
     }
 
     private static void PrintError(string message)
@@ -190,6 +210,8 @@ public static class CommandLineParser
               --output-dir <path>           Директория результатов (по умолчанию ./traces)
               --refresh-seconds <sec>       Интервал опроса метрик, сек (по умолчанию 5)
               --http-log-level <level>      Уровень логирования HTTP (Trace|Debug|Information|None)
+              --http-port <port>            Порт встроенного health-сервера профайлера (по умолчанию 5100)
+              --http-enabled <bool>         Включить встроенный health-сервер профайлера (по умолчанию true)
               --help, -h                    Показать справку
             """);
     }

@@ -76,6 +76,10 @@ public static class DiContainer
         services.AddSingleton<IReportGenerator, ReportGenerator>();
         services.AddSingleton<IProfilerOrchestrator, ProfilerOrchestrator>();
 
+        // Встроенный health-сервер профайлера.
+        services.AddSingleton<IProfilerMetricsRegistry, ProfilerMetricsRegistry>();
+        services.AddSingleton<IProfilerHttpServer, ProfilerHttpServer>();
+
         return services.BuildServiceProvider();
     }
 }
