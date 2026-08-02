@@ -1,0 +1,19 @@
+{
+  "customModes": [
+    {
+      "slug": "code",
+      "name": "Code",
+      "roleDefinition": "A mode for writing and editing code. The run.ps1 file at the repository root is protected and cannot be edited, created or overwritten.",
+      "whenToUse": "Use this mode for all code implementation tasks. It enforces a hard block on modifying run.ps1.",
+      "groups": [
+        "read",
+        ["edit", { "fileRegex": "!(^|.*/)?run\\.ps1$" }],
+        ["write", { "fileRegex": "!(^|.*/)?run\\.ps1$" }],
+        "command",
+        "browser"
+      ],
+      "modelPriority": -1,
+      "fileRegex": ".*"
+    }
+  ]
+}
