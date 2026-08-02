@@ -7,8 +7,8 @@
       "whenToUse": "Use this mode for all code implementation tasks. It enforces a hard block on modifying run.ps1.",
       "groups": [
         "read",
-        ["edit", { "fileRegex": "!(^|.*/)?run\\.ps1$" }],
-        ["write", { "fileRegex": "!(^|.*/)?run\\.ps1$" }],
+        ["edit", { "fileRegex": "^(?!.*(^|.*/)?run\\.ps1$).*" }],
+        ["write", { "fileRegex": "^(?!.*(^|.*/)?run\\.ps1$).*" }],
         "command",
         "browser"
       ],
