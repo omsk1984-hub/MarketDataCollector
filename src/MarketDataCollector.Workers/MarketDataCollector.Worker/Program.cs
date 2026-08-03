@@ -6,6 +6,7 @@ using MarketDataCollector.Core.Telemetry;
 using MarketDataCollector.Infrastructure.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -92,7 +93,7 @@ var app = builder.Build();
 var apiKey = builder.Configuration["Auth:ApiKey"];
 if (!string.IsNullOrWhiteSpace(apiKey))
 {
-    var protectedPaths = new[] { "/metrics", "/health" };
+    var protectedPaths = new[] { "/metrics", "/health", "/shutdown" };
     app.Use(async (context, next) =>
     {
         var path = context.Request.Path.Value ?? string.Empty;
@@ -262,6 +263,21 @@ app.MapGet("/health", async (HttpContext ctx) =>
         status = degraded ? "degraded" : "healthy",
         checks = healthChecks,
         timestamp = DateTime.UtcNow
+    });
+});
+
+// ===== Graceful shutdown endpoint =====
+// Оркестратор нагрузочного теста (run_loadtest.ps1) вызывает POST /shutdown
+// после завершения профилирования. StopApplication() отменяет stoppingToken
+// в Worker.ExecuteAsync, что запускает CleanupAsync (клиенты -> агрегатор ->
+// процессор с финальным flush).
+app.MapPost("/shutdown", (IHostApplicationLifetime appLifetime, HttpContext ctx) =>
+{
+    appLifetime.StopApplication();
+    ctx.Response.StatusCode = StatusCodes.Status202Accepted;
+    return ctx.Response.WriteAsJsonAsync(new
+    {
+        status = "shutting_down"
     });
 });
 

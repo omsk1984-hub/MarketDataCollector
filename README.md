@@ -4,6 +4,41 @@
 
 > **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + Binary COPY protocol. Sequential-режим (batch=2500) даёт ~10 700 ticks/sec, что покрывает текущую нагрузку (~19K msg/s). Single Consumers (per-ticker routing) даёт до ~19–24K processed ticks/sec при входящем потоке ~25 000 msg/s при непрерывной нагрузке. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
 
+## Нагрузочное тестирование одной кнопкой
+
+Полный прогон «FakeTickServer → Worker → Profiler» с профилированием и корректным
+завершением запускается одной командой:
+
+```powershell
+# Требуется запущенный Docker (Postgres на порту 5433)
+.\run_loadtest.ps1
+```
+
+Или в VS Code: **Ctrl+Shift+B** → задача *Run Load Test (однокнопочный прогон)*.
+
+**Что делает оркестратор [`run_loadtest.ps1`](run_loadtest.ps1):**
+1. Preflight: проверка Docker, очистка остатков процессов, компиляция.
+2. Запуск `FakeTickServer` (`:5000`, по умолчанию 4M тиков @ 25k RPS), ожидание `/health`.
+3. Запуск `Worker` (`:5010`) в профиле **LoadTest** — все клиенты идут только на локальный
+   FakeServer (`appsettings.LoadTest.json`), Kafka отключена.
+4. Запуск `Profiler`: `dotnet-trace` + 2× `gcdump` (пик/после дренажа) + counters CSV.
+5. FakeServer сам завершается по `MaxTicks`; Worker дренажит очередь.
+6. Оркестратор вызывает `POST /shutdown` → graceful drain Worker (`CleanupAsync`).
+7. Сводка артефактов в `traces/`.
+
+**Артефакты** (`traces/`): `allocation_trace_*.nettrace`, `*.speedscope.json`,
+`snapshot_peak_*.gcdump`, `snapshot_drained_*.gcdump`, `counters_*.csv`,
+`profiling_report_*.md`, логи `fake_server_*.log`, `worker_*.log`.
+
+**Параметры:**
+```powershell
+.\run_loadtest.ps1 -MaxTicks 2000000 -Rps 15000 -TraceProfile contention-cpu -TraceDuration 120
+```
+
+> Профиль **LoadTest** активируется через `ASPNETCORE_ENVIRONMENT=LoadTest` и использует
+> [`appsettings.LoadTest.json`](src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.LoadTest.json) —
+> никаких обращений к реальной бирже.
+
 ## Описание
 
 Система предназначена для непрерывного сбора тиковых данных (сделок) с криптобирж через WebSocket соединения, нормализации данных, удаления дубликатов и сохранения в базу данных PostgreSQL. Поддерживает параллельную работу с несколькими источниками данных и символами. Архитектура построена на принципах SOLID с чистыми зависимостями и делегированием ответственности специализированным компонентам.

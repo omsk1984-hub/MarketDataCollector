@@ -92,4 +92,13 @@ app.MapGet("/health", () => Results.Ok(new
     clients = generator.ClientCount
 }));
 
+// Graceful shutdown: оркестратор вызывает POST /shutdown для управляемой
+// остановки сервера (например, когда MaxTicks=0 и останавливать нужно вручную).
+app.MapPost("/shutdown", (IHostApplicationLifetime appLifetime, HttpContext context) =>
+{
+    appLifetime.StopApplication();
+    context.Response.StatusCode = 202;
+    return context.Response.WriteAsync("{\"status\":\"shutting_down\"}");
+});
+
 app.Run($"http://0.0.0.0:{settings.Port}");

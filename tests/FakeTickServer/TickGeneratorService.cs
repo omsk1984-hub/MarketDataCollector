@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 
 namespace FakeTickServer;
 
@@ -15,6 +16,7 @@ public class TickGeneratorService : BackgroundService
 {
     private readonly Settings _settings;
     private readonly ILogger<TickGeneratorService> _logger;
+    private readonly IHostApplicationLifetime _hostLifetime;
     private readonly ConcurrentDictionary<string, ClientState> _clients = new();
 
     /// <summary>
@@ -85,10 +87,14 @@ public class TickGeneratorService : BackgroundService
     /// <summary>
     /// Конструктор.
     /// </summary>
-    public TickGeneratorService(Settings settings, ILogger<TickGeneratorService> logger)
+    public TickGeneratorService(
+        Settings settings,
+        ILogger<TickGeneratorService> logger,
+        IHostApplicationLifetime hostLifetime)
     {
         _settings = settings;
         _logger = logger;
+        _hostLifetime = hostLifetime;
 
         // Стартуем trade ID от случайного значения, чтобы было похоже на реальные данные
         // Значение инициализируется один раз, далее только атомарно инкрементируется
@@ -201,7 +207,8 @@ public class TickGeneratorService : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // Проверка лимита MaxTicks — если достигнут, спим и не генерируем
+                // Проверка лимита MaxTicks — если достигнут, корректно завершаем хост.
+                // Клиенты получают NormalClosure, оркестратор затем останавливает Worker.
                 if (_settings.MaxTicks > 0 && Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks)
                 {
                     if (!_isLimitReached)
@@ -209,11 +216,11 @@ public class TickGeneratorService : BackgroundService
                         _isLimitReached = true;
                         _logger.LogInformation(
                             "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
-                            "Генерация остановлена, сервис продолжает работу.",
+                            "Останавливаю сервер.",
                             _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
                     }
-                    await Task.Delay(1000, stoppingToken);
-                    continue;
+                    _hostLifetime.StopApplication();
+                    return;
                 }
 
                 if (_clients.IsEmpty)
@@ -313,20 +320,20 @@ public class TickGeneratorService : BackgroundService
                             }
                         }
 
-                        // Если лимит достигнут — прерываем итерацию по клиентам
-                        if (_isLimitReached ||
-                            (_settings.MaxTicks > 0 &&
-                             Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks))
+                        // Если лимит достигнут — останавливаем хост и прерываем итерацию
+                        if (_settings.MaxTicks > 0 &&
+                            Interlocked.Read(ref _totalTicks) >= _settings.MaxTicks)
                         {
                             if (!_isLimitReached)
                             {
                                 _isLimitReached = true;
                                 _logger.LogInformation(
                                     "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
-                                    "Генерация остановлена, сервис продолжает работу.",
+                                    "Останавливаю сервер.",
                                     _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
                             }
-                            break;
+                            _hostLifetime.StopApplication();
+                            return;
                         }
                     }
                 }

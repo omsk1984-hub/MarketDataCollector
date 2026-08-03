@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Load Test (однокнопочный прогон)",
+            "type": "shell",
+            "command": "${workspaceFolder}\\run_loadtest.ps1",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                    "args": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Build solution",
+            "type": "shell",
+            "command": "dotnet build ${workspaceFolder}\\MarketDataCollector.sln -c Debug --nologo",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": "$msCompile",
+            "group": "build"
+        }
+    ]
+}
