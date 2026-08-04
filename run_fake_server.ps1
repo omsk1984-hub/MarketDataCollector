@@ -43,5 +43,3 @@ Write-Host "Компиляция успешна." -ForegroundColor Green
 Write-Host ""
 
 dotnet run -- --port $Port --rps $Rps --symbols $Symbols --base-price $BasePrice --max-ticks $MaxTicks --dup-percent $DupPercent
-
-Read-Host -Prompt "Нажмите любую клавишу для выхода"

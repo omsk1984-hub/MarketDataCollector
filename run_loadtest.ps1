@@ -266,24 +266,16 @@ else {
 }
 
 # ============================================================
-# Ожидание самозавершения FakeTickServer (по MaxTicks)
+# Ожидание завершения генерации FakeTickServer (по MaxTicks)
 # ============================================================
-Write-Step "[6/7] Ожидание завершения FakeTickServer"
-# FakeServer генерирует MaxTicks/Rps секунд; после достижения лимита сам
-# завершает хост (StopApplication). Даём запас на дренаж Worker'а.
-$maxSeconds = [Math]::Max(60, [int]($MaxTicks / [Math]::Max(1, $Rps)) + 120)
-$fakeProc.Refresh()
-if (-not $fakeProc.HasExited) {
-    if (Wait-ProcessExit $fakeProc $maxSeconds "FakeTickServer") {
-        # FakeServer закончил подачу данных. Даём Worker'у время дренажить очередь.
-        Write-Host "  Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 15
-    }
-    else {
-        Write-Host "  FakeTickServer не завершился за $maxSeconds с — принудительная остановка." -ForegroundColor Yellow
-        taskkill /F /IM FakeTickServer.exe 2>$null
-    }
-}
+Write-Step "[6/7] Ожидание завершения генерации FakeTickServer"
+# FakeServer НЕ завершает хост сам — только прекращает генерацию тиков.
+# Ждём расчётное время генерации MaxTicks, затем даём время на дренаж Worker.
+$generationSeconds = [Math]::Max(30, [int]($MaxTicks / [Math]::Max(1, $Rps)) + 30)
+Write-Host "  Ожидание генерации $MaxTicks тиков (~${generationSeconds}с)..."
+Start-Sleep -Seconds $generationSeconds
+Write-Host "  Генерация завершена. Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
+Start-Sleep -Seconds 15
 
 # ============================================================
 # Graceful остановка Worker
@@ -309,6 +301,13 @@ if (-not $workerProc.HasExited) {
 }
 
 # ============================================================
+# Принудительная остановка FakeTickServer
+# ============================================================
+Write-Host "  Остановка FakeTickServer..." -ForegroundColor Yellow
+taskkill /F /IM FakeTickServer.exe 2>$null
+Start-Sleep -Seconds 1
+
+# ============================================================
 # Итоговая сводка
 # ============================================================
 Write-Step "Итог"
@@ -323,3 +322,4 @@ foreach ($f in $artifacts) {
 
 Write-Host ""
 Write-Host "Прогон завершён. Логи FakeServer/Worker: $OutputDir\fake_server_*.log, $OutputDir\worker_*.log" -ForegroundColor Green
+Read-Host -Prompt "Нажмите любую клавишу для выхода"

@@ -222,7 +222,6 @@ public class TickGeneratorService : BackgroundService
                             Interlocked.Read(ref _totalTicks),
                             Interlocked.Read(ref _totalTicks) - Interlocked.Read(ref _duplicateTicksSent));
                     }
-                    _hostLifetime.StopApplication();
                     return;
                 }
 
@@ -337,9 +336,8 @@ public class TickGeneratorService : BackgroundService
                                     _settings.MaxTicks,
                                     Interlocked.Read(ref _totalTicks),
                                     Interlocked.Read(ref _totalTicks) - Interlocked.Read(ref _duplicateTicksSent));
-                            }
-                            _hostLifetime.StopApplication();
-                            return;
+                                    }
+                                    return;
                         }
                     }
                 }
