@@ -114,8 +114,6 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
 
         _metrics.SetCurrentStep("8. Завершение trace");
         _ui.SectionHeader("8. Завершение trace");
-        int remainingSec = Math.Max(0, _options.TraceDuration - _options.GcDumpAtPeakSec);
-        _ui.Info($"Ожидание завершения trace: ~{remainingSec}с ...");
         await _traceCollector.StopAsync(trace, cancellationToken);
 
         _metrics.SetTraceDurationSeconds((int)(DateTime.Now - startedAt).TotalSeconds);

@@ -302,6 +302,10 @@ namespace MarketDataCollector.Application.Services
 
         public async Task StopProcessingAsync(CancellationToken cancellationToken = default)
         {
+            // DIAG-STOP: замер полного времени остановки (для детекции зависания финального flush).
+            var stopSw = System.Diagnostics.Stopwatch.StartNew();
+            var stopStartTs = DateTime.UtcNow;
+
             for (int i = 0; i < _channels.Length; i++)
             {
                 MarketDataTelemetry.ChannelFill.Record(
@@ -399,6 +403,12 @@ namespace MarketDataCollector.Application.Services
             }
 
             LogFinalStopStatistics(_sessionId, totalIncoming, totalReceived, totalInserted, totalDropped, droppedByChannel, remainingAfterStop);
+
+            // DIAG-STOP: общая длительность остановки.
+            stopSw.Stop();
+            _logger.LogInformation(
+                "DIAG-STOP: StopProcessingAsync занял {Elapsed}ms (start {Start:O}) | tpThreads={TpThreads}",
+                stopSw.ElapsedMilliseconds, stopStartTs, ThreadPool.ThreadCount);
         }
 
         // ========================================================================

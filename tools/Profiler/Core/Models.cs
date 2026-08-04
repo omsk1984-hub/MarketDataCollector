@@ -17,7 +17,9 @@ public sealed record TraceRun(
     ToolRun Run,
     int ProcessId,
     string OutputPath,
-    string Profile);
+    string Profile,
+    int DurationSec,
+    DateTime StartedAt);
 
 /// <summary>Результат сбора дампа кучи (gcdump).</summary>
 public sealed record GcDumpResult(

@@ -281,7 +281,37 @@ app.MapPost("/shutdown", (IHostApplicationLifetime appLifetime, HttpContext ctx)
     });
 });
 
+// ===== DIAG: middleware тайминга запросов (детекция starvation) =====
+// Логирует запросы, занявшие >1с, с сигнатурой thread pool и GC-генерациями.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    var method = context.Request.Method;
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var startTs = DateTime.UtcNow;
+    try
+    {
+        await next();
+    }
+    finally
+    {
+        var elapsed = sw.ElapsedMilliseconds;
+        if (elapsed > 1000)
+        {
+            var logger = context.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("HttpDiag");
+            ThreadPool.GetAvailableThreads(out int availW, out int availIo);
+            ThreadPool.GetMaxThreads(out int maxW, out int maxIo);
+            logger?.LogWarning(
+                "DIAG-HTTP: {Method} {Path} -> {StatusCode} за {Elapsed}ms (start {Start:O}) | " +
+                "tp={AvailW}/{MaxW}w {AvailIo}/{MaxIo}io gen0={Gen0} gen2={Gen2}",
+                method, path, context.Response.StatusCode, elapsed, startTs,
+                availW, maxW, availIo, maxIo,
+                GC.CollectionCount(0), GC.CollectionCount(2));
+        }
+    }
+});
+
 // ===== Prometheus scrape endpoint =====
-app.MapPrometheusScrapingEndpoint("/metrics");
+app.UseOpenTelemetryPrometheusScrapingEndpoint("/metrics");
 
 app.Run();

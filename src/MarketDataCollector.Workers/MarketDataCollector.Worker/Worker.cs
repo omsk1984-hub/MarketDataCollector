@@ -184,6 +184,7 @@ public class Worker : BackgroundService
         _logger.LogInformation("Health-check: Запущен");
         while (!stoppingToken.IsCancellationRequested)
         {
+            var hcIterStart = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 await Task.Delay(HealthCheckInterval, stoppingToken);
@@ -192,6 +193,11 @@ public class Worker : BackgroundService
             {
                 break;
             }
+            var hcAfterDelay = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            // DIAG-HEALTHCHECK: сигнатура thread pool для детекции starvation.
+            ThreadPool.GetAvailableThreads(out int availWorker, out int availIo);
+            ThreadPool.GetMaxThreads(out int maxWorker, out int maxIo);
 
             var connected = clients.Count(c => c.IsConnected);
             var disconnected = clients.Count - connected;
@@ -243,13 +249,19 @@ public class Worker : BackgroundService
                 MarketDataTelemetry.SetChannelFillLevel(i, fillLevels[i].Count);
             }
 
-            // Compact health-check log
+            // Compact health-check log (DIAG: + тайминги фаз и сигнатура thread pool)
+            var hcIterEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+            double iterMs = System.Diagnostics.Stopwatch.GetElapsedTime(hcIterStart, hcIterEnd).TotalMilliseconds;
+            double delayMs = System.Diagnostics.Stopwatch.GetElapsedTime(hcIterStart, hcAfterDelay).TotalMilliseconds;
+            double dataMs = System.Diagnostics.Stopwatch.GetElapsedTime(hcAfterDelay, hcIterEnd).TotalMilliseconds;
             _logger.LogInformation(
                 "Health-check: {Connected} connected, {Disconnected} disconnected | " +
                 "fills: {FillPercents} | total: {TotalFill:F1}% | dropped: ~{Dropped} | " +
-                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s",
+                "RPS: Incoming={IncomingRps:F1} msg/s, Processed={ProcessedRps:F1} ticks/s | " +
+                "DIAG iter={IterMs:F0}ms delay={DelayMs:F0}ms data={DataMs:F0}ms tp={AvailW}/{MaxW}w {AvailIo}/{MaxIo}io",
                 connected, disconnected, fillPercents, totalFillPercent, estimatedDropped,
-                incomingRps, processedRps);
+                incomingRps, processedRps,
+                iterMs, delayMs, dataMs, availWorker, maxWorker, availIo, maxIo);
 
             // Warning if significant drops detected
             if (estimatedDropped > 100)

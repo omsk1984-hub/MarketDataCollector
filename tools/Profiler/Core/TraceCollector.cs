@@ -7,6 +7,8 @@ namespace MarketDataCollector.Profiler.Core;
 /// <summary>Управление сбором trace через dotnet-trace.</summary>
 public sealed class TraceCollector : ITraceCollector
 {
+    private const int GracefulStopTimeoutSec = 10;
+
     private readonly IToolRunner _toolRunner;
     private readonly IConsoleUI _ui;
     private readonly ILogger<TraceCollector> _logger;
@@ -25,31 +27,45 @@ public sealed class TraceCollector : ITraceCollector
         string profile,
         CancellationToken cancellationToken)
     {
-        string args = BuildArgs(processId, durationSec, outputPath, profile);
+        string args = BuildArgs(processId, outputPath, profile);
 
-        _ui.Info($"Запуск dotnet-trace (PID {processId}, {durationSec}с, профиль {profile}) ...");
+        _ui.Info($"Запуск dotnet-trace (PID {processId}, до {durationSec}с, профиль {profile}) ...");
         ToolRun run = await _toolRunner.RunAsync("dotnet-trace", args, cancellationToken);
 
-        return new TraceRun(run, processId, outputPath, profile);
+        return new TraceRun(run, processId, outputPath, profile, durationSec, DateTime.Now);
     }
 
     public async Task StopAsync(TraceRun trace, CancellationToken cancellationToken)
     {
         Process process = trace.Run.Process;
 
-        _ui.Info("Ожидание завершения dotnet-trace ...");
+        // Дожидаемся полной запрошенной длительности сбора (trace запущен без --duration,
+        // поэтому остановкой управляем полностью сами — это даёт полное окно данных).
+        int elapsedSec = (int)(DateTime.Now - trace.StartedAt).TotalSeconds;
+        int remainingSec = Math.Max(0, trace.DurationSec - elapsedSec);
+        if (remainingSec > 0)
+        {
+            _ui.Info($"Ожидание завершения trace: ещё ~{remainingSec}с ...");
+            await Task.Delay(TimeSpan.FromSeconds(remainingSec), cancellationToken);
+        }
 
-        // Ждём до 15 секунд завершения процесса.
+        _ui.Info("Остановка dotnet-trace (graceful) ...");
+
+        // Сначала мягкое завершение (без /F): dotnet-trace корректно финализирует файл
+        // и завершается с кодом 0. Используем как graceful-остановку.
+        await Task.Run(() => TaskKill(process.Id, force: false), cancellationToken);
+
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(GracefulStopTimeoutSec));
             await process.WaitForExitAsync(timeoutCts.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _ui.Warn("dotnet-trace не завершился за 15с — принудительное завершение (taskkill).");
-            await Task.Run(() => KillByProcessId(process.Id), cancellationToken);
+            _ui.Warn("dotnet-trace не завершился после graceful-остановки — принудительное завершение (taskkill /F).");
+            await Task.Run(() => TaskKill(process.Id, force: true), cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
         }
 
         string stdout = await trace.Run.StdOutTask;
@@ -77,13 +93,9 @@ public sealed class TraceCollector : ITraceCollector
         }
     }
 
-    /// <summary>Формирует аргументы dotnet-trace в зависимости от профиля.</summary>
-    private static string BuildArgs(int processId, int durationSec, string outputPath, string profile)
+    /// <summary>Формирует аргументы dotnet-trace в зависимости от профиля (без --duration).</summary>
+    private static string BuildArgs(int processId, string outputPath, string profile)
     {
-        // ВАЖНО: dotnet-trace интерпретирует голое число как дни. Формат обязателен hh:mm:ss.
-        TimeSpan duration = TimeSpan.FromSeconds(Math.Max(1, durationSec));
-        string durationArg = $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
-
         string providers = profile switch
         {
             "cpu-sampling" => "--profile cpu-sampling",
@@ -93,17 +105,18 @@ public sealed class TraceCollector : ITraceCollector
             _ => "--profile gc-verbose",
         };
 
-        return $"collect --process-id {processId} --output \"{outputPath}\" --duration {durationArg} {providers}";
+        return $"collect --process-id {processId} --output \"{outputPath}\" {providers}";
     }
 
-    private static void KillByProcessId(int processId)
+    private static void TaskKill(int processId, bool force)
     {
         try
         {
+            string args = force ? $"/PID {processId} /F" : $"/PID {processId}";
             Process.Start(new ProcessStartInfo
             {
                 FileName = "taskkill",
-                Arguments = $"/PID {processId} /F",
+                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             });
