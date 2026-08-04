@@ -37,6 +37,42 @@ _ = Task.Run(async () =>
     }
 });
 
+// ===== Global exception handlers (diagnostics) =====
+// Ловит фатальные нативные крахи (например, ACCESS_VIOLATION) и
+// необработанные исключения из fire-and-forget задач для логирования
+// причины падения Worker'а.
+AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+{
+    var exceptionObject = args.ExceptionObject as Exception;
+    var message = exceptionObject?.ToString() ?? "null";
+    try
+    {
+        File.AppendAllText(
+            Path.Combine(AppContext.BaseDirectory, "crash.log"),
+            $"[{DateTime.UtcNow:O}] FATAL UnhandledException (isTerminating={args.IsTerminating}):\n{message}\n---\n");
+    }
+    catch
+    {
+        // Игнорируем ошибки записи crash.log — процесс всё равно умирает.
+    }
+};
+
+TaskScheduler.UnobservedTaskException += (sender, args) =>
+{
+    var message = args.Exception?.ToString() ?? "null";
+    try
+    {
+        File.AppendAllText(
+            Path.Combine(AppContext.BaseDirectory, "crash.log"),
+            $"[{DateTime.UtcNow:O}] UNOBSERVED Task Exception:\n{message}\n---\n");
+    }
+    catch
+    {
+        // Игнорируем ошибки записи crash.log.
+    }
+    args.SetObserved();
+};
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ===== OpenTelemetry Configuration =====

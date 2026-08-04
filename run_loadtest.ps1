@@ -53,7 +53,7 @@ param(
     [int]$DupPercent = 3,
 
     [ValidateSet("gc-verbose", "cpu-sampling", "contention", "contention-cpu")]
-    [string]$TraceProfile = "contention-cpu",
+    [string]$TraceProfile = "cpu-sampling",
     [int]$TraceDuration = 90,
     [int]$GcDumpAtPeakSec = 50,
 
