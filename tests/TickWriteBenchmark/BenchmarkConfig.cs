@@ -8,7 +8,7 @@ public sealed class BenchmarkConfig
     /// <summary>
     /// Размеры чанков для тестирования.
     /// </summary>
-    public int[] ChunkSizes { get; init; } = [ 500, 1000, 2000, 5000];
+    public int[] ChunkSizes { get; init; } = [500, 1000, 2000, 5000];
 
     /// <summary>
     /// Фиксированное общее количество тиков на каждый тест.

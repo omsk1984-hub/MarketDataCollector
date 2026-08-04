@@ -3,7 +3,7 @@ namespace MarketDataCollector.Core.Configuration
     public class MarketDataProcessorOptions
     {
         public const string SectionName = "MarketDataProcessor";
-        
+
         /// <summary>
         /// Размер батча для записи в БД (legacy).
         /// Используется как значение по умолчанию для MaxBatchSize, если MaxBatchSize = 0.

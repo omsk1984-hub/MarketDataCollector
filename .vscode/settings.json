@@ -13,13 +13,13 @@
         "PowerShell 7": {
             "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
             "icon": "terminal-powershell",
-            "args": ["-NoExit", "-File", "${workspaceFolder}\\scripts\\vscode-terminal-init.ps1"],
+            "args": ["-NoExit"],
             "overrideName": true
         },
         "PowerShell": {
             "source": "PowerShell",
             "icon": "terminal-powershell",
-            "args": ["-NoExit", "-File", "${workspaceFolder}\\scripts\\vscode-terminal-init.ps1"],
+            "args": ["-NoExit"],
             "overrideName": true
         },
         "Command Prompt": {

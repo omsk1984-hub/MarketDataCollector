@@ -118,7 +118,7 @@ public class KafkaCandleConsumerService : IHostedService, IAsyncDisposable
                 // даже если Consumer.Consume() не реагирует на отмену токена
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
-                
+
                 await _consumingTask.WaitAsync(timeoutCts.Token);
             }
         }

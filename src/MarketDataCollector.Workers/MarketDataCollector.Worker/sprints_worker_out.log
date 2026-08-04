@@ -1,0 +1,92 @@
+info: Microsoft.EntityFrameworkCore.Migrations[20405]
+      No migrations were applied. The database is already up to date.
+info: MarketDataCollector.Infrastructure.Services.PartitionMaintenanceService[0]
+      PartitionMaintenanceService started. Table=rawticks partition_col=timestamp premake=7d retention=30d interval=01:00:00
+info: MarketDataCollector.Worker.Worker[0]
+      Worker starting...
+info: MarketDataCollector.Application.Services.TickAggregator[0]
+      TickAggregator отключён (Enabled=false). Тики будут игнорироваться.
+info: MarketDataCollector.Infrastructure.Services.PartitionMaintenanceService[0]
+      Partition maintenance done: created=7 dropped=0
+info: MarketDataCollector.Application.Services.MarketDataProcessor[5]
+      Session=738d8f6b-4e8f-42d9-8907-eff360475205: Обработчик рыночных данных запущен: Single Consumer mode, batchSize=5000, ChannelCapacity=150000
+info: MarketDataCollector.Application.Services.TickAggregator[0]
+      TickAggregator.StartAsync пропущен (Enabled=false).
+info: MarketDataCollector.Worker.Worker[0]
+      Starting 3 WebSocket clients with staggered startup (2s interval)...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Подключение к бирже binance...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Фоновый цикл восстановления запущен.
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:5010
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: d:\work\MarketDataCollector\src\MarketDataCollector.Workers\MarketDataCollector.Worker
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Подключение к бирже binance...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Фоновый цикл восстановления запущен.
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Подключение к бирже binance...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Фоновый цикл восстановления запущен.
+info: MarketDataCollector.Worker.Worker[0]
+      Health-check: Запущен
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Ошибка подключения (попытка 1). Повтор через 5.241766s...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Ошибка подключения (попытка 1). Повтор через 3.9857653s...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Ошибка подключения (попытка 1). Повтор через 5.3492029s...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Подключение к бирже binance...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Подключение к бирже binance...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Ошибка подключения (попытка 2). Повтор через 8.5777902s...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Подключение к бирже binance...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Ошибка подключения (попытка 2). Повтор через 10.5021936s...
+info: MarketDataCollector.Worker.Worker[0]
+      Health-check: 0 connected, 3 disconnected | fills: 0,0% | total: 0.0% | dropped: ~0 | RPS: Incoming=0.0 msg/s, Processed=0.0 ticks/s | DIAG iter=10534ms delay=10013ms data=522ms tp=32766/32767w 1000/1000io
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (btcusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (ethusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (solusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Ошибка подключения (попытка 2). Повтор через 9.6834642s...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Подключение к бирже binance...
+info: MarketDataCollector.Worker.Worker[0]
+      Health-check: 0 connected, 3 disconnected | fills: 0,0% | total: 0.0% | dropped: ~0 | RPS: Incoming=0.0 msg/s, Processed=0.0 ticks/s | DIAG iter=10007ms delay=10007ms data=1ms tp=32766/32767w 1000/1000io
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (btcusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (ethusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (solusdt) is disconnected. Recovery-loop should handle reconnection.
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Подключение к бирже binance...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_btcusdt: Ошибка подключения (попытка 3). Повтор через 20.6239927s...
+info: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Подключение к бирже binance...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_ethusdt: Ошибка подключения (попытка 3). Повтор через 22.6767906s...
+warn: MarketDataCollector.Infrastructure.Clients.BinanceWebSocketClient[0]
+      binance_solusdt: Ошибка подключения (попытка 3). Повтор через 22.4355771s...
+info: MarketDataCollector.Worker.Worker[0]
+      Health-check: 0 connected, 3 disconnected | fills: 0,0% | total: 0.0% | dropped: ~0 | RPS: Incoming=0.0 msg/s, Processed=0.0 ticks/s | DIAG iter=10010ms delay=10010ms data=0ms tp=32766/32767w 1000/1000io
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (btcusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (ethusdt) is disconnected. Recovery-loop should handle reconnection.
+warn: MarketDataCollector.Worker.Worker[0]
+      Client binance (solusdt) is disconnected. Recovery-loop should handle reconnection.

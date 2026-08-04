@@ -133,7 +133,7 @@ public abstract class BaseWebSocketClient : IExchangeWebSocketClient, IAsyncDisp
 
         OnConnected();
         await StartReceiveLoopAsync(cancellationToken);
-        
+
         if (_subscriptionManager != null)
         {
             await _subscriptionManager.SubscribeWithRetryAsync(Symbol, cancellationToken);

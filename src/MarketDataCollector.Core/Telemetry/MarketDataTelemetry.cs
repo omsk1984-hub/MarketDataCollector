@@ -95,12 +95,29 @@ public static class MarketDataTelemetry
         unit: "count",
         description: "Ticks skipped by database ON CONFLICT DO NOTHING");
 
+    // TicksDropped — ObservableGauge вместо Counter, чтобы сэмпл был виден даже при нуле.
+    // Значение накапливается в Interlocked-аккумуляторах по 3 exchange-тегам (без lock и аллокаций),
+    // а экспортёр читает их при каждом сборе (см. IncrementTicksDropped). Имя остаётся ticks.dropped.
+    private static long _ticksDroppedBinance;
+    private static long _ticksDroppedKraken;
+    private static long _ticksDroppedOther;
+
     /// <summary>
     /// Количество тиков, дропнутых каналом (TryWrite=false из-за DropOldest).
+    /// ObservableGauge — экспортируется при каждом сборе, даже когда значение 0.
     /// Теги: exchange
     /// </summary>
-    public static readonly Counter<long> TicksDropped = Instance.CreateCounter<long>(
+    public static readonly ObservableGauge<long> TicksDropped = Instance.CreateObservableGauge(
         name: "ticks.dropped",
+        observeValues: () => new[]
+        {
+            new Measurement<long>(Volatile.Read(ref _ticksDroppedBinance),
+                new KeyValuePair<string, object?>("exchange", "binance")),
+            new Measurement<long>(Volatile.Read(ref _ticksDroppedKraken),
+                new KeyValuePair<string, object?>("exchange", "kraken")),
+            new Measurement<long>(Volatile.Read(ref _ticksDroppedOther),
+                new KeyValuePair<string, object?>("exchange", "unknown"))
+        },
         unit: "count",
         description: "Total ticks dropped due to channel overflow");
 
@@ -172,11 +189,23 @@ public static class MarketDataTelemetry
         unit: "count",
         description: "Current ticks in channel by channel_index");
 
+    // TicksDroppedSilently — ObservableGauge вместо Counter, чтобы сэмпл был виден даже при нуле.
+    // Текущее накопленное значение выставляет Worker в health-check цикле через SetTicksDroppedSilently,
+    // экспортёр читает его при каждом сборе. Имя остаётся ticks.dropped.silently.
+    private static long _ticksDroppedSilently;
+
+    public static void SetTicksDroppedSilently(long value) => Volatile.Write(ref _ticksDroppedSilently, value);
+
     /// <summary>
-    /// Оценка дропнутых тиков через DropOldest (cumulative).
+    /// Оценка дропнутых тиков через DropOldest (current value).
+    /// ObservableGauge — экспортируется при каждом сборе, даже когда значение 0.
     /// </summary>
-    public static readonly Counter<long> TicksDroppedSilently = Instance.CreateCounter<long>(
+    public static readonly ObservableGauge<long> TicksDroppedSilently = Instance.CreateObservableGauge(
         name: "ticks.dropped.silently",
+        observeValues: () => new[]
+        {
+            new Measurement<long>(Volatile.Read(ref _ticksDroppedSilently))
+        },
         unit: "count",
         description: "Estimated ticks dropped silently by DropOldest mode");
 
@@ -240,14 +269,6 @@ public static class MarketDataTelemetry
     private static readonly CounterBatcher TicksIncomingOther = new(
         TicksIncoming, new KeyValuePair<string, object?>[] { new("exchange", "unknown") });
 
-    // TicksDropped — те же 3 exchange-тега.
-    private static readonly CounterBatcher TicksDroppedBinance = new(
-        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "binance") });
-    private static readonly CounterBatcher TicksDroppedKraken = new(
-        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "kraken") });
-    private static readonly CounterBatcher TicksDroppedOther = new(
-        TicksDropped, new KeyValuePair<string, object?>[] { new("exchange", "unknown") });
-
     // WsMessagesReceived — по комбинации exchange+symbol, создаётся лениво при первом сообщении.
     private static readonly ConcurrentDictionary<(string Exchange, string Symbol), CounterBatcher> WsMessagesBatchers =
         new();
@@ -260,11 +281,25 @@ public static class MarketDataTelemetry
         => BatcherForExchange(exchange, TicksIncomingBinance, TicksIncomingKraken, TicksIncomingOther).Add();
 
     /// <summary>
-    /// Инкремент <c>ticks.dropped</c> в hot path. Маппит exchange в фиксированный батчер.
+    /// Инкремент <c>ticks.dropped</c> в hot path. Без аллокаций и lock: маппит exchange
+    /// в фиксированный Interlocked-аккумулятор, который читает ObservableGauge TicksDropped.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void IncrementTicksDropped(string exchange)
-        => BatcherForExchange(exchange, TicksDroppedBinance, TicksDroppedKraken, TicksDroppedOther).Add();
+    {
+        switch (exchange)
+        {
+            case "Binance":
+                Interlocked.Increment(ref _ticksDroppedBinance);
+                break;
+            case "Kraken":
+                Interlocked.Increment(ref _ticksDroppedKraken);
+                break;
+            default:
+                Interlocked.Increment(ref _ticksDroppedOther);
+                break;
+        }
+    }
 
     /// <summary>
     /// Инкремент <c>ws.messages.received</c> в hot path. Получает/создаёт батчер
@@ -296,10 +331,6 @@ public static class MarketDataTelemetry
         TicksIncomingKraken.Flush();
         TicksIncomingOther.Flush();
 
-        TicksDroppedBinance.Flush();
-        TicksDroppedKraken.Flush();
-        TicksDroppedOther.Flush();
-
         foreach (var batcher in WsMessagesBatchers.Values)
         {
             batcher.Flush();
@@ -315,4 +346,4 @@ public static class MarketDataTelemetry
             "Kraken" => kraken,
             _ => other
         };
-    }
+}

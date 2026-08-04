@@ -8,11 +8,11 @@ namespace MarketDataCollector.Core.Interfaces
     {
         bool IsConnected { get; }
         string ExchangeName { get; }
-        
+
         Task ConnectAsync(CancellationToken cancellationToken = default);
         Task DisconnectAsync(CancellationToken cancellationToken = default);
         Task SendAsync(string message, CancellationToken cancellationToken = default);
-        
+
         event EventHandler<ReadOnlyMemory<byte>> MessageReceived;
         event EventHandler Connected;
         event EventHandler Disconnected;

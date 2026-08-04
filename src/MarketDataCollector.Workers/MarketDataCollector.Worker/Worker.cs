@@ -233,12 +233,10 @@ public class Worker : BackgroundService
                 _lastBacklog = currentBacklog;
             }
 
-            var droppedDelta = estimatedDropped - _lastEstimatedDropped;
-            if (droppedDelta > 0)
-            {
-                MarketDataTelemetry.TicksDroppedSilently.Add(droppedDelta);
-                _lastEstimatedDropped = estimatedDropped;
-            }
+            // ticks.dropped.silently — ObservableGauge: выставляем текущее накопленное значение.
+            // Экспортёр читает его при каждом сборе, поэтому сэмпл виден и при нуле.
+            MarketDataTelemetry.SetTicksDroppedSilently(estimatedDropped);
+            _lastEstimatedDropped = estimatedDropped;
 
             // Per-channel fill как мгновенная метрика (ObservableGauge) — текущая глубина очереди.
             // Гистограмма ChannelFill не подходит для контроля дренажа (кумулятивная),

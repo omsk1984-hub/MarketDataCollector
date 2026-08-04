@@ -64,8 +64,8 @@ author: You
 | `ticks_incoming_count_total` | тики на входе конвейера |
 | `ticks_received_count_total` | тики, прочитанные из Channel в батч |
 | `ticks_processed_count_total` | тики, записанные в БД |
-| `ticks_dropped_count_total` | дропы каналом (DropOldest) |
-| `ticks_dropped_silently_count_total` | оценка тихих дропов |
+| `ticks_dropped_count` | дропы каналом (DropOldest); ObservableGauge (тип `gauge`), по exchange в Labels; виден и при нуле |
+| `ticks_dropped_silently_count` | оценка тихих дропов; ObservableGauge (тип `gauge`), виден и при нуле |
 | `ticks_deduplicated_cache_count_total` | отсев in-process `DeduplicationCache` внутри батча |
 | `ticks_deduplicated_db_count_total` | отсев на уровне БД (`ON CONFLICT DO NOTHING`) |
 
