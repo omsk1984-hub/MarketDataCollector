@@ -7,7 +7,6 @@ if ($proc) {
 $dockerRunning = docker info 2>&1 | Select-String "Server Version"
 if (-not $dockerRunning) {
     Write-Host "Docker не запущен! Запустите Docker Desktop." -ForegroundColor Red
-    Read-Host -Prompt "Нажмите любую клавишу для выхода"
     exit 1
 }
 
@@ -24,10 +23,8 @@ Write-Host "Компиляция решения..." -ForegroundColor Cyan
 dotnet build MarketDataCollector.sln
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Ошибка компиляции!" -ForegroundColor Red
-    Read-Host -Prompt "Нажмите любую клавишу для выхода"
     exit 1
 }
 
 cd src/MarketDataCollector.Workers/MarketDataCollector.Worker
 dotnet run
-Read-Host -Prompt "Нажмиете любую клавишу для выхода"

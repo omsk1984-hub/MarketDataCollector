@@ -347,4 +347,3 @@ foreach ($f in $artifacts) {
 
 Write-Host ""
 Write-Host "Прогон завершён. Логи FakeServer/Worker: $OutputDir\fake_server_*.log, $OutputDir\worker_*.log" -ForegroundColor Green
-Read-Host -Prompt "Нажмите любую клавишу для выхода"
