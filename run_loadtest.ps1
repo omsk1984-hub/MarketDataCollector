@@ -53,13 +53,30 @@ param(
     [int]$DupPercent = 3,
 
     [ValidateSet("gc-verbose", "cpu-sampling", "contention", "contention-cpu")]
-    [string]$TraceProfile = "gc-verbose",
+    [string]$TraceProfile = "contention-cpu",
     [int]$TraceDuration = 90,
     [int]$GcDumpAtPeakSec = 50,
 
     [string]$OutputDir = "./traces",
     [switch]$SkipProfiler
 )
+
+# ============================================================
+# Параметры запуска (выводятся в самом начале)
+# ============================================================
+Write-Host ""
+Write-Host "---- Параметры запуска ----" -ForegroundColor Cyan
+Write-Host "  MaxTicks:        $MaxTicks"
+Write-Host "  Rps:             $Rps"
+Write-Host "  Symbols:         $Symbols"
+Write-Host "  DupPercent:      $DupPercent%"
+Write-Host "  TraceProfile:    $TraceProfile"
+Write-Host "  TraceDuration:   $TraceDuration с"
+Write-Host "  GcDumpAtPeakSec: $GcDumpAtPeakSec с"
+Write-Host "  OutputDir:       $OutputDir"
+Write-Host "  SkipProfiler:    $(if ($SkipProfiler) { 'True' } else { 'False' })"
+Write-Host "-----------------------------" -ForegroundColor Cyan
+Write-Host ""
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
