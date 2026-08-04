@@ -237,14 +237,14 @@ if ($SkipProfiler) {
 }
 else {
     Write-Step "[5/7] Профилирование (Profiler: $TraceProfile, $TraceDuration с)"
-    $profilerArgs = @(
-        "-TraceProfile", $TraceProfile,
-        "-TraceDuration", "$TraceDuration",
-        "-GcDumpAtPeakSec", "$GcDumpAtPeakSec",
-        "-OutputDir", "$OutputDir"
-    )
-    # run_all_profiler.ps1 сам использует cmd /c wrapper для кодировки.
-    & "$root/run_all_profiler.ps1" @profilerArgs
+    # Передаём именованные параметры явно: splatting обычного массива строк
+    # передаёт элементы позиционно, из-за чего "-TraceProfile" попадал как
+    # ЗНАЧЕНИЕ параметра TraceProfile и не проходил ValidateSet.
+    & "$root/run_all_profiler.ps1" `
+        -TraceProfile $TraceProfile `
+        -TraceDuration $TraceDuration `
+        -GcDumpAtPeakSec $GcDumpAtPeakSec `
+        -OutputDir $OutputDir
     Write-Host "  Profiler завершён." -ForegroundColor Green
 }
 

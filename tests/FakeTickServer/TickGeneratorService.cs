@@ -215,9 +215,12 @@ public class TickGeneratorService : BackgroundService
                     {
                         _isLimitReached = true;
                         _logger.LogInformation(
-                            "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
+                            "Достигнут лимит: {MaxTicks}. Сгенерировано: {Actual}. " +
+                            "Уникальных: {Unique}. " +
                             "Останавливаю сервер.",
-                            _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
+                            _settings.MaxTicks,
+                            Interlocked.Read(ref _totalTicks),
+                            Interlocked.Read(ref _totalTicks) - Interlocked.Read(ref _duplicateTicksSent));
                     }
                     _hostLifetime.StopApplication();
                     return;
@@ -329,8 +332,11 @@ public class TickGeneratorService : BackgroundService
                                 _isLimitReached = true;
                                 _logger.LogInformation(
                                     "Достигнут лимит тиков: {MaxTicks}. Фактически сгенерировано: {Actual}. " +
+                                    "Уникальных: {Unique}. " +
                                     "Останавливаю сервер.",
-                                    _settings.MaxTicks, Interlocked.Read(ref _totalTicks));
+                                    _settings.MaxTicks,
+                                    Interlocked.Read(ref _totalTicks),
+                                    Interlocked.Read(ref _totalTicks) - Interlocked.Read(ref _duplicateTicksSent));
                             }
                             _hostLifetime.StopApplication();
                             return;
