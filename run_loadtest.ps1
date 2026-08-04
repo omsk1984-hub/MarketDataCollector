@@ -135,6 +135,33 @@ function Wait-ProcessExit([System.Diagnostics.Process]$proc, [int]$TimeoutSec, [
     return $false
 }
 
+function Wait-GenerationComplete([string]$HealthUrl, [int]$MaxTicks, [int]$Rps) {
+    # Polling /health с проверкой isLimitReached вместо blind sleep.
+    # Таймаут = расчётное время генерации * 2, но не меньше 60с.
+    $estSec = [Math]::Max(30, [int]($MaxTicks / [Math]::Max(1, $Rps)))
+    $timeoutSec = [Math]::Max(60, $estSec * 2)
+    $deadline = (Get-Date).AddSeconds($timeoutSec)
+
+    Write-Host "  Ожидание генерации $MaxTicks тиков (polling $HealthUrl, таймаут ${timeoutSec}с)..."
+
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $resp = Invoke-RestMethod -Uri $HealthUrl -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+            if ($resp.isLimitReached -eq $true) {
+                Write-Host "  Генерация завершена: $($resp.totalTicks) тиков, isLimitReached=true." -ForegroundColor Green
+                return $true
+            }
+            Write-Host "  Генерация: $($resp.totalTicks) / $MaxTicks тиков, клиентов: $($resp.clients), статус: $($resp.status)" -ForegroundColor Gray
+        }
+        catch {
+            Write-Host "  Health-запрос не удался: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+        Start-Sleep -Seconds 3
+    }
+    Write-Host "  Таймаут ожидания генерации (${timeoutSec}с)." -ForegroundColor Red
+    return $false
+}
+
 # ============================================================
 # Preflight
 # ============================================================
@@ -270,11 +297,9 @@ else {
 # ============================================================
 Write-Step "[6/7] Ожидание завершения генерации FakeTickServer"
 # FakeServer НЕ завершает хост сам — только прекращает генерацию тиков.
-# Ждём расчётное время генерации MaxTicks, затем даём время на дренаж Worker.
-$generationSeconds = [Math]::Max(30, [int]($MaxTicks / [Math]::Max(1, $Rps)) + 30)
-Write-Host "  Ожидание генерации $MaxTicks тиков (~${generationSeconds}с)..."
-Start-Sleep -Seconds $generationSeconds
-Write-Host "  Генерация завершена. Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
+# Ждём через polling /health с проверкой isLimitReached вместо blind sleep.
+Wait-GenerationComplete -HealthUrl "http://localhost:5000/health" -MaxTicks $MaxTicks -Rps $Rps
+Write-Host "  Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 15
 
 # ============================================================

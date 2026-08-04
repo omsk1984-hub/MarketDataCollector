@@ -89,7 +89,9 @@ app.MapGet("/", () => Results.Ok(new
 app.MapGet("/health", () => Results.Ok(new
 {
     status = generator.ClientCount > 0 ? "active" : "idle",
-    clients = generator.ClientCount
+    clients = generator.ClientCount,
+    totalTicks = generator.TotalTicksGenerated,
+    isLimitReached = generator.IsLimitReached
 }));
 
 // Graceful shutdown: оркестратор вызывает POST /shutdown для управляемой
