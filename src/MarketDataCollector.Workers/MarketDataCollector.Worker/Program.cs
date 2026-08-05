@@ -19,16 +19,34 @@ using Microsoft.Extensions.Primitives;
 // ===== GC Optimization =====
 GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
 
-// Периодическая LOH compaction (каждые 5 минут) для снижения LOH фрагментации
+// LOH-компактинг по порогу фрагментации (>15%), а не по таймеру.
+// Безусловный CompactOnce каждые 5 минут противоречил правилу «компактить только
+// если LOH-фрагментация > 15%» (сейчас ~18% — порог пройден).
+// Компактинг дорогой (GC-пауза), поэтому применяем точечно и только при реальной
+// фрагментации, чтобы не вмешиваться в стабильные прогоны.
+const double LohCompactionFragmentationThreshold = 0.15;
+var LohCompactionCheckInterval = TimeSpan.FromMinutes(5);
+
 _ = Task.Run(async () =>
 {
     while (true)
     {
-        await Task.Delay(TimeSpan.FromMinutes(5));
+        await Task.Delay(LohCompactionCheckInterval);
         try
         {
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(2, GCCollectionMode.Forced, blocking: false);
+            // GCMemoryInfo.FragmentedBytes/HeapSizeBytes даёт оценку доли фрагментированной
+            // памяти heap (LOH вносит основной постоянный вклад в фрагментацию Gen2/LOH).
+            // Точного LOH-специфичного поля в .NET 8 нет — используем агрегат.
+            var info = GC.GetGCMemoryInfo();
+            if (info.HeapSizeBytes == 0)
+                continue;
+
+            var fragmentationRatio = (double)info.FragmentedBytes / info.HeapSizeBytes;
+            if (fragmentationRatio > LohCompactionFragmentationThreshold)
+            {
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(2, GCCollectionMode.Forced, blocking: false);
+            }
         }
         catch
         {

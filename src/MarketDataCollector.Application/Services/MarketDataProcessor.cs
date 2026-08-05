@@ -427,19 +427,7 @@ namespace MarketDataCollector.Application.Services
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
 
-            using var flushTimerCts = new CancellationTokenSource();
-            Timer? flushTimer = null;
-            if (_flushIntervalSeconds > 0)
-            {
-                // Колбэк может сработать после Dispose из using-блока (тонкая гонка при остановке).
-                // ObjectDisposedException нельзя пускать наружу из потока пула — это роняет процесс.
-                flushTimer = new Timer(_ =>
-                    {
-                        try { flushTimerCts.Cancel(); }
-                        catch (ObjectDisposedException) { }
-                    },
-                    null, Timeout.Infinite, Timeout.Infinite);
-            }
+            CancellationTokenSource? flushCts = null;
 
             try
             {
@@ -447,25 +435,33 @@ namespace MarketDataCollector.Application.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    Task<bool> readTask;
                     if (_flushIntervalSeconds > 0 && batchCount > 0)
                     {
-                        var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        flushTimerCts.TryReset();
-                        flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
-                        var flushDelay = Task.Delay(Timeout.Infinite, flushTimerCts.Token);
-                        var completed = await Task.WhenAny(readTaskTyped, flushDelay).ConfigureAwait(false);
+                        // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
+                        // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
+                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
 
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        if (completed == flushDelay)
+                        try
                         {
+                            var hasData = await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false);
+                            if (hasData)
+                            {
+                                goto readTicks;
+                            }
+                            else
+                            {
+                                goto channelCompleted;
+                            }
+                        }
+                        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
                             // Timer flush — skip if partial batch is too small (micro-batch prevention)
                             if (_minPartialBatchSize > 0 && batchCount < _minPartialBatchSize)
                             {
                                 LogTimerFlushSkipped(_sessionId, batchCount, _minPartialBatchSize, channelIndex);
-                                flushTimerCts.TryReset();
-                                flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
                                 continue;
                             }
 
@@ -480,20 +476,10 @@ namespace MarketDataCollector.Application.Services
                             adaptiveBatchSize = CalculateAdaptiveBatchSize(channel.Reader.Count, lastWriteDurationMs);
                             continue;
                         }
-
-                        if (readTaskTyped.Result)
-                        {
-                            goto readTicks;
-                        }
-                        else
-                        {
-                            goto channelCompleted;
-                        }
                     }
                     else
                     {
-                        readTask = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        if (await readTask.ConfigureAwait(false))
+                        if (await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
                         {
                             goto readTicks;
                         }
@@ -677,53 +663,45 @@ namespace MarketDataCollector.Application.Services
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
 
-            using var flushTimerCts = new CancellationTokenSource();
-            Timer? flushTimer = null;
-            if (_flushIntervalSeconds > 0)
-            {
-                flushTimer = new Timer(_ => flushTimerCts.Cancel(),
-                    null, Timeout.Infinite, Timeout.Infinite);
-            }
-
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    Task<bool> readTask;
                     if (_flushIntervalSeconds > 0 && batchCount > 0)
                     {
-                        var readTaskTyped = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        flushTimerCts.TryReset();
-                        flushTimer!.Change(TimeSpan.FromSeconds(_flushIntervalSeconds), Timeout.InfiniteTimeSpan);
-                        var flushDelay = Task.Delay(Timeout.Infinite, flushTimerCts.Token);
-                        var completed = await Task.WhenAny(readTaskTyped, flushDelay).ConfigureAwait(false);
+                        // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
+                        // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
+                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
 
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        if (completed == flushDelay)
+                        try
                         {
+                            var hasData = await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false);
+                            if (hasData)
+                            {
+                                goto readTicks;
+                            }
+                            else
+                            {
+                                goto channelCompleted;
+                            }
+                        }
+                        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
                             LogTimerFlush(_sessionId, batchCount, _maxBatchSize, channelIndex);
 
                             await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
                             batchCount = 0;
                             continue;
                         }
-
-                        if (readTaskTyped.Result)
-                        {
-                            goto readTicks;
-                        }
-                        else
-                        {
-                            goto channelCompleted;
-                        }
                     }
                     else
                     {
-                        readTask = channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                        if (await readTask.ConfigureAwait(false))
+                        if (await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
                         {
                             goto readTicks;
                         }
