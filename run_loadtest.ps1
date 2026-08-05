@@ -111,9 +111,14 @@ function Wait-Http([string]$Url, [int]$TimeoutSec, [string]$Label) {
                 Write-Host "    $Label готов ($($resp.StatusCode))." -ForegroundColor Green
                 return $true
             }
+            # HTTP >= 500 (например, 503 degraded от health-чека Worker при wsAllDown):
+            # сервис поднят, но readiness-чек считает его неготовым. Логируем код и тело,
+            # чтобы отличить "degraded" от реальной недоступности.
+            Write-Host "    ${Label}: HTTP $($resp.StatusCode) - сервис поднят, но readiness!=OK (degraded)." -ForegroundColor Yellow
         }
         catch {
-            # сервис ещё не готов — продолжаем поллинг
+            # сервис ещё не готов / соединение недоступно - продолжаем поллинг
+            Write-Host "    ${Label}: запрос не прошёл: $($_.Exception.Message)" -ForegroundColor Gray
         }
         Start-Sleep -Seconds 2
     }

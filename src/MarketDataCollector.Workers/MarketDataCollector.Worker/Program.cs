@@ -307,9 +307,13 @@ app.MapGet("/health", async (HttpContext ctx) =>
         return status == null || status == "healthy" || status == "disabled" || status == "unknown";
     });
 
-    // Комбинированно: 503, если Kafka/PostgreSQL unhealthy ИЛИ все WS-клиенты отключены.
-    var wsAllDown = wsClients.Count > 0 && connectedClients == 0;
-    var degraded = !allHealthy || wsAllDown;
+    // Комбинированно: 503, если Kafka/PostgreSQL unhealthy.
+    // НЕ включаем wsAllDown в readiness HTTP-кода: WS-подключения — внешняя рыночная
+    // зависимость, которая легитимно бывает disconnected в начале старта/при реконнекте.
+    // Оркестратор нагрузочного теста (Wait-Http) ждёт HTTP-готовность :5010 и не должен
+    // ложно падать по 503. Состояние WS остаётся видимым в checks.websocket и в логере
+    // Worker («0 connected, 3 disconnected»), но не роняет HTTP-код готовности.
+    var degraded = !allHealthy;
 
     ctx.Response.StatusCode = degraded ? 503 : 200;
     await ctx.Response.WriteAsJsonAsync(new

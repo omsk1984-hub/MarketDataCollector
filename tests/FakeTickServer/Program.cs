@@ -37,6 +37,10 @@ app.Map("/ws/{symbol}@trade", async (HttpContext context, string symbol, TickGen
     // AddClient сам генерирует ID и возвращает его
     var clientId = gen.AddClient(webSocket, symbol);
 
+    // Логгер для диагностики причин обрыва WS-подключения (debug прогона).
+    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("FakeServerWS");
+    var startUtc = DateTime.UtcNow;
+
     try
     {
         // Читаем в цикле, чтобы держать соединение открытым.
@@ -49,19 +53,27 @@ app.Map("/ws/{symbol}@trade", async (HttpContext context, string symbol, TickGen
 
             if (result.MessageType == WebSocketMessageType.Close)
             {
+                logger.LogWarning(
+                    "FakeServer: клиент {ClientId} ({Symbol}) прислал Close (code={CloseStatus}, desc={CloseDesc}) после {Elapsed}s.",
+                    clientId, symbol, webSocket.CloseStatus, webSocket.CloseStatusDescription,
+                    (DateTime.UtcNow - startUtc).TotalSeconds);
                 await webSocket.CloseAsync(
                     WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
                 break;
             }
         }
     }
-    catch (WebSocketException)
+    catch (WebSocketException ex)
     {
-        // Клиент отключился — нормальная ситуация
+        // Клиент отключился — логируем причину, чтобы отличить штатный разрыв от Abort/ресета.
+        logger.LogWarning(ex,
+            "FakeServer: исключение WS для клиента {ClientId} ({Symbol}) после {Elapsed}s: {Msg}",
+            clientId, symbol, (DateTime.UtcNow - startUtc).TotalSeconds, ex.Message);
     }
     catch (OperationCanceledException)
     {
         // Сервер останавливается
+        logger.LogWarning("FakeServer: обработка WS клиента {ClientId} ({Symbol}) отменена (остановка сервера).", clientId, symbol);
     }
     finally
     {

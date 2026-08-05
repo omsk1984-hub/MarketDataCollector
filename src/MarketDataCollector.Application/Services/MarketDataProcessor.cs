@@ -435,8 +435,13 @@ namespace MarketDataCollector.Application.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (_flushIntervalSeconds > 0 && batchCount > 0)
+                    if (_flushIntervalSeconds > 0 && batchCount > 0 && channel.Reader.Count == 0)
                     {
+                        // Быстрый путь: если канал уже содержит данные — сразу читаем без создания
+                        // linked CTS / CancelAfter (накладные расходы CancellationTokenSource.Register
+                        // на каждую итерацию давали до ~32% CPU и contention, см. topN trace 115513).
+                        // Таймерный флаш нужен ТОЛЬКО при тишине канала (partial batch не зависнет).
+                        //
                         // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
                         // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
                         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -669,8 +674,13 @@ namespace MarketDataCollector.Application.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (_flushIntervalSeconds > 0 && batchCount > 0)
+                    if (_flushIntervalSeconds > 0 && batchCount > 0 && channel.Reader.Count == 0)
                     {
+                        // Быстрый путь: если канал уже содержит данные — сразу читаем без создания
+                        // linked CTS / CancelAfter (накладные расходы CancellationTokenSource.Register
+                        // на каждую итерацию давали до ~32% CPU и contention, см. topN trace 115513).
+                        // Таймерный флаш нужен ТОЛЬКО при тишине канала (partial batch не зависнет).
+                        //
                         // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
                         // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
                         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
