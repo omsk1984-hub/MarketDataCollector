@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Buffers.Binary;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -200,21 +199,64 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     }
 
     /// <summary>
-    /// Парсинг decimal из UTF-8 байт без аллокации строки.
+    /// Парсинг decimal из UTF-8 байт без аллокации строки и без <c>decimal.TryParse</c>.
     /// Поддерживает: целые, дробные (через '.'), отрицательные.
     /// Binance price/quantity — всегда строки вида "0.001", "100", "12345.678".
     /// </summary>
+    /// <remarks>
+    /// Zero-copy: работает прямо по байтам, без копирования в <c>stackalloc char[]</c>
+    /// и без вызова <c>decimal.TryParse</c> (который парсит символы и тратит CPU на внутренние проверки).
+    /// Значение накапливается сразу в <c>decimal</c>, поэтому нет риска переполнения <c>long</c>.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static decimal ParseDecimalFromUtf8(ReadOnlySpan<byte> utf8)
     {
-        // Копируем UTF-8 байты в стековый буфер char[] — без аллокации string.
-        Span<char> chars = stackalloc char[utf8.Length];
-        for (int i = 0; i < utf8.Length; i++)
-            chars[i] = (char)utf8[i];
+        if (utf8.IsEmpty)
+            return 0m;
 
-        if (decimal.TryParse(chars, NumberStyles.Number, CultureInfo.InvariantCulture, out var result))
-            return result;
+        int i = 0;
+        bool neg = false;
+        if (utf8[i] == (byte)'-')
+        {
+            neg = true;
+            i++;
+        }
+        if (i >= utf8.Length)
+            return 0m; // только знак без цифр
 
-        return 0m;
+        decimal whole = 0m;
+        bool digitsSeen = false;
+        while (i < utf8.Length && utf8[i] != (byte)'.')
+        {
+            byte c = utf8[i];
+            if (c < (byte)'0' || c > (byte)'9')
+                return 0m; // некорректный символ в целой части
+            whole = whole * 10m + (c - (byte)'0');
+            digitsSeen = true;
+            i++;
+        }
+
+        decimal frac = 0m;
+        long scale = 1;
+        if (i < utf8.Length) // есть '.'
+        {
+            i++; // skip '.'
+            while (i < utf8.Length)
+            {
+                byte c = utf8[i];
+                if (c < (byte)'0' || c > (byte)'9')
+                    return 0m; // некорректный символ в дробной части
+                frac = frac * 10m + (c - (byte)'0');
+                scale *= 10;
+                i++;
+            }
+        }
+
+        // Ни одной цифры — пустое число.
+        if (!digitsSeen && scale == 1)
+            return 0m;
+
+        decimal result = whole + (frac / scale);
+        return neg ? -result : result;
     }
 }

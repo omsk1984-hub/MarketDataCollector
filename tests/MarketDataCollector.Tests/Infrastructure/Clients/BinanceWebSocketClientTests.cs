@@ -304,6 +304,12 @@ public class BinanceWebSocketClientTests
     [Theory(Timeout = 5000)]
     [InlineData("BTCUSDT", "1000.50", "0.5", "12345")]
     [InlineData("ETHUSDT", "2500.75", "1.25", "67890")]
+    // Edge cases для ParseDecimalFromUtf8 (Variant A): целые, много знаков, отрицательные, "0.xxx".
+    [InlineData("BTCUSDT", "100", "1", "11111")]
+    [InlineData("BTCUSDT", "0.001", "0.000001", "22222")]
+    [InlineData("BTCUSDT", "12345.6789", "999.9", "33333")]
+    [InlineData("BTCUSDT", "-0.5", "-1", "44444")]
+    [InlineData("BTCUSDT", "0", "0", "55555")]
     public async Task ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues(
         string symbol, string priceStr, string volumeStr, string tradeId)
     {
