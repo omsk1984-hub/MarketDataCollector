@@ -5,6 +5,7 @@ gc_metrics.csv
 $null
 counters/*
 traces/*
+TestResults/
 
 # Секреты и локальные env
 docker/.env
