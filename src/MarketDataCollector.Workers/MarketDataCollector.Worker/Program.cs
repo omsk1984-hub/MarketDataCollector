@@ -15,6 +15,7 @@ using OpenTelemetry.Trace;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
+using Serilog;
 
 // ===== GC Optimization =====
 GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
@@ -93,6 +94,14 @@ TaskScheduler.UnobservedTaskException += (sender, args) =>
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ===== Serilog bootstrap-логгер =====
+// Настраивается до остальной конфигурации хоста, чтобы поймать ошибки
+// старта и конфигурации на раннем этапе. Полная конфигурация (ReadFrom.Services)
+// подхватывается в UseSerilog ниже.
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateBootstrapLogger();
+
 // ===== OpenTelemetry Configuration =====
 var otelOptions = builder.Configuration.GetSection("OpenTelemetry");
 var otlpEndpoint = otelOptions["OtlpEndpoint"] ?? "http://localhost:4317";
@@ -111,14 +120,14 @@ builder.Services.AddOpenTelemetry()
         .AddSource(MarketDataCollector.Core.Telemetry.MarketDataTelemetry.ActivitySourceName)
         .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)));
 
-// ===== OpenTelemetry Logging =====
-builder.Logging.AddOpenTelemetry(logging =>
-{
-    logging.IncludeFormattedMessage = true;
-    logging.IncludeScopes = true;
-    logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName));
-    logging.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
-});
+// ===== Serilog (провайдер ILogger<T>) =====
+// Логи идут в Console и Seq (Seq — основное хранилище). OTLP-экспорт логов убран,
+// чтобы избежать дублирования; метрики и трейсы OpenTelemetry остаются.
+builder.Host.UseSerilog((context, services, configuration) =>
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext());
 
 // ===== Configuration =====
 builder.Services.AddConfiguration(builder.Configuration);
@@ -372,4 +381,12 @@ app.Use(async (context, next) =>
 // ===== Prometheus scrape endpoint =====
 app.UseOpenTelemetryPrometheusScrapingEndpoint("/metrics");
 
-app.Run();
+try
+{
+    app.Run();
+}
+finally
+{
+    // Гарантированный flush буферизованных логов (Seq-sink) при graceful shutdown.
+    Log.CloseAndFlush();
+}

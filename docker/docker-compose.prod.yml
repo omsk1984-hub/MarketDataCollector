@@ -194,6 +194,19 @@ services:
       - marketdata-network
     restart: unless-stopped
 
+  seq:
+    image: datalust/seq:latest
+    container_name: marketdata-seq
+    ports:
+      - "5341:80"     # Seq Web UI + ingestion HTTP
+    environment:
+      - ACCEPT_EULA=Y
+    volumes:
+      - seq_data:/data
+    networks:
+      - marketdata-network
+    restart: unless-stopped
+
   worker:
     image: ghcr.io/${GHCR_OWNER:-marketdata-collector}/marketdata-worker:latest
     container_name: marketdata-worker
@@ -208,6 +221,7 @@ services:
       Kafka__Enabled: "true"
       Kafka__BootstrapServers: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
       OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-http://aspire-dashboard:18889}
+      Seq__ServerUrl: ${SEQ_ENDPOINT:?SEQ_ENDPOINT required in .env}
       ExchangeOptions__Exchanges__0__WebSocketUrl: ${EXCHANGE_WEBSOCKET_URL:-wss://stream.binance.com:9443/ws/{symbol}@trade}
       Auth__ApiKey: ${AUTH_API_KEY:?AUTH_API_KEY required in .env}
     ports:
@@ -239,6 +253,7 @@ volumes:
   kafka_data_2:
   kafka_data_3:
   prometheus_data:
+  seq_data:
 
 secrets:
   # Docker secret для Bearer/API-key доступа к /metrics и /health воркера.
