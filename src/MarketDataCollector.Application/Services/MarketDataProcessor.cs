@@ -192,10 +192,8 @@ namespace MarketDataCollector.Application.Services
                 MarketDataTelemetry.IncrementTicksDropped(exchange);
             }
 
-            if (_tickAggregator != null)
-            {
-                _ = _tickAggregator.OnTickAsync(ticker, price, volume, timestamp, exchange);
-            }
+            // Неблокирующая запись в канал агрегатора (TryWrite — без Task/аллокаций).
+            _tickAggregator?.TryWriteTick(ticker, price, volume, timestamp, exchange);
 
             return Task.CompletedTask;
         }
@@ -426,8 +424,6 @@ namespace MarketDataCollector.Application.Services
 
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
-
-            CancellationTokenSource? flushCts = null;
 
             try
             {

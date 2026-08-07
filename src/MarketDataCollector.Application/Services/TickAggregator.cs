@@ -129,10 +129,13 @@ namespace MarketDataCollector.Application.Services
             }
         }
 
-        public Task OnTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
+        public bool TryWriteTick(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange)
         {
-            if (!_enabled) return Task.CompletedTask;
-            return _channel.Writer.WriteAsync(new TickData(ticker, price, volume, timestamp, exchange)).AsTask();
+            // Отключено — считаем, что тик «принят» (агрегатор не обрабатывает).
+            if (!_enabled) return true;
+            // Неблокирующая запись: возвращает false при переполненном/закрытом канале,
+            // не выбрасывает исключение в отличие от WriteAsync.
+            return _channel.Writer.TryWrite(new TickData(ticker, price, volume, timestamp, exchange));
         }
 
         public Task StartAsync(CancellationToken cancellationToken = default)

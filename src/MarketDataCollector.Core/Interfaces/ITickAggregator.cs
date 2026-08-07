@@ -10,9 +10,10 @@ namespace MarketDataCollector.Core.Interfaces
     public interface ITickAggregator
     {
         /// <summary>
-        /// Передать тик в агрегатор.
+        /// Передать тик в агрегатор (неблокирующая запись в канал).
+        /// Возвращает true, если тик принят, false — если канал переполнен/закрыт.
         /// </summary>
-        Task OnTickAsync(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange);
+        bool TryWriteTick(string ticker, decimal price, decimal volume, DateTime timestamp, string exchange);
 
         /// <summary>
         /// Запустить фоновую обработку (чтение канала, таймер flush'а).

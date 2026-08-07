@@ -598,9 +598,9 @@ public class MarketDataProcessorTests
         // Создаём mock агрегатора
         var aggregatorMock = new Mock<ITickAggregator>();
         aggregatorMock
-            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+            .Setup(x => x.TryWriteTick(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
                 It.IsAny<DateTime>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+            .Returns(true);
 
         var processor = CreateProcessor(
             new MarketDataProcessorOptions
@@ -740,14 +740,13 @@ public class MarketDataProcessorTests
             .Setup(x => x.BulkInsertFastAsync(It.IsAny<IReadOnlyList<TickData>>(), It.IsAny<ITimeService>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        // Создаём mock агрегатора, который работает ОЧЕНЬ МЕДЛЕННО (5 сек на тик).
-        // До исправления (await) это заблокировало бы ProcessTickAsync на 5 сек,
-        // после исправления (fire-and-forget) ProcessTickAsync возвращается мгновенно.
+        // Создаём mock агрегатора. Теперь запись синхронная (TryWriteTick),
+        // поэтому ProcessTickAsync гарантированно не блокируется на агрегаторе.
         var slowAggregatorMock = new Mock<ITickAggregator>();
         slowAggregatorMock
-            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+            .Setup(x => x.TryWriteTick(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
                 It.IsAny<DateTime>(), It.IsAny<string>()))
-            .Returns(async () => await Task.Delay(5000)); // very slow
+            .Returns(true);
 
         var processor = CreateProcessor(
             new MarketDataProcessorOptions
@@ -780,18 +779,17 @@ public class MarketDataProcessorTests
         await processor.StopProcessingAsync(CancellationToken.None);
 
         // Assert
-        // Если бы был await агрегатора, 10 тиков * 5 сек = 50+ секунд.
-        // С fire-and-forget вызовы возвращаются немедленно.
-        // Время должно быть < 1 секунды (только WriteAsync в Channel).
+        // TryWriteTick синхронный, поэтому ProcessTickAsync возвращается немедленно.
+        // Время должно быть < 1 секунды (только запись в Channel).
         stopwatch.Elapsed.TotalSeconds.Should().BeLessThan(1.0,
-            "ProcessTickAsync не должен ждать агрегатор (fire-and-forget)");
+            "ProcessTickAsync не должен блокироваться на агрегаторе (TryWrite)");
 
         // Проверяем, что основной пайплайн всё равно обработал тики
         slowAggregatorMock.Verify(
-            x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+            x => x.TryWriteTick(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
                 It.IsAny<DateTime>(), It.IsAny<string>()),
             Times.Exactly(10),
-            "Агрегатор должен получить все 10 тиков через fire-and-forget");
+            "Агрегатор должен получить все 10 тиков через TryWrite");
 
         _repositoryMock.Verify(
             x => x.BulkInsertFastAsync(It.IsAny<IReadOnlyList<TickData>>(), It.IsAny<ITimeService>(), It.IsAny<CancellationToken>()),
@@ -1110,9 +1108,9 @@ public class MarketDataProcessorTests
         // Создаём mock агрегатора
         var aggregatorMock = new Mock<ITickAggregator>();
         aggregatorMock
-            .Setup(x => x.OnTickAsync(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
+            .Setup(x => x.TryWriteTick(It.IsAny<string>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
                 It.IsAny<DateTime>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+            .Returns(true);
 
         var processor = CreateProcessor(
             new MarketDataProcessorOptions

@@ -142,7 +142,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_SingleTick_CreatesCandle()
+    public async Task TryWriteTick_SingleTick_CreatesCandle()
     {
         // Arrange
         var aggregator = new TickAggregator(
@@ -155,7 +155,7 @@ public class TickAggregatorTests
         await aggregator.StartAsync(cts.Token);
 
         // Act
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance").Should().BeTrue();
 
         // Даём время на обработку
         await Task.Delay(100);
@@ -166,7 +166,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_MultipleTicks_UpdatesCorrectOHLCV()
+    public async Task TryWriteTick_MultipleTicks_UpdatesCorrectOHLCV()
     {
         // Arrange
         var aggregator = new TickAggregator(
@@ -181,10 +181,10 @@ public class TickAggregatorTests
         var now = BaseTime;
 
         // Act - несколько тиков в одной минуте
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, now, "Binance");  // Open=50000
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, now.AddSeconds(5), "Binance");  // High=50100
-        await aggregator.OnTickAsync("BTCUSDT", 49900m, 0.3m, now.AddSeconds(10), "Binance");  // Low=49900
-        await aggregator.OnTickAsync("BTCUSDT", 50050m, 0.7m, now.AddSeconds(15), "Binance");  // Close=50050
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, now, "Binance");  // Open=50000
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, now.AddSeconds(5), "Binance");  // High=50100
+        aggregator.TryWriteTick("BTCUSDT", 49900m, 0.3m, now.AddSeconds(10), "Binance");  // Low=49900
+        aggregator.TryWriteTick("BTCUSDT", 50050m, 0.7m, now.AddSeconds(15), "Binance");  // Close=50050
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -208,10 +208,10 @@ public class TickAggregatorTests
 
         await aggregator2.StartAsync(cts.Token);
 
-        await aggregator2.OnTickAsync("BTCUSDT", 50000m, 1.0m, now, "Binance");
-        await aggregator2.OnTickAsync("BTCUSDT", 50100m, 0.5m, now.AddSeconds(5), "Binance");
-        await aggregator2.OnTickAsync("BTCUSDT", 49900m, 0.3m, now.AddSeconds(10), "Binance");
-        await aggregator2.OnTickAsync("BTCUSDT", 50050m, 0.7m, now.AddSeconds(15), "Binance");
+        aggregator2.TryWriteTick("BTCUSDT", 50000m, 1.0m, now, "Binance");
+        aggregator2.TryWriteTick("BTCUSDT", 50100m, 0.5m, now.AddSeconds(5), "Binance");
+        aggregator2.TryWriteTick("BTCUSDT", 49900m, 0.3m, now.AddSeconds(10), "Binance");
+        aggregator2.TryWriteTick("BTCUSDT", 50050m, 0.7m, now.AddSeconds(15), "Binance");
 
         await Task.Delay(100);
         await aggregator2.StopAsync(cts.Token);
@@ -229,7 +229,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_DifferentMinutes_CreatesSeparateCandles()
+    public async Task TryWriteTick_DifferentMinutes_CreatesSeparateCandles()
     {
         // Arrange
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -250,9 +250,9 @@ public class TickAggregatorTests
         await aggregator.StartAsync(cts.Token);
 
         // Act - тики в разные минуты
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");                    // 10:00:00
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, BaseTime.AddMinutes(1), "Binance");      // 10:01:00
-        await aggregator.OnTickAsync("BTCUSDT", 50200m, 0.3m, BaseTime.AddMinutes(2), "Binance");      // 10:02:00
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");                    // 10:00:00
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, BaseTime.AddMinutes(1), "Binance");      // 10:01:00
+        aggregator.TryWriteTick("BTCUSDT", 50200m, 0.3m, BaseTime.AddMinutes(2), "Binance");      // 10:02:00
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -266,7 +266,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_DifferentTickers_CreatesSeparateCandles()
+    public async Task TryWriteTick_DifferentTickers_CreatesSeparateCandles()
     {
         // Arrange
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -287,8 +287,8 @@ public class TickAggregatorTests
         await aggregator.StartAsync(cts.Token);
 
         // Act
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
-        await aggregator.OnTickAsync("ETHUSDT", 3000m, 10.0m, BaseTime, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
+        aggregator.TryWriteTick("ETHUSDT", 3000m, 10.0m, BaseTime, "Binance");
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -301,7 +301,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_SingleTickOnEdge_FlushesCompletedCandleOnly()
+    public async Task TryWriteTick_SingleTickOnEdge_FlushesCompletedCandleOnly()
     {
         // Arrange
         _timeServiceMock.Setup(x => x.UtcNow).Returns(BaseTime.AddMinutes(2)); // текущее время = 10:02
@@ -324,9 +324,9 @@ public class TickAggregatorTests
         await aggregator.StartAsync(cts.Token);
 
         // Act
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");                   // 10:00 - завершена
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, BaseTime.AddMinutes(1), "Binance");     // 10:01 - завершена
-        await aggregator.OnTickAsync("BTCUSDT", 50200m, 0.3m, BaseTime.AddMinutes(2), "Binance");     // 10:02 - ещё активна
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");                   // 10:00 - завершена
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, BaseTime.AddMinutes(1), "Binance");     // 10:01 - завершена
+        aggregator.TryWriteTick("BTCUSDT", 50200m, 0.3m, BaseTime.AddMinutes(2), "Binance");     // 10:02 - ещё активна
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -337,7 +337,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 5000)]
-    public async Task OnTickAsync_WithTicksAtIntervalBoundary_RoundsDownCorrectly()
+    public async Task TryWriteTick_WithTicksAtIntervalBoundary_RoundsDownCorrectly()
     {
         // Arrange
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -361,8 +361,8 @@ public class TickAggregatorTests
         var endOfMinute = BaseTime.AddMinutes(1).AddSeconds(-1); // 10:00:59
         var startOfNextMinute = BaseTime.AddMinutes(1);         // 10:01:00
 
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, endOfMinute, "Binance");
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, startOfNextMinute, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, endOfMinute, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, startOfNextMinute, "Binance");
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -377,7 +377,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 5000)]
-    public async Task OnTickAsync_WithZeroVolume_DoesNotThrow()
+    public void TryWriteTick_WithZeroVolume_DoesNotThrow()
     {
         // Arrange
         var aggregator = new TickAggregator(
@@ -387,14 +387,12 @@ public class TickAggregatorTests
             _options);
 
         using var cts = new CancellationTokenSource();
-        await aggregator.StartAsync(cts.Token);
 
         // Act
-        var act = async () => await aggregator.OnTickAsync("BTCUSDT", 50000m, 0m, BaseTime, "Binance");
+        var act = () => aggregator.TryWriteTick("BTCUSDT", 50000m, 0m, BaseTime, "Binance");
 
         // Assert
-        await act.Should().NotThrowAsync();
-        await aggregator.StopAsync(cts.Token);
+        act.Should().NotThrow();
     }
 
     [Fact(Timeout = 5000)]
@@ -415,7 +413,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_ManyTicksInSameBucket_UpdatesVolumeCorrectly()
+    public async Task TryWriteTick_ManyTicksInSameBucket_UpdatesVolumeCorrectly()
     {
         // Arrange
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -438,7 +436,7 @@ public class TickAggregatorTests
         // Act - 10 тиков по 0.1 volume
         for (int i = 0; i < 10; i++)
         {
-            await aggregator.OnTickAsync("BTCUSDT", 50000m + i, 0.1m, BaseTime.AddMilliseconds(i * 100), "Binance");
+            aggregator.TryWriteTick("BTCUSDT", 50000m + i, 0.1m, BaseTime.AddMilliseconds(i * 100), "Binance");
         }
 
         await Task.Delay(100);
@@ -451,7 +449,7 @@ public class TickAggregatorTests
     }
 
     [Fact(Timeout = 10000)]
-    public async Task OnTickAsync_DifferentExchanges_CreatesSeparateCandles()
+    public async Task TryWriteTick_DifferentExchanges_CreatesSeparateCandles()
     {
         // Arrange
         var repoMock = new Mock<IAggregatedDataRepository>();
@@ -472,8 +470,8 @@ public class TickAggregatorTests
         await aggregator.StartAsync(cts.Token);
 
         // Act
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, BaseTime, "Kraken");
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, BaseTime, "Kraken");
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -489,7 +487,7 @@ public class TickAggregatorTests
     [InlineData(30)]
     [InlineData(60)]
     [InlineData(120)]
-    public async Task OnTickAsync_DifferentIntervals_CreatesCorrectBuckets(int intervalSeconds)
+    public async Task TryWriteTick_DifferentIntervals_CreatesCorrectBuckets(int intervalSeconds)
     {
         // Arrange
         var intervalOptions = Options.Create(new TickAggregatorOptions
@@ -519,9 +517,9 @@ public class TickAggregatorTests
         var now = BaseTime;
 
         // Act - тики в разные бакеты с интервалом intervalSeconds
-        await aggregator.OnTickAsync("BTCUSDT", 50000m, 1.0m, now, "Binance");
-        await aggregator.OnTickAsync("BTCUSDT", 50100m, 0.5m, now.AddSeconds(intervalSeconds), "Binance");
-        await aggregator.OnTickAsync("BTCUSDT", 50200m, 0.3m, now.AddSeconds(intervalSeconds * 2), "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, now, "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50100m, 0.5m, now.AddSeconds(intervalSeconds), "Binance");
+        aggregator.TryWriteTick("BTCUSDT", 50200m, 0.3m, now.AddSeconds(intervalSeconds * 2), "Binance");
 
         await Task.Delay(100);
         await aggregator.StopAsync(cts.Token);
@@ -537,6 +535,28 @@ public class TickAggregatorTests
         savedCandles.Should().ContainSingle(c => c.StartTime == BaseTime.AddSeconds(intervalSeconds));
         savedCandles.Should().ContainSingle(c => c.StartTime == BaseTime.AddSeconds(intervalSeconds * 2));
         savedCandles.Should().OnlyContain(c => c.Interval == expectedInterval);
+    }
+
+    [Fact(Timeout = 5000)]
+    public void TryWriteTick_WhenChannelClosed_ReturnsFalse()
+    {
+        // Arrange
+        var aggregator = new TickAggregator(
+            _timeServiceMock.Object,
+            _loggerMock.Object,
+            _scopeFactoryMock.Object,
+            _options);
+
+        using var cts = new CancellationTokenSource();
+        aggregator.StartAsync(cts.Token);
+        aggregator.StopAsync(cts.Token).GetAwaiter().GetResult(); // вызывает _channel.Writer.TryComplete()
+
+        // Act — канал закрыт, TryWrite должен вернуть false и не бросить исключение
+        var act = () => aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance");
+
+        // Assert
+        act.Should().NotThrow();
+        aggregator.TryWriteTick("BTCUSDT", 50000m, 1.0m, BaseTime, "Binance").Should().BeFalse();
     }
 
     /// <summary>

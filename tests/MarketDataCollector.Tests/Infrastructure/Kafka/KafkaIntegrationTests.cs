@@ -235,9 +235,9 @@ public class KafkaIntegrationTests
 
         // Act — отправляем тики, чтобы сформировалась свеча
         await aggregator.StartAsync();
-        await aggregator.OnTickAsync("btcusdt", 45000m, 1.0m, BaseTime, "binance");
-        await aggregator.OnTickAsync("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
-        await aggregator.OnTickAsync("btcusdt", 44950m, 2.0m, BaseTime.AddSeconds(20), "binance");
+        aggregator.TryWriteTick("btcusdt", 45000m, 1.0m, BaseTime, "binance");
+        aggregator.TryWriteTick("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
+        aggregator.TryWriteTick("btcusdt", 44950m, 2.0m, BaseTime.AddSeconds(20), "binance");
 
         // Ждём, пока таймер flush'а сработает
         await Task.Delay(1500);
@@ -301,8 +301,8 @@ public class KafkaIntegrationTests
 
         // Act
         await aggregator.StartAsync();
-        await aggregator.OnTickAsync("btcusdt", 45000m, 1.0m, BaseTime, "binance");
-        await aggregator.OnTickAsync("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
+        aggregator.TryWriteTick("btcusdt", 45000m, 1.0m, BaseTime, "binance");
+        aggregator.TryWriteTick("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
 
         await Task.Delay(1500);
 
@@ -438,9 +438,9 @@ public class KafkaIntegrationTests
 
         // Act — producer side: формируем свечи через TickAggregator
         await aggregator.StartAsync();
-        await aggregator.OnTickAsync("btcusdt", 45000m, 1.0m, BaseTime, "binance");
-        await aggregator.OnTickAsync("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
-        await aggregator.OnTickAsync("btcusdt", 44950m, 2.0m, BaseTime.AddSeconds(20), "binance");
+        aggregator.TryWriteTick("btcusdt", 45000m, 1.0m, BaseTime, "binance");
+        aggregator.TryWriteTick("btcusdt", 45100m, 0.5m, BaseTime.AddSeconds(10), "binance");
+        aggregator.TryWriteTick("btcusdt", 44950m, 2.0m, BaseTime.AddSeconds(20), "binance");
         await Task.Delay(1500);
         await aggregator.StopAsync();
 
