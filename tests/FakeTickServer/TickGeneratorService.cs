@@ -48,6 +48,15 @@ public class TickGeneratorService : BackgroundService
     /// <summary>Флаг: был ли уже залогирован первый тик.</summary>
     private bool _firstTickLogged;
 
+    /// <summary>Флаг: была ли уже выполнена пауза после первых 10000 записей.</summary>
+    private volatile bool _pauseAfter10000Done;
+
+    /// <summary>
+    /// Количество записей, после которого делается пауза в одну секунду,
+    /// чтобы воркер успел «прогреться» и не отставал от генератора.
+    /// </summary>
+    private const int PauseAfterTickThreshold = 10_000;
+
     /// <summary>Флаг: достигнут ли лимит MaxTicks.</summary>
     private volatile bool _isLimitReached;
 
@@ -344,6 +353,17 @@ public class TickGeneratorService : BackgroundService
                                     }
                                     return;
                         }
+                    }
+
+                    // После первых 10000 записей делаем паузу в 1 секунду,
+                    // чтобы воркер успел обработать накопленный поток и «прогреться».
+                    if (!_pauseAfter10000Done &&
+                        Interlocked.Read(ref _totalTicks) >= PauseAfterTickThreshold)
+                    {
+                        _pauseAfter10000Done = true;
+                        _logger.LogInformation("Пауза {Seconds} c после {Threshold} тиков — даём воркеру «прогреться»",
+                            1, PauseAfterTickThreshold);
+                        await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
                     }
                 }
                 else
