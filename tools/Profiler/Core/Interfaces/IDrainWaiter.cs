@@ -1,3 +1,5 @@
+using MarketDataCollector.Profiler.Options;
+
 namespace MarketDataCollector.Profiler.Core.Interfaces;
 
 /// <summary>Ожидание дренажа очередей перед вторым gcdump.</summary>

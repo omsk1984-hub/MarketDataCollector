@@ -278,23 +278,60 @@ if (-not (Wait-Http "http://localhost:5010/health" 60 "Worker")) {
 }
 
 # ============================================================
-# Профилирование (Profiler)
+# Профилирование — Phase 1 (Profiler, background)
 # ============================================================
-if ($SkipProfiler) {
-    Write-Host ""
-    Write-Host "Пропуск Profiler (-SkipProfiler)." -ForegroundColor Yellow
+$profilerProc = $null
+if (-not $SkipProfiler) {
+    Write-Step "[5/7] Профилирование Phase 1 (Profiler: $TraceProfile, $TraceDuration с)"
+
+    $profilerExe = "$root/tools/Profiler/bin/Debug/net8.0/MarketDataCollector.Profiler.exe"
+    if (-not (Test-Path $profilerExe)) {
+        Write-Host "  Предупреждение: Profiler не собран — пропуск." -ForegroundColor Yellow
+        Write-Host "  Соберите: .\tools\Profiler\compile.ps1" -ForegroundColor Yellow
+    }
+    else {
+        $profilerLog = Join-Path $root "$OutputDir/profiler_out.log"
+        $profilerErr = Join-Path $root "$OutputDir/profiler_err.log"
+
+        # Запускаем Profiler в фоне — он выполнит Phase 1 (trace + peak gcdump),
+        # затем откроет HTTP :5100 и будет ждать сигнала /trigger-drained-collect
+        $profilerProc = Start-Process -FilePath $profilerExe -PassThru `
+            -RedirectStandardOutput $profilerLog -RedirectStandardError $profilerErr -NoNewWindow `
+            -ArgumentList @(
+                "--trace-profile", "$TraceProfile",
+                "--trace-duration", "$TraceDuration",
+                "--gc-dump-at-peak-sec", "$GcDumpAtPeakSec",
+                "--output-dir", "$OutputDir"
+            )
+        Write-Host "  Profiler PID: $($profilerProc.Id), лог: $profilerLog" -ForegroundColor Green
+
+        # Ждём, пока Profiler HTTP-сервер не покажет phase=awaiting-drain-signal
+        Write-Host "  Ожидание Phase 1 (awaiting-drain-signal)..." -ForegroundColor Yellow
+        $phase1Deadline = (Get-Date).AddSeconds(120)
+        $phase1Ready = $false
+        while ((Get-Date) -lt $phase1Deadline) {
+            try {
+                $status = Invoke-RestMethod -Uri "http://localhost:5100/status" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+                if ($status.phase -eq "awaiting-drain-signal") {
+                    Write-Host "  Phase 1 завершена, ожидание сигнала дренажа." -ForegroundColor Green
+                    $phase1Ready = $true
+                    break
+                }
+                Write-Host "  Phase 1: $($status.phase)..." -ForegroundColor Gray
+            }
+            catch {
+                Write-Host "  Ожидание Phase 1..." -ForegroundColor Gray
+            }
+            Start-Sleep -Seconds 3
+        }
+
+        if (-not $phase1Ready) {
+            Write-Host "  Предупреждение: Phase 1 не подтверждена за 120с — продолжаем." -ForegroundColor Yellow
+        }
+    }
 }
 else {
-    Write-Step "[5/7] Профилирование (Profiler: $TraceProfile, $TraceDuration с)"
-    # Передаём именованные параметры явно: splatting обычного массива строк
-    # передаёт элементы позиционно, из-за чего "-TraceProfile" попадал как
-    # ЗНАЧЕНИЕ параметра TraceProfile и не проходил ValidateSet.
-    & "$root/run_all_profiler.ps1" `
-        -TraceProfile $TraceProfile `
-        -TraceDuration $TraceDuration `
-        -GcDumpAtPeakSec $GcDumpAtPeakSec `
-        -OutputDir $OutputDir
-    Write-Host "  Profiler завершён." -ForegroundColor Green
+    Write-Host "Пропуск Profiler (-SkipProfiler)." -ForegroundColor Yellow
 }
 
 # ============================================================
@@ -324,8 +361,43 @@ catch {
     Write-Host "  Не удалось получить статистику генерации: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
-Write-Host "  Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
-Start-Sleep -Seconds 15
+# ============================================================
+# Сигнал Profiler'у: Phase 2 — дренаж + drained gcdump
+# ============================================================
+Write-Step "[6b/7] Сигнал Profiler'у на сбор drained gcdump"
+if ($profilerProc -and (-not $profilerProc.HasExited)) {
+    try {
+        $resp = Invoke-RestMethod -Uri "http://localhost:5100/trigger-drained-collect" -Method Post -TimeoutSec 10
+        Write-Host "  /trigger-drained-collect -> $($resp.status)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  Ошибка POST /trigger-drained-collect: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    # Ждём завершения Profiler (Phase 2: drain + drained gcdump)
+    Write-Host "  Ожидание Phase 2 (drain + drained gcdump)..." -ForegroundColor Yellow
+    $profilerDeadline = (Get-Date).AddSeconds(180)
+    $profilerExited = $false
+    while ((Get-Date) -lt $profilerDeadline) {
+        $profilerProc.Refresh()
+        if ($profilerProc.HasExited) {
+            Write-Host "  Profiler завершён (код $($profilerProc.ExitCode))." -ForegroundColor Green
+            $profilerExited = $true
+            break
+        }
+        Start-Sleep -Seconds 5
+    }
+
+    if (-not $profilerExited) {
+        Write-Host "  Таймаут ожидания Profiler (180с) — принудительная остановка." -ForegroundColor Yellow
+        taskkill /F /IM MarketDataCollector.Profiler.exe 2>$null
+    }
+}
+else {
+    # Если Profiler не запускался (SkipProfiler или ошибка сборки) — пауза для дренажа как раньше
+    Write-Host "  Profiler не запущен — пауза для дренажа Worker (15с)..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 15
+}
 
 # ============================================================
 # Graceful остановка Worker

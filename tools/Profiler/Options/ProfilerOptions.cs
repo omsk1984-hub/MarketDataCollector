@@ -18,6 +18,15 @@ public sealed record ProfilerOptions
     /// <summary>Ожидание дренажа перед вторым gcdump, секунд.</summary>
     public int DrainWaitSec { get; init; } = 30;
 
+    /// <summary>Число последовательных проверок backlog=0 для объявления дренажа завершённым.</summary>
+    public int DrainConsecutiveZeroChecks { get; init; } = 3;
+
+    /// <summary>Интервал опроса метрик дренажа, секунд.</summary>
+    public int DrainPollIntervalSec { get; init; } = 2;
+
+    /// <summary>Таймаут ожидания внешнего сигнала дренажа (Phase 2), секунд. Фолбэк при падении оркестратора.</summary>
+    public int DrainSignalTimeoutSec { get; init; } = 180;
+
     /// <summary>Имя процесса Worker.</summary>
     public string WorkerProcessName { get; init; } = "MarketDataCollector.Worker";
 

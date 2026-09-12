@@ -76,6 +76,9 @@ param(
     [int]$TraceDuration = 90,
     [int]$GcDumpAtPeakSec = 50,
     [int]$DrainWaitSec = 30,
+    [int]$DrainConsecutiveZeroChecks = 3,
+    [int]$DrainPollIntervalSec = 2,
+    [int]$DrainSignalTimeoutSec = 180,
 
     [string]$WorkerProcessName = "MarketDataCollector.Worker",
     [string]$MetricsUrl = "http://localhost:5010/metrics",
@@ -115,19 +118,22 @@ Write-Host "╔═════════════════════�
 Write-Host "║   MarketDataCollector — Профилирование (Profiler)        ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Executable:      $exe"
-Write-Host "TraceProfile:    $TraceProfile"
-Write-Host "TraceDuration:   $TraceDuration сек"
-Write-Host "GcDumpAtPeakSec: $GcDumpAtPeakSec сек"
-Write-Host "DrainWaitSec:    $DrainWaitSec сек"
-Write-Host "WorkerProcess:   $WorkerProcessName"
-Write-Host "MetricsUrl:      $MetricsUrl"
-Write-Host "HealthUrl:       $HealthUrl"
-Write-Host "OutputDir:       $OutputDir"
-Write-Host "HttpLogLevel:    $HttpLogLevel"
-Write-Host "TopNEnabled:     $TopNEnabled"
-Write-Host "TopNCount:       $TopNCount"
-Write-Host "TopNInclusive:   $TopNInclusive"
+Write-Host "Executable:                 $exe"
+Write-Host "TraceProfile:               $TraceProfile"
+Write-Host "TraceDuration:              $TraceDuration сек"
+Write-Host "GcDumpAtPeakSec:            $GcDumpAtPeakSec сек"
+Write-Host "DrainWaitSec:               $DrainWaitSec сек"
+Write-Host "DrainConsecutiveZeroChecks: $DrainConsecutiveZeroChecks"
+Write-Host "DrainPollIntervalSec:       $DrainPollIntervalSec сек"
+Write-Host "DrainSignalTimeoutSec:       $DrainSignalTimeoutSec сек"
+Write-Host "WorkerProcess:              $WorkerProcessName"
+Write-Host "MetricsUrl:                 $MetricsUrl"
+Write-Host "HealthUrl:                  $HealthUrl"
+Write-Host "OutputDir:                  $OutputDir"
+Write-Host "HttpLogLevel:               $HttpLogLevel"
+Write-Host "TopNEnabled:                $TopNEnabled"
+Write-Host "TopNCount:                  $TopNCount"
+Write-Host "TopNInclusive:              $TopNInclusive"
 Write-Host ""
 
 # ============================================================
@@ -138,6 +144,9 @@ $profilerArgs = @(
     "--trace-duration", "$TraceDuration"
     "--gc-dump-at-peak-sec", "$GcDumpAtPeakSec"
     "--drain-wait-sec", "$DrainWaitSec"
+    "--drain-consecutive-zero-checks", "$DrainConsecutiveZeroChecks"
+    "--drain-poll-interval-sec", "$DrainPollIntervalSec"
+    "--drain-signal-timeout-sec", "$DrainSignalTimeoutSec"
     "--worker-process-name", "$WorkerProcessName"
     "--metrics-url", "$MetricsUrl"
     "--health-url", "$HealthUrl"

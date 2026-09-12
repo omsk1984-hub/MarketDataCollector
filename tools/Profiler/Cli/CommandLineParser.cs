@@ -118,6 +118,18 @@ public static class CommandLineParser
                 options = options with { DrainWaitSec = ParseInt(name, value) };
                 break;
 
+            case "drainconsecutivezerochecks":
+                options = options with { DrainConsecutiveZeroChecks = ParseInt(name, value) };
+                break;
+
+            case "drainpollintervalsec":
+                options = options with { DrainPollIntervalSec = ParseInt(name, value) };
+                break;
+
+            case "drainsignaltimeoutsec":
+                options = options with { DrainSignalTimeoutSec = ParseInt(name, value) };
+                break;
+
             case "workerprocessname":
                 options = options with { WorkerProcessName = value };
                 break;
@@ -211,23 +223,26 @@ public static class CommandLineParser
               Profiler [опции]
 
             Опции:
-              --trace-profile <name>        Профиль dotnet-trace (gc-verbose|cpu-sampling|contention|contention-cpu)
-              --trace-duration <sec>        Длительность trace, сек (по умолчанию 90)
-              --gc-dump-at-peak-sec <sec>   Момент первого gcdump, сек (по умолчанию 50)
-              --drain-wait-sec <sec>        Ожидание дренажа перед вторым gcdump, сек (по умолчанию 30)
-              --worker-process-name <name>  Имя процесса Worker (по умолчанию MarketDataCollector.Worker)
-              --metrics-url <url>           Prometheus metrics endpoint (по умолчанию http://localhost:5010/metrics)
-              --health-url <url>            Health-check endpoint (по умолчанию http://localhost:5010/health)
-              --health-timeout-sec <sec>    Таймаут ожидания healthy, сек (по умолчанию 30)
-              --output-dir <path>           Директория результатов (по умолчанию ./traces)
-              --refresh-seconds <sec>       Интервал опроса метрик, сек (по умолчанию 5)
-              --http-log-level <level>      Уровень логирования HTTP (Trace|Debug|Information|None)
-              --http-port <port>            Порт встроенного health-сервера профайлера (по умолчанию 5100)
-              --http-enabled <bool>         Включить встроенный health-сервер профайлера (по умолчанию true)
-              --topn-enabled <bool>         Включить пост-анализ dotnet-trace report topN (по умолчанию true)
-              --topn-count <n>              Число методов в topN-отчёте (по умолчанию 15)
-              --topn-inclusive <bool>       topN по inclusive времени (по умолчанию false)
-              --help, -h                    Показать справку
+              --trace-profile <name>              Профиль dotnet-trace (gc-verbose|cpu-sampling|contention|contention-cpu)
+              --trace-duration <sec>              Длительность trace, сек (по умолчанию 90)
+              --gc-dump-at-peak-sec <sec>         Момент первого gcdump, сек (по умолчанию 50)
+              --drain-wait-sec <sec>              Ожидание дренажа перед вторым gcdump, сек (по умолчанию 30)
+              --drain-consecutive-zero-checks <n> Число последовательных backlog=0 для declare дренажа (по умолчанию 3)
+              --drain-poll-interval-sec <sec>     Интервал опроса метрик дренажа, сек (по умолчанию 2)
+              --drain-signal-timeout-sec <sec>    Таймаут ожидания внешнего сигнала дренажа, сек (по умолчанию 180)
+              --worker-process-name <name>        Имя процесса Worker (по умолчанию MarketDataCollector.Worker)
+              --metrics-url <url>                 Prometheus metrics endpoint (по умолчанию http://localhost:5010/metrics)
+              --health-url <url>                  Health-check endpoint (по умолчанию http://localhost:5010/health)
+              --health-timeout-sec <sec>           Таймаут ожидания healthy, сек (по умолчанию 30)
+              --output-dir <path>                 Директория результатов (по умолчанию ./traces)
+              --refresh-seconds <sec>             Интервал опроса метрик, сек (по умолчанию 5)
+              --http-log-level <level>            Уровень логирования HTTP (Trace|Debug|Information|None)
+              --http-port <port>                  Порт встроенного health-сервера профайлера (по умолчанию 5100)
+              --http-enabled <bool>               Включить встроенный health-сервер профайлера (по умолчанию true)
+              --topn-enabled <bool>               Включить пост-анализ dotnet-trace report topN (по умолчанию true)
+              --topn-count <n>                    Число методов в topN-отчёте (по умолчанию 15)
+              --topn-inclusive <bool>             topN по inclusive времени (по умолчанию false)
+              --help, -h                          Показать справку
             """);
     }
 }
