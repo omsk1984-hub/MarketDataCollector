@@ -188,6 +188,42 @@ Write-Host "  Очистка остатков процессов..."
 taskkill /F /IM FakeTickServer.exe 2>$null
 taskkill /F /IM MarketDataCollector.Worker.exe 2>$null
 taskkill /F /IM dotnet-trace.exe 2>$null
+
+# Порт :5010 для локального Worker может быть занят Docker-контейнером
+# marketdata-worker (Production-стек из docker-compose). Он перехватывает трафик
+# и отвечает на /health "kafka:9092" (Production-конфиг), из-за чего локальный
+# LoadTest Worker не может подняться, а оркестратор получает ложный HTTP 503
+# "degraded" с bootstrapServers=kafka:9092. Останавливаем этот контейнер, чтобы
+# освободить порт (контейнеры не запускаются заново сами по себе).
+$dockerWorkerRunning = docker ps -a --filter "name=marketdata-worker" --format "{{.Names}}" 2>$null
+if ($dockerWorkerRunning -match "marketdata-worker") {
+    Write-Host "  Остановка Docker-контейнера marketdata-worker (освобождение :5010)..." -ForegroundColor Yellow
+    docker stop marketdata-worker 2>$null | Out-Null
+}
+
+# Явная проверка, что порт :5010 свободен (нет ни Docker/WSL-прокси, ни др. процесса).
+# Если порт занят — любой процесс, слушающий :5010, перехватит /health и будет
+# отвечать неверным конфигом (см. кейс с marketdata-worker). Ждём/прерываем заранее.
+$portBlocked = $false
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    $listener = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction SilentlyContinue
+    if (-not $listener) {
+        $portBlocked = $false
+        Write-Host "  Порт :5010 свободен."
+        break
+    }
+    $listenerPids = ($listener | Select-Object -ExpandProperty OwningProcess -Unique) -join ", "
+    Write-Host "  Порт :5010 занят (PID: $listenerPids). Ждём освобождения..." -ForegroundColor Yellow
+    $portBlocked = $true
+    Start-Sleep -Seconds 2
+}
+if ($portBlocked) {
+    $listener = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction SilentlyContinue
+    $listenerPids = ($listener | Select-Object -ExpandProperty OwningProcess -Unique) -join ", "
+    Write-Host "  ОШИБКА: порт :5010 не освобождён (PID: $listenerPids). Локальный Worker не сможет подняться." -ForegroundColor Red
+    throw "Порт :5010 занят"
+}
+
 Start-Sleep -Seconds 2
 
 # ============================================================
@@ -209,9 +245,11 @@ Pop-Location
 
 # Явная пересборка Worker.csproj — гарантирует, что последние правки
 # (фильтр Kafka из degraded в /health, etc.) попали в бинарник.
+# --force заставляет пересобрать даже без изменений исходников: это исключает
+# запуск устаревшего .exe (корневая причина рецидива "kafka:9092" в health-check).
 Write-Host "  Явная пересборка Worker..."
 Push-Location $root
-dotnet build src/MarketDataCollector.Workers/MarketDataCollector.Worker/MarketDataCollector.Worker.csproj -c Debug --nologo --no-restore | Out-Host
+dotnet build src/MarketDataCollector.Workers/MarketDataCollector.Worker/MarketDataCollector.Worker.csproj -c Debug --nologo --no-restore --force | Out-Host
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Worker build failed" }
 Pop-Location
 
@@ -277,15 +315,12 @@ if (-not $hasBaseAppSettings -or -not $hasLoadTestAppSettings) {
 # ASPNETCORE_ENVIRONMENT (не через CLI-флаг --environment, который для C# не работает).
 # Экспериментально подтверждено: только передача ASPNETCORE_ENVIRONMENT=LoadTest
 # даёт "Hosting environment: LoadTest" и Kafka.status=disabled (иначе Production/kafka:9092).
-$previousWorkerEnv = $env:ASPNETCORE_ENVIRONMENT
-$env:ASPNETCORE_ENVIRONMENT = "LoadTest"
+# Передаём --environment LoadTest в Worker через CLI аргументы после диагностики
+# (не через переменную окружения -Start-Process её не наследует).
 $workerProc = Start-Process -FilePath $workerExe `
-    -ArgumentList @("--no-launch-profile") `
+    -ArgumentList @("--no-launch-profile", "--environment", "LoadTest") `
     -WorkingDirectory $workerWorkDir -PassThru `
-    -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -NoNewWindow
-# Восстанавливаем окружение вызывающего, чтобы не повлиять на следующие шаги скрипта.
-if ($null -eq $previousWorkerEnv) { Remove-Item Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue }
-else { $env:ASPNETCORE_ENVIRONMENT = $previousWorkerEnv }
+    -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr
 Write-Host "  Worker PID: $($workerProc.Id), лог: $workerOut" -ForegroundColor Green
 
 if (-not (Wait-Http "http://localhost:5010/health" 60 "Worker")) {

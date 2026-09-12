@@ -92,6 +92,34 @@ TaskScheduler.UnobservedTaskException += (sender, args) =>
     args.SetObserved();
 };
 
+// Извлекаем аргумент --environment из args и устанавливаем переменную окружения
+// Это необходимо, так как Start-Process в PowerShell 7 не наследует переменные окружения ребенка.
+// Поддерживаются оба формата:
+//   --environment=LoadTest   (один аргумент с '=')
+//   --environment LoadTest   (два отдельных аргумента)
+var environment = (string?)null;
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--environment")
+    {
+        environment = i + 1 < args.Length ? args[i + 1] : "LoadTest";
+        break;
+    }
+    if (args[i].StartsWith("--environment="))
+    {
+        environment = args[i].Substring("--environment=".Length);
+        break;
+    }
+}
+if (!string.IsNullOrWhiteSpace(environment))
+{
+    // Профиль конфигурации в этом проекте управляется переменной DOTNET_ENVIRONMENT
+    // (см. launchSettings.json), а не стандартным ASPNETCORE_ENVIRONMENT.
+    // Устанавливаем обе — DOTNET_ENVIRONMENT в приоритете для выбора appsettings.<env>.json.
+    Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", environment);
+    Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", environment);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ===== Serilog bootstrap-логгер =====
@@ -205,6 +233,19 @@ using (var scope = app.Services.CreateScope())
 // Kafka config — для health check ниже
 var kafkaConfig = builder.Configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
 
+// ===== DIAG: фактически активная конфигурация при старте =====
+// Фиксируем в логе, какой профиль/конфигурация реально загружены. Это исключает
+// неоднозначность LoadTest vs Production (симптом "kafka:9092" в health-check при
+// якобы активном LoadTest указывал на загрузку appsettings.Production.json).
+// Используем bootstrap-логгер Serilog (уже настроен выше), т.к. app.Services ещё не готов.
+Log.Information(
+    "Active config: DOTNET_ENVIRONMENT={DotnetEnv}, ASPNETCORE_ENVIRONMENT={AspNetCoreEnv}, " +
+    "Kafka.Enabled={KafkaEnabled}, Kafka.BootstrapServers={KafkaBootstrap}",
+    Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"),
+    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+    kafkaConfig?.Enabled,
+    kafkaConfig?.BootstrapServers);
+
 // ===== Health check endpoint =====
 app.MapGet("/health", async (HttpContext ctx) =>
 {
@@ -222,6 +263,7 @@ app.MapGet("/health", async (HttpContext ctx) =>
             healthChecks["kafka"] = new
             {
                 status = metadata.Brokers.Count > 0 ? "healthy" : "unhealthy",
+                reason = metadata.Brokers.Count > 0 ? "broker_reachable" : "broker_unreachable",
                 brokers = metadata.Brokers.Count,
                 bootstrapServers = kafkaOptions.BootstrapServers
             };
@@ -231,6 +273,7 @@ app.MapGet("/health", async (HttpContext ctx) =>
             healthChecks["kafka"] = new
             {
                 status = "unhealthy",
+                reason = "broker_unreachable",
                 error = ex.Message,
                 bootstrapServers = kafkaConfig.BootstrapServers
             };
@@ -238,7 +281,11 @@ app.MapGet("/health", async (HttpContext ctx) =>
     }
     else
     {
-        healthChecks["kafka"] = new { status = "disabled" };
+        healthChecks["kafka"] = new
+        {
+            status = "disabled",
+            reason = "disabled_by_config"
+        };
     }
 
     // PostgreSQL health check
