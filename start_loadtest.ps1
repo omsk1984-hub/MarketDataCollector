@@ -41,8 +41,8 @@
     Пропустить профилирование (только прогнать нагрузку и остановить сервисы).
 
 .EXAMPLE
-    .\run_loadtest.ps1
-    .\run_loadtest.ps1 -MaxTicks 2000000 -Rps 15000 -TraceProfile contention-cpu
+    .\start_loadtest.ps1
+    .\start_loadtest.ps1 -MaxTicks 2000000 -Rps 15000 -TraceProfile contention-cpu
 #>
 
 [CmdletBinding()]
@@ -304,6 +304,26 @@ Write-Step "[6/7] Ожидание завершения генерации FakeT
 # FakeServer НЕ завершает хост сам — только прекращает генерацию тиков.
 # Ждём через polling /health с проверкой isLimitReached вместо blind sleep.
 Wait-GenerationComplete -HealthUrl "http://localhost:5000/health" -MaxTicks $MaxTicks -Rps $Rps
+
+# Статистика генерации: получаем финальные счётчики из /health
+try {
+    $genStats = Invoke-RestMethod -Uri "http://localhost:5000/health" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+    if ($genStats.uniqueTicks -ne $null) {
+        $genTotal = [int]$genStats.totalTicks
+        $genUnique = [int]$genStats.uniqueTicks
+        $genDups = $genTotal - $genUnique
+        $genDupPct = if ($genTotal -gt 0) { [Math]::Round($genDups / $genTotal * 100, 1) } else { 0 }
+        Write-Host ""
+        Write-Host "  Статистика генерации:" -ForegroundColor Cyan
+        Write-Host "    Всего сгенерировано: $genTotal" -ForegroundColor Gray
+        Write-Host "    Уникальных:          $genUnique" -ForegroundColor Green
+        Write-Host "    Дублей (${genDupPct}%):  $genDups" -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "  Не удалось получить статистику генерации: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 Write-Host "  Пауза для дренажа очередей Worker (15с)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 15
 
@@ -327,6 +347,32 @@ if (-not $workerProc.HasExited) {
     else {
         Write-Host "  Worker не завершился за 90 с — принудительная остановка." -ForegroundColor Yellow
         taskkill /F /IM MarketDataCollector.Worker.exe 2>$null
+    }
+}
+
+# Статистика записи Worker: парсим итоговую строку из лога
+$workerLogPath = Join-Path $root "$OutputDir/worker_out.log"
+if (Test-Path $workerLogPath) {
+    $workerFinalLine = Get-Content $workerLogPath | Select-String "Обработчик рыночных данных остановлен"
+    if ($workerFinalLine) {
+        $matchInserted = [regex]::Match($workerFinalLine, 'вставлено в БД:\s*(\d+)')
+        $matchReceived = [regex]::Match($workerFinalLine, 'получено из канала:\s*(\d+)')
+        $matchIncoming = [regex]::Match($workerFinalLine, 'Входящих:\s*(\d+)')
+        $matchBacklog = [regex]::Match($workerFinalLine, 'backlog.*?:\s*(\d+)')
+        if ($matchInserted.Success -and $matchReceived.Success) {
+            $wrInserted = [int]$matchInserted.Groups[1].Value
+            $wrReceived = [int]$matchReceived.Groups[1].Value
+            $wrIncoming = if ($matchIncoming.Success) { [int]$matchIncoming.Groups[1].Value } else { 0 }
+            $wrBacklog = if ($matchBacklog.Success) { [int]$matchBacklog.Groups[1].Value } else { $wrIncoming - $wrReceived }
+            $wrDroppedPct = if ($wrIncoming -gt 0) { [Math]::Round($wrBacklog / $wrIncoming * 100, 1) } else { 0 }
+            Write-Host ""
+            Write-Host "  Статистика записи Worker:" -ForegroundColor Cyan
+            Write-Host "    Входящих (Incoming):    $wrIncoming" -ForegroundColor Gray
+            Write-Host "    Получено из канала:     $wrReceived" -ForegroundColor Gray
+            Write-Host "    Дропнуто каналом:       $wrBacklog (${wrDroppedPct}%)" -ForegroundColor $(
+                if ($wrDroppedPct -gt 10) { "Red" } else { "Yellow" })
+            Write-Host "    Вставлено в БД:         $wrInserted" -ForegroundColor Green
+        }
     }
 }
 

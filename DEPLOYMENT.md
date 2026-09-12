@@ -7,7 +7,7 @@
 
 > Локальное **нагрузочное тестирование** (не деплой) запускается отдельным
 > оркестратором — см. раздел «Нагрузочное тестирование одной кнопкой» в
-> [`README.md`](README.md) и [`run_loadtest.ps1`](run_loadtest.ps1).
+> [`README.md`](README.md) и [`start_loadtest.ps1`](start_loadtest.ps1).
 
 ---
 

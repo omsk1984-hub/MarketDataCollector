@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart TD
-    A[run_loadtest.ps1] --> B[Preflight: Docker + чистка процессов/портов]
+    A[start_loadtest.ps1] --> B[Preflight: Docker + чистка процессов/портов]
     B --> C[Компиляция FakeServer + sln]
     C --> D[Запуск FakeServer :5000 MaxTicks=4M, лог в traces]
     D --> E[Polling health FakeServer]
@@ -36,9 +36,9 @@ flowchart TD
 
 ## Задачи реализации
 
-### Задача 1. Мастер-оркестратор `run_loadtest.ps1`
+### Задача 1. Мастер-оркестратор `start_loadtest.ps1`
 
-**Файл:** `run_loadtest.ps1` (новый, в корне).
+**Файл:** `start_loadtest.ps1` (новый, в корне).
 
 **Поведение:**
 - Preflight:
@@ -126,7 +126,7 @@ WebSocket-клиенты получают NormalClosure, лог содержит
 
 **Файл:** `.vscode/tasks.json` (создать).
 
-- Задача `shell` (PowerShell), команда `.\run_loadtest.ps1`.
+- Задача `shell` (PowerShell), команда `.\start_loadtest.ps1`.
 - Опции: `presentation.reveal=always`, `problemMatcher=[]`.
 - Обеспечивает запуск одной кнопкой (Ctrl+Shift+B / Task Runner).
 
@@ -161,7 +161,7 @@ WebSocket-клиенты получают NormalClosure, лог содержит
 
 ## Критерии приёмки
 
-- `.\run_loadtest.ps1` с нуля: Docker → FakeServer → Worker → Profiler → корректное
+- `.\start_loadtest.ps1` с нуля: Docker → FakeServer → Worker → Profiler → корректное
   завершение всех трёх, код 0.
 - `traces/` содержит nettrace, speedscope, gcdump×2, counters CSV, логи.
 - Worker завершается graceful (в логе «Worker stopped.», каналы дочитаны).

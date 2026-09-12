@@ -151,6 +151,11 @@ public class TickGeneratorService : BackgroundService
     public long TotalTicksGenerated => Interlocked.Read(ref _totalTicks);
 
     /// <summary>
+    /// Количество уникальных (не дубликатных) тиков: TotalTicksGenerated - DuplicateTicksSent.
+    /// </summary>
+    public long UniqueTicksGenerated => TotalTicksGenerated - DuplicateTicksSent;
+
+    /// <summary>
     /// Возвращает текущий RPS (отправлено сообщений за последнюю секунду).
     /// </summary>
     public double GetCurrentRps()

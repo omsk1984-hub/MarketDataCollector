@@ -4,7 +4,7 @@
         {
             "label": "Run Load Test (однокнопочный прогон)",
             "type": "shell",
-            "command": "${workspaceFolder}\\run_loadtest.ps1",
+            "command": "${workspaceFolder}\\start_loadtest.ps1",
             "options": {
                 "cwd": "${workspaceFolder}",
                 "shell": {

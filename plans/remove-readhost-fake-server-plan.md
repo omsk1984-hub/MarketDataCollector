@@ -4,11 +4,11 @@
 
 1. Убрать `Read-Host` из `run_fake_server.ps1` — автозавершение программы.
 2. Убрать самозавершение FakeTickServer при достижении MaxTicks (`StopApplication()`).
-3. Перенести логику завершения в `run_loadtest.ps1` — оркестратор сам убивает FakeTickServer после graceful остановки Worker.
+3. Перенести логику завершения в `start_loadtest.ps1` — оркестратор сам убивает FakeTickServer после graceful остановки Worker.
 
 ## Мотивация
 
-- `run_loadtest.ps1` — единый оркестратор, он должен контролировать жизненный цикл всех процессов.
+- `start_loadtest.ps1` — единый оркестратор, он должен контролировать жизненный цикл всех процессов.
 - FakeTickServer не должен решать, когда ему завершаться — это ответственность оркестратора.
 - При самозавершении FakeTickServer Worker может получить WebSocket-ошибки вместо NormalClosure.
 
@@ -61,9 +61,9 @@ Read-Host -Prompt "Нажмите любую клавишу для выхода"
 
 ---
 
-### 3. `run_loadtest.ps1` — обновить логику завершения FakeTickServer
+### 3. `start_loadtest.ps1` — обновить логику завершения FakeTickServer
 
-**Файл:** [`run_loadtest.ps1`](../run_loadtest.ps1)
+**Файл:** [`start_loadtest.ps1`](../start_loadtest.ps1)
 
 Сейчас раздел `[6/7]` ждёт, пока FakeTickServer сам завершится. После изменений сервер не завершится сам — его нужно убивать принудительно после остановки Worker.
 
@@ -98,7 +98,7 @@ Start-Sleep -Seconds 1
 
 ---
 
-### 4. `run_loadtest.ps1` — добавить `Read-Host` в конец
+### 4. `start_loadtest.ps1` — добавить `Read-Host` в конец
 
 Как и в предыдущем плане — после итоговой сводки добавить:
 ```powershell
@@ -108,7 +108,7 @@ Read-Host -Prompt "Нажмите любую клавишу для выхода"
 ## Проверка
 
 1. `run_fake_server.ps1` — запускает сервер, не ждёт нажатия клавиши.
-2. `run_loadtest.ps1`:
+2. `start_loadtest.ps1`:
    - Запускает FakeTickServer (он генерирует MaxTicks, но не завершается).
    - Запускает Worker + Profiler.
    - Ждёт расчётное время генерации.

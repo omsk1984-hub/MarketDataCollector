@@ -105,7 +105,7 @@ dotnet test tests/MarketDataCollector.Tests/MarketDataCollector.Tests.csproj
 ### Шаг 4. Прогон нагрузочного теста (после утверждения)
 
 ```powershell
-.\run_loadtest.ps1
+.\start_loadtest.ps1
 ```
 
 ---

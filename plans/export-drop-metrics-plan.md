@@ -117,7 +117,7 @@ Prometheus-экспортер OpenTelemetry создаёт сэмпл для `Co
 
 После изменений, запуск Worker без нагрузки: `ticks_dropped_count{exchange="binance|kraken|unknown"} 0` и `ticks_dropped_silently_count 0` **присутствуют** в `/metrics`.
 
-### Нагрузочный прогон 1.7M (`run_loadtest.ps1`) — подтверждено
+### Нагрузочный прогон 1.7M (`start_loadtest.ps1`) — подтверждено
 
 Артефакты `traces/*_20260804_160733.*`, counters `traces/counters_20260804_160733.csv`, отчёт `traces/profiling_report_20260804_160733.md` (без предупреждений).
 

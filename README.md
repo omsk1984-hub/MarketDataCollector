@@ -11,12 +11,12 @@
 
 ```powershell
 # Требуется запущенный Docker (Postgres на порту 5433)
-.\run_loadtest.ps1
+.\start_loadtest.ps1
 ```
 
 Или в VS Code: **Ctrl+Shift+B** → задача *Run Load Test (однокнопочный прогон)*.
 
-**Что делает оркестратор [`run_loadtest.ps1`](run_loadtest.ps1):**
+**Что делает оркестратор [`start_loadtest.ps1`](start_loadtest.ps1):**
 1. Preflight: проверка Docker, очистка остатков процессов, компиляция.
 2. Запуск `FakeTickServer` (`:5000`, по умолчанию 4M тиков @ 25k RPS), ожидание `/health`.
 3. Запуск `Worker` (`:5010`) в профиле **LoadTest** — все клиенты идут только на локальный
@@ -32,7 +32,7 @@
 
 **Параметры:**
 ```powershell
-.\run_loadtest.ps1 -MaxTicks 2000000 -Rps 15000 -TraceProfile contention-cpu -TraceDuration 120
+.\start_loadtest.ps1 -MaxTicks 2000000 -Rps 15000 -TraceProfile contention-cpu -TraceDuration 120
 ```
 
 > Профиль **LoadTest** активируется через `ASPNETCORE_ENVIRONMENT=LoadTest` и использует

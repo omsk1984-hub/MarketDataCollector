@@ -103,6 +103,8 @@ app.MapGet("/health", () => Results.Ok(new
     status = generator.ClientCount > 0 ? "active" : "idle",
     clients = generator.ClientCount,
     totalTicks = generator.TotalTicksGenerated,
+    uniqueTicks = generator.UniqueTicksGenerated,
+    dupPercent = generator.ActualDupPercent,
     isLimitReached = generator.IsLimitReached
 }));
 
