@@ -68,6 +68,7 @@ public static class DiContainer
         services.AddSingleton<ITraceCollector, TraceCollector>();
         services.AddSingleton<IGcDumpCollector, GcDumpCollector>();
         services.AddSingleton<ISpeedScopeConverter, SpeedScopeConverter>();
+        services.AddSingleton<ITopNReporter, TopNReporter>();
         services.AddSingleton<IPeakLoadWaiter, PeakLoadWaiter>();
         services.AddSingleton<IDrainWaiter, DrainWaiter>();
         services.AddSingleton<IHealthCheckService, HealthCheckService>();

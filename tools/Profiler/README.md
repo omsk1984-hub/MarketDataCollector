@@ -14,6 +14,8 @@ Standalone .NET 8 console-утилита профилирования `MarketDat
   (после дренажа очередей).
 - Конвертация trace в SpeedScope-формат.
 - Markdown-отчёт `profiling_report_*.md`.
+- Пост-анализ trace через **`dotnet-trace report topN`** — top методов по времени на call
+  stack, результат сохраняется в `*_topn.md` (включается опцией `--topn-enable`).
 - Встроенный HTTP-сервер профайлера (`http://localhost:5100/health`) с собственным
   JSON-статусом и live-метриками для ручного просмотра.
 
@@ -56,6 +58,9 @@ dotnet run --project tools/Profiler
 | `--http-log-level` | Уровень HTTP-логирования | `Debug` |
 | `--http-port` | Порт встроенного health-сервера профайлера | `5100` |
 | `--http-enabled` | Включить встроенный health-сервер профайлера | `true` |
+| `--topn-enabled` | Включить пост-анализ `dotnet-trace report topN` | `true` |
+| `--topn-count` | Число методов в topN-отчёте | `15` |
+| `--topn-inclusive` | topN по inclusive времени | `false` |
 | `--help`, `-h` | Справка | — |
 
 Поддерживаются форматы `--name value` и `--name=value`; имена регистронезависимы

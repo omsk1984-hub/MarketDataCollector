@@ -154,6 +154,18 @@ public static class CommandLineParser
                 options = options with { HttpEnabled = ParseBool(name, value) };
                 break;
 
+            case "topnenabled":
+                options = options with { TopNEnabled = ParseBool(name, value) };
+                break;
+
+            case "topncount":
+                options = options with { TopNCount = ParseInt(name, value) };
+                break;
+
+            case "topninclusive":
+                options = options with { TopNInclusive = ParseBool(name, value) };
+                break;
+
             default:
                 PrintError($"Неизвестный аргумент: --{name}");
                 Environment.Exit(1);
@@ -212,6 +224,9 @@ public static class CommandLineParser
               --http-log-level <level>      Уровень логирования HTTP (Trace|Debug|Information|None)
               --http-port <port>            Порт встроенного health-сервера профайлера (по умолчанию 5100)
               --http-enabled <bool>         Включить встроенный health-сервер профайлера (по умолчанию true)
+              --topn-enabled <bool>         Включить пост-анализ dotnet-trace report topN (по умолчанию true)
+              --topn-count <n>              Число методов в topN-отчёте (по умолчанию 15)
+              --topn-inclusive <bool>       topN по inclusive времени (по умолчанию false)
               --help, -h                    Показать справку
             """);
     }

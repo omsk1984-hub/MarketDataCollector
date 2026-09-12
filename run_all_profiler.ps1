@@ -52,6 +52,16 @@
     Уровень логирования HTTP-запросов (Trace|Debug|Information|None).
     По умолчанию Debug.
 
+.PARAMETER TopNEnabled
+    Включить пост-анализ trace через dotnet-trace report topN (топ методов
+    по времени на call stack). Результат сохраняется в *_topn.md. По умолчанию true.
+
+.PARAMETER TopNCount
+    Число методов в topN-отчёте. По умолчанию 15.
+
+.PARAMETER TopNInclusive
+    Считать topN по inclusive (с включением дочерних) времени. По умолчанию false.
+
 .EXAMPLE
     .\run_all_profiler.ps1
     .\run_all_profiler.ps1 -TraceProfile contention-cpu
@@ -76,7 +86,11 @@ param(
     [int]$RefreshSeconds = 5,
 
     [ValidateSet("Trace", "Debug", "Information", "None")]
-    [string]$HttpLogLevel = "Debug"
+    [string]$HttpLogLevel = "Debug",
+
+    [bool]$TopNEnabled = $true,
+    [int]$TopNCount = 15,
+    [bool]$TopNInclusive = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -111,6 +125,9 @@ Write-Host "MetricsUrl:      $MetricsUrl"
 Write-Host "HealthUrl:       $HealthUrl"
 Write-Host "OutputDir:       $OutputDir"
 Write-Host "HttpLogLevel:    $HttpLogLevel"
+Write-Host "TopNEnabled:     $TopNEnabled"
+Write-Host "TopNCount:       $TopNCount"
+Write-Host "TopNInclusive:   $TopNInclusive"
 Write-Host ""
 
 # ============================================================
@@ -128,6 +145,9 @@ $profilerArgs = @(
     "--output-dir", "$OutputDir"
     "--refresh-seconds", "$RefreshSeconds"
     "--http-log-level", "$HttpLogLevel"
+    "--topn-enabled", "$TopNEnabled"
+    "--topn-count", "$TopNCount"
+    "--topn-inclusive", "$TopNInclusive"
 )
 
 # ============================================================

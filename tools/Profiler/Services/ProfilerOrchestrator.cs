@@ -21,6 +21,7 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
     private readonly IGcDumpCollector _gcDumpCollector;
     private readonly IDrainWaiter _drainWaiter;
     private readonly ISpeedScopeConverter _speedScopeConverter;
+    private readonly ITopNReporter _topNReporter;
     private readonly IReportGenerator _reportGenerator;
     private readonly IProfilerMetricsRegistry _metrics;
     private readonly IConsoleUI _ui;
@@ -37,6 +38,7 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
         IGcDumpCollector gcDumpCollector,
         IDrainWaiter drainWaiter,
         ISpeedScopeConverter speedScopeConverter,
+        ITopNReporter topNReporter,
         IReportGenerator reportGenerator,
         IProfilerMetricsRegistry metrics,
         IConsoleUI ui,
@@ -52,6 +54,7 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
         _gcDumpCollector = gcDumpCollector;
         _drainWaiter = drainWaiter;
         _speedScopeConverter = speedScopeConverter;
+        _topNReporter = topNReporter;
         _reportGenerator = reportGenerator;
         _metrics = metrics;
         _ui = ui;
@@ -145,6 +148,22 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
             warnings.Add("SpeedScope-файл не создан (возможно, повреждённый trace).");
         }
 
+        _metrics.SetCurrentStep("10.5. topN-анализ (dotnet-trace report topN)");
+        _ui.SectionHeader("10.5. topN-анализ (dotnet-trace report topN)");
+        string topNPath = string.Empty;
+        if (_options.TopNEnabled)
+        {
+            topNPath = await _topNReporter.GenerateAsync(trace.OutputPath, cancellationToken);
+            if (string.IsNullOrEmpty(topNPath))
+            {
+                warnings.Add("topN-отчёт не создан (trace может не содержать CPU-событий).");
+            }
+        }
+        else
+        {
+            _ui.Info("topN-анализ отключён (--topn-enabled=false).");
+        }
+
         _metrics.SetCurrentStep("11. Остановка сбора счётчиков");
         _ui.SectionHeader("11. Остановка сбора счётчиков");
         // CountersCollector завершится сам по факту внешней отмены — дожидаемся задачи.
@@ -156,6 +175,7 @@ public sealed class ProfilerOrchestrator : IProfilerOrchestrator
         {
             ("Trace (.nettrace)", trace.OutputPath),
             ("SpeedScope (.json)", speedScopePath),
+            ("topN report (.md)", topNPath),
             ("gcdump (peak)", peakGcDumpPath),
             ("gcdump (drained)", drainedGcDumpPath),
             ("Counters (.csv)", countersPath),

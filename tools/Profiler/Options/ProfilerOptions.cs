@@ -44,4 +44,16 @@ public sealed record ProfilerOptions
 
     /// <summary>Включён ли встроенный health-сервер профайлера.</summary>
     public bool HttpEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Включить пост-анализ trace через <c>dotnet-trace report topN</c>
+    /// (топ методов по времени на call stack). Результат сохраняется в <c>*_topn.md</c>.
+    /// </summary>
+    public bool TopNEnabled { get; init; } = true;
+
+    /// <summary>Число методов в topN-отчёте.</summary>
+    public int TopNCount { get; init; } = 15;
+
+    /// <summary>Считать topN по inclusive (с включением дочерних) или exclusive времени.</summary>
+    public bool TopNInclusive { get; init; } = false;
 }
