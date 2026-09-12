@@ -112,10 +112,18 @@ function Wait-Http([string]$Url, [int]$TimeoutSec, [string]$Label) {
                 return $true
             }
             # HTTP >= 500 (например, 503 degraded от health-чека Worker при wsAllDown):
-            # сервис поднят, но readiness-чек считает его неготовым. Логируем код и тело,
-            # чтобы отличить "degraded" от реальной недоступности.
-            $body = if ($resp.Content) { ($resp.Content).Substring(0, [Math]::Min(500, $resp.Content.Length)) } else { "[]" }
-            Write-Host "    ${Label}: HTTP $($resp.StatusCode) - $body" -ForegroundColor Yellow
+            # сервис поднят, но readiness-чек считает его неготовым. Выводим только код
+            # и общий статус из тела (детали проверок скрыты — они засоряют лог).
+            $summary = "(body unavailable)"
+            if ($resp.Content) {
+                try {
+                    $j = $resp.Content | ConvertFrom-Json
+                    $summary = if ($j.status) { "$($j.status)" } else { "(no status)" }
+                } catch {
+                    $summary = "(body not json)"
+                }
+            }
+            Write-Host "    ${Label}: HTTP $($resp.StatusCode) - $summary (service warming up / degraded)" -ForegroundColor Yellow
         }
         catch {
             # сервис ещё не готов / соединение недоступно - продолжаем поллинг
