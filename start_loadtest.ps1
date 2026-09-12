@@ -176,6 +176,28 @@ function Wait-GenerationComplete([string]$HealthUrl, [int]$MaxTicks, [int]$Rps) 
     return $false
 }
 
+function Get-DbRowCount {
+    # Реальное число строк в БД Postgres (Docker-контейнер marketdata-postgres).
+    # Возвращает числовой счётчик COUNT(*) из таблицы задания, либо $null при ошибке.
+    param([string]$TableName = "rawticks")
+
+    $container = "marketdata-postgres"
+    $user = "marketdata_user"
+    $db = "MarketDataDb"
+
+    try {
+        $out = docker exec $container sh -c "psql -U $user -d $db -t -A -c 'SELECT COUNT(*) FROM $TableName;'" 2>$null
+        $countStr = ($out | Select-Object -First 1).Trim()
+        if ($countStr -match '^\d+$') {
+            return [long]$countStr
+        }
+        return $null
+    }
+    catch {
+        return $null
+    }
+}
+
 # ============================================================
 # Preflight
 # ============================================================
@@ -230,6 +252,14 @@ if ($portBlocked) {
     $listenerPids = ($listener | Select-Object -ExpandProperty OwningProcess -Unique) -join ", "
     Write-Host "  ОШИБКА: порт :5010 не освобождён (PID: $listenerPids). Локальный Worker не сможет подняться." -ForegroundColor Red
     throw "Порт :5010 занят"
+}
+
+# БД накопительная: фиксируем текущее число строк ДО запуска прогона,
+# чтобы позже вывести именно количество записей, добавленных за этот прогон.
+# Выполняем один раз, после подтверждения, что порт :5010 свободен.
+$dbRowCountBefore = Get-DbRowCount -TableName "rawticks"
+if ($dbRowCountBefore -eq $null) {
+    Write-Host "  ВНИМАНИЕ: не удалось прочитать COUNT(*) из rawticks до запуска (проверьте Docker)." -ForegroundColor Yellow
 }
 
 Start-Sleep -Seconds 2
@@ -417,8 +447,34 @@ try {
         Write-Host "    Дублей (${genDupPct}%):  $genDups" -ForegroundColor Yellow
     }
 }
+
 catch {
     Write-Host "  Не удалось получить статистику генерации: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# Хотя FakeServer завершил генерацию, Worker может ещё дописывать
+# батчи из очереди (асинхронная запись). Даём короткую паузу для
+# сходимости счётчиков перед реальным подсчётом строк в БД.
+Start-Sleep -Seconds 3
+
+# Реальное количество записей в БД (COUNT(*) из rawticks).
+# Таблица накопительная, поэтому показываем и итог, и добавленное за прогон
+# ($dbRowCountBefore снимается в Preflight, до запуска Worker).
+$dbRowCount = Get-DbRowCount -TableName "rawticks"
+if ($dbRowCount -ne $null) {
+    $dbInsertedRun = if ($dbRowCountBefore -ne $null) { $dbRowCount - $dbRowCountBefore } else { $dbRowCount }
+    Write-Host ""
+    Write-Host "  Реально записано в БД:" -ForegroundColor Cyan
+    Write-Host "    Строк в rawticks:     $dbRowCount" -ForegroundColor Green
+    Write-Host "    Добавлено за прогон:  $dbInsertedRun" -ForegroundColor Green
+    if ($dbInsertedRun -gt 0 -and $genUnique -gt 0) {
+        $insPct = [Math]::Round($dbInsertedRun / $genUnique * 100, 1)
+        Write-Host "    От уникальных (%):    ${insPct}%" -ForegroundColor Yellow
+    }
+}
+else {
+    Write-Host ""
+    Write-Host "  Не удалось получить число строк в БД (проверьте Docker/контейнер marketdata-postgres)." -ForegroundColor Yellow
 }
 
 # ============================================================
