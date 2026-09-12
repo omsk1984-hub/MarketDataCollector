@@ -19,6 +19,28 @@ author: You
 
 ---
 
+## Переиспользуемые скрипты (в `tools/metrics-analysis/`)
+
+Для разбора больших `counters_*.csv` используй готовые PowerShell-скрипты из папки [`tools/metrics-analysis/`](../../../tools/metrics-analysis/README.md) вместо ручного чтения/инлайн-команд:
+
+| Скрипт | Назначение | Результат |
+|---|---|---|
+| `summary_reader.ps1` | сводка: сэмплы, список метрик, первый→последний сэмпл | `plans/_metrics_out.txt` |
+| `detail_series.ps1` | детальные ряды по labels (GC-поколения, WS-символы, дедупликация, каналы) | `plans/_metrics_detail.txt` |
+| `batch_duration_stats.ps1` | статистика длительности записи батчей (min/max/avg/медиана) | `plans/_batch_dur.txt` |
+| `csv_structure_diag.ps1` | диагностика структуры CSV (для отладки парсинга) | `plans/_diag.txt` |
+
+Запуск (результат пишется в файл, в stdout — только строка `WROTE`):
+```bash
+powershell -NoProfile -File tools/metrics-analysis/summary_reader.ps1      traces/counters_<ts>.csv
+powershell -NoProfile -File tools/metrics-analysis/detail_series.ps1       traces/counters_<ts>.csv
+powershell -NoProfile -File tools/metrics-analysis/batch_duration_stats.ps1 traces/counters_<ts>.csv
+```
+
+> ⚠️ **Парсинг больших CSV:** строки формата `"ts","metric","labels","type","value","desc"`, где `labels` содержит вложенные `""` и запятые. Поэтому **`Split('","')` и inline-команды с кавычками через `execute_command` НЕ работают** (смещают поля, портят кавычки, зависают). Используй **только regex** `^"([^"]*)","([^"]*)","((?:[^"]|"")*)","([^"]*)","([^"]*)"` (group5 = value) и запускай скрипты через `powershell -NoProfile -File`, а не `-Command` / `cmd /c` (см. Шаг 2).
+
+---
+
 ## Правила работы
 
 1. **Работай от CSV к выводам**, а не наоборот. Числа бери из данных, не из предположений.
@@ -49,9 +71,16 @@ author: You
 
 ## Шаг 2. Прочитай counters CSV
 
-- CSV большой (10+ MB), читай **частями** (`read_file` с offset/limit) или через статистические выборки.
-- ⚠️ **Избегай regex-поиска по всему CSV** — он ненадёжен (возвращает «0 совпадений» по фактически присутствующим метрикам, см. правило 8). Проверяй наличие/значения метрик **прямым чтением фрагментов**, а не `search_files`.
-- Определи колонки: `Timestamp`, `Metric`, `Labels`, `Value`.
+- ⚠️ **НЕ разбирай большой CSV вручную построчно и НЕ запускай inline-команды с кавычками через `execute_command -Command` / `cmd /c`** — `cmd` удаляет кавычки `"`, что ломает парсинг и может забить терминал шумом. Вместо этого **запусти готовые скрипты** из [`tools/metrics-analysis/`](../../../tools/metrics-analysis/README.md):
+  ```bash
+  powershell -NoProfile -File tools/metrics-analysis/summary_reader.ps1 traces/counters_<ts>.csv
+  powershell -NoProfile -File tools/metrics-analysis/detail_series.ps1  traces/counters_<ts>.csv
+  powershell -NoProfile -File tools/metrics-analysis/batch_duration_stats.ps1 traces/counters_<ts>.csv
+  ```
+  Каждый пишет результат в `plans/_*.txt`, в stdout — только `WROTE ...`. Прочитай эти `.txt` через `read_file`.
+- **Надёжный парсинг строки** `"ts","metric","labels","type","value","desc"`: только regex-язкорь `^"([^"]*)","([^"]*)","((?:[^"]|"")*)","([^"]*)","([^"]*)"` (group1=ts, group2=metric, group3=labels, group5=value). `Split('","')` **ненадёжен**, т.к. `labels` содержит вложенные `""` и запятые и смещает индексы полей.
+- ⚠️ **Избегай `search_files` (regex) по всему CSV** — ненадёжен (возвращает «0 совпадений» по фактически присутствующим метрикам, см. правило 8). Проверяй наличие/значения метрик скриптами или прямым чтением фрагментов (`read_file` с offset/limit).
+- Определи колонки: `Timestamp`, `Metric`, `Labels`, `Value` (HTTP-экспортер Prometheus).
 - Собери список уникальных метрик (раздели runtime `.NET` и кастомные `MarketDataCollector`).
 - Определи число сэмплов (уникальных `Timestamp`), первый и последний.
 

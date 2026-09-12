@@ -1,0 +1,88 @@
+﻿===== FILE: traces/counters_20260912_205238.csv =====
+TOTAL_LINES=20749
+SAMPLES=22
+FIRST_TS=2026-09-12T17:52:40.2314709Z
+LAST_TS=2026-09-12T17:54:25.5375916Z
+=== UNIQUE METRIC NAMES ===
+process_runtime_dotnet_assemblies_count
+process_runtime_dotnet_exceptions_count_total
+process_runtime_dotnet_gc_allocations_size_bytes_total
+process_runtime_dotnet_gc_collections_count_total
+process_runtime_dotnet_gc_committed_memory_size_bytes
+process_runtime_dotnet_gc_duration_nanoseconds_total
+process_runtime_dotnet_gc_heap_fragmentation_size_bytes
+process_runtime_dotnet_gc_heap_size_bytes
+process_runtime_dotnet_gc_objects_size_bytes
+process_runtime_dotnet_jit_compilation_time_nanoseconds_total
+process_runtime_dotnet_jit_il_compiled_size_bytes_total
+process_runtime_dotnet_jit_methods_compiled_count_total
+process_runtime_dotnet_monitor_lock_contention_count_total
+process_runtime_dotnet_thread_pool_completed_items_count_total
+process_runtime_dotnet_thread_pool_queue_length
+process_runtime_dotnet_thread_pool_threads_count
+process_runtime_dotnet_timer_count
+processor_batch_channel_fill_count_bucket
+processor_batch_channel_fill_count_count
+processor_batch_channel_fill_count_sum
+processor_channel_fill_count_bucket
+processor_channel_fill_count_count
+processor_channel_fill_count_sum
+processor_channel_fill_level_count
+target_info
+ticks_batch_adaptive_size_count_bucket
+ticks_batch_adaptive_size_count_count
+ticks_batch_adaptive_size_count_sum
+ticks_batch_size_count_bucket
+ticks_batch_size_count_count
+ticks_batch_size_count_sum
+ticks_batch_write_duration_milliseconds_bucket
+ticks_batch_write_duration_milliseconds_count
+ticks_batch_write_duration_milliseconds_sum
+ticks_deduplicated_cache_count_total
+ticks_deduplicated_db_count_total
+ticks_dropped_count
+ticks_dropped_silently_count
+ticks_incoming_count_total
+ticks_processed_count_total
+ticks_received_count_total
+ws_active_connections_count
+ws_messages_received_count_total
+=== SERIES (first -> last) ===
+process_runtime_dotnet_assemblies_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 141 -> 142
+process_runtime_dotnet_exceptions_count_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 32 -> 82
+process_runtime_dotnet_gc_allocations_size_bytes_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 184053544 -> 1470182304
+process_runtime_dotnet_gc_collections_count_total|;gen= | n=66 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 2
+process_runtime_dotnet_gc_committed_memory_size_bytes| | n=21 | 2026-09-12T17:52:45.2553114Z -> 2026-09-12T17:54:25.5375916Z | val 206811136 -> 232792064
+process_runtime_dotnet_gc_duration_nanoseconds_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 122977000
+process_runtime_dotnet_gc_heap_fragmentation_size_bytes|;gen= | n=105 | 2026-09-12T17:52:45.2553114Z -> 2026-09-12T17:54:25.5375916Z | val 584752 -> 0
+process_runtime_dotnet_gc_heap_size_bytes|;gen= | n=105 | 2026-09-12T17:52:45.2553114Z -> 2026-09-12T17:54:25.5375916Z | val 601616 -> 333320
+process_runtime_dotnet_gc_objects_size_bytes| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 184465008 -> 21151336
+process_runtime_dotnet_jit_compilation_time_nanoseconds_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 2527499200 -> 3487242900
+process_runtime_dotnet_jit_il_compiled_size_bytes_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 1503260 -> 1771313
+process_runtime_dotnet_jit_methods_compiled_count_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 21784 -> 24713
+process_runtime_dotnet_monitor_lock_contention_count_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 155 -> 2295
+process_runtime_dotnet_thread_pool_completed_items_count_total| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 206737 -> 2285131
+process_runtime_dotnet_thread_pool_queue_length| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 1 -> 0
+process_runtime_dotnet_thread_pool_threads_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 10 -> 3
+process_runtime_dotnet_timer_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 16 -> 17
+processor_batch_channel_fill_count_count|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 1 -> 7
+processor_batch_channel_fill_count_sum|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 1 -> 23
+processor_channel_fill_count_count|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 2 -> 8
+processor_channel_fill_count_sum|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 4 -> 18
+processor_channel_fill_level_count|;ch= | n=21 | 2026-09-12T17:52:45.2553114Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 0
+ticks_batch_adaptive_size_count_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 71 -> 680
+ticks_batch_adaptive_size_count_sum| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 177500 -> 1700000
+ticks_batch_size_count_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 71 -> 680
+ticks_batch_size_count_sum| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 177500 -> 1700000
+ticks_batch_write_duration_milliseconds_count|;ch=;bs=;ins= | n=1014 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 1 -> 1
+ticks_batch_write_duration_milliseconds_sum|;ch=;bs=;ins= | n=1014 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 142.8013 -> 114.0531
+ticks_deduplicated_cache_count_total|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 5235 -> 51275
+ticks_deduplicated_db_count_total|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 6
+ticks_dropped_count|;ex= | n=66 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 0
+ticks_dropped_silently_count| | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 0 -> 0
+ticks_incoming_count_total|;ex= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 177763 -> 1700000
+ticks_processed_count_total|;ex= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 169765 -> 1648719
+ticks_received_count_total|;ch= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 175000 -> 1700000
+ws_active_connections_count|;ex= | n=22 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 3 -> 3
+ws_messages_received_count_total|;ex=;sym= | n=66 | 2026-09-12T17:52:40.2314709Z -> 2026-09-12T17:54:25.5375916Z | val 75585 -> 543141
+

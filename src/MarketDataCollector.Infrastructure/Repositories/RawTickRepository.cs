@@ -49,6 +49,24 @@ namespace MarketDataCollector.Infrastructure.Repositories
         private readonly ReusableArrayCache<DateTime> _receivedAtsCache = new();
         private readonly ReusableArrayCache<bool> _normalizedsCache = new();
 
+        // Reusable arrays for BulkInsertFastAsync(IEnumerable<RawTick>) — zero per-batch
+        // allocations on steady state, matching the TickData version above.
+        // This overload renders Price/Volume to string[] (ToString + ::text[]::numeric cast),
+        // so price/volume caches are string[] (unlike the decimal[] used by the TickData version).
+        private readonly ReusableArrayCache<Guid> _rawIdsCache = new();
+        private readonly ReusableArrayCache<string> _rawTickersCache = new();
+        private readonly ReusableArrayCache<string> _rawPricesCache = new();
+        private readonly ReusableArrayCache<string> _rawVolumesCache = new();
+        private readonly ReusableArrayCache<DateTime> _rawTimestampsCache = new();
+        private readonly ReusableArrayCache<string> _rawExchangesCache = new();
+        private readonly ReusableArrayCache<DateTime> _rawReceivedAtsCache = new();
+        private readonly ReusableArrayCache<bool> _rawNormalizedsCache = new();
+
+        // Reusable NpgsqlParameter[] for BulkInsertFastAsync(IEnumerable<RawTick>).
+        // Separate from _tickDataParameters because raw price/volume are text[]
+        // (cast ::text[]::numeric in SQL), not numeric[].
+        private readonly Npgsql.NpgsqlParameter[] _rawTickParameters;
+
         public RawTickRepository(MarketDataDbContext context, ILogger<RawTickRepository> logger)
         {
             _context = context;
@@ -62,6 +80,21 @@ namespace MarketDataCollector.Infrastructure.Repositories
                 new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
                 new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = null! },
                 new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Numeric) { Value = null! },
+                new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
+                new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
+                new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
+                new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = null! },
+            };
+
+            // Pre-create the NpgsqlParameter array for the IEnumerable<RawTick> overload —
+            // only Value is updated per batch call. Prices/volumes are text[] (string render
+            // + ::text[]::numeric cast in SQL), unlike the numeric[] used by the TickData version.
+            _rawTickParameters = new Npgsql.NpgsqlParameter[]
+            {
+                new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = null! },
+                new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
+                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
+                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
                 new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
                 new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = null! },
                 new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = null! },
@@ -329,19 +362,18 @@ namespace MarketDataCollector.Infrastructure.Repositories
             if (list.Count == 0)
                 return 0;
 
-            // Формируем массивы для UNNEST (один проход по списку)
+            // Формируем массивы для UNNEST (один проход по списку).
+            // Кэшируемые буферы (ReusableArrayCache) — zero per-batch allocations:
+            // Npgsql требует точного размера (Array.Length), и Rent(count) возвращает ровно count.
             var count = list.Count;
-            // Используем прямые new[] для Npgsql — массивы <85 KB, не LOH.
-            // ArrayPool не подходит: Npgsql требует точного размера массива (Array.Length),
-            // а Rent() может вернуть массив больше запрошенного размера.
-            var ids = new Guid[count];
-            var tickers = new string[count];
-            var prices = new string[count];
-            var volumes = new string[count];
-            var timestamps = new DateTime[count];
-            var exchanges = new string[count];
-            var receivedAts = new DateTime[count];
-            var normalizeds = new bool[count];
+            var ids = _rawIdsCache.Rent(count);
+            var tickers = _rawTickersCache.Rent(count);
+            var prices = _rawPricesCache.Rent(count);
+            var volumes = _rawVolumesCache.Rent(count);
+            var timestamps = _rawTimestampsCache.Rent(count);
+            var exchanges = _rawExchangesCache.Rent(count);
+            var receivedAts = _rawReceivedAtsCache.Rent(count);
+            var normalizeds = _rawNormalizedsCache.Rent(count);
 
             for (int i = 0; i < count; i++)
             {
@@ -362,17 +394,15 @@ namespace MarketDataCollector.Infrastructure.Repositories
                        unnest(@timestamps), unnest(@exchanges), unnest(@receivedats), unnest(@normalizeds)
                 ON CONFLICT (""ticker"", ""exchange"", ""timestamp"") DO NOTHING;";
 
-            var parameters = new Npgsql.NpgsqlParameter[]
-            {
-                new("@ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid) { Value = ids },
-                new("@tickers", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = tickers },
-                new("@prices", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = prices },
-                new("@volumes", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = volumes },
-                new("@timestamps", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = timestamps },
-                new("@exchanges", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = exchanges },
-                new("@receivedats", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = receivedAts },
-                new("@normalizeds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Boolean) { Value = normalizeds },
-            };
+            // Reuse pre-allocated NpgsqlParameter[] — only update Value each batch call
+            _rawTickParameters[0].Value = ids;
+            _rawTickParameters[1].Value = tickers;
+            _rawTickParameters[2].Value = prices;
+            _rawTickParameters[3].Value = volumes;
+            _rawTickParameters[4].Value = timestamps;
+            _rawTickParameters[5].Value = exchanges;
+            _rawTickParameters[6].Value = receivedAts;
+            _rawTickParameters[7].Value = normalizeds;
 
             // Retry loop с экспоненциальным backoff + jitter для транзиентных ошибок
             int attempt = 0;
@@ -382,7 +412,7 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
                 try
                 {
-                    return await _context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+                    return await _context.Database.ExecuteSqlRawAsync(sql, _rawTickParameters, cancellationToken);
                 }
                 catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {
