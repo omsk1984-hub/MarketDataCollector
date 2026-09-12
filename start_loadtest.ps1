@@ -273,12 +273,19 @@ if (-not $hasBaseAppSettings -or -not $hasLoadTestAppSettings) {
     Write-Host "  Worker, вероятно, упадёт с 'Connection string MarketDataDb is not configured'." -ForegroundColor Yellow
 }
 
-# Аргумент --environment гарантированно загружает правильный appsettings.*.json,
-# в отличие от -Environment, который заменяет весь env block процесса.
+# ПРОФИЛЬ LoadTest для ASP.NET Core задаётся через переменную окружения
+# ASPNETCORE_ENVIRONMENT (не через CLI-флаг --environment, который для C# не работает).
+# Экспериментально подтверждено: только передача ASPNETCORE_ENVIRONMENT=LoadTest
+# даёт "Hosting environment: LoadTest" и Kafka.status=disabled (иначе Production/kafka:9092).
+$previousWorkerEnv = $env:ASPNETCORE_ENVIRONMENT
+$env:ASPNETCORE_ENVIRONMENT = "LoadTest"
 $workerProc = Start-Process -FilePath $workerExe `
-    -ArgumentList @("--no-launch-profile", "--environment", "LoadTest") `
+    -ArgumentList @("--no-launch-profile") `
     -WorkingDirectory $workerWorkDir -PassThru `
     -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -NoNewWindow
+# Восстанавливаем окружение вызывающего, чтобы не повлиять на следующие шаги скрипта.
+if ($null -eq $previousWorkerEnv) { Remove-Item Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue }
+else { $env:ASPNETCORE_ENVIRONMENT = $previousWorkerEnv }
 Write-Host "  Worker PID: $($workerProc.Id), лог: $workerOut" -ForegroundColor Green
 
 if (-not (Wait-Http "http://localhost:5010/health" 60 "Worker")) {
