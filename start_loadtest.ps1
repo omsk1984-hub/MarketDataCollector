@@ -1,4 +1,4 @@
-<#
+ <#
 .SYNOPSIS
     Однокнопочный оркестратор нагрузочного тестирования с профилированием.
 
@@ -106,7 +106,7 @@ function Wait-Http([string]$Url, [int]$TimeoutSec, [string]$Label) {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         try {
-            $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5 -SkipHttpErrorCheck -ErrorAction Stop
             if ($resp.StatusCode -lt 500) {
                 Write-Host "    $Label готов ($($resp.StatusCode))." -ForegroundColor Green
                 return $true
@@ -114,7 +114,8 @@ function Wait-Http([string]$Url, [int]$TimeoutSec, [string]$Label) {
             # HTTP >= 500 (например, 503 degraded от health-чека Worker при wsAllDown):
             # сервис поднят, но readiness-чек считает его неготовым. Логируем код и тело,
             # чтобы отличить "degraded" от реальной недоступности.
-            Write-Host "    ${Label}: HTTP $($resp.StatusCode) - сервис поднят, но readiness!=OK (degraded)." -ForegroundColor Yellow
+            $body = if ($resp.Content) { ($resp.Content).Substring(0, [Math]::Min(500, $resp.Content.Length)) } else { "[]" }
+            Write-Host "    ${Label}: HTTP $($resp.StatusCode) - $body" -ForegroundColor Yellow
         }
         catch {
             # сервис ещё не готов / соединение недоступно - продолжаем поллинг
@@ -206,6 +207,14 @@ dotnet build MarketDataCollector.sln -c Debug --nologo | Out-Host
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Solution build failed" }
 Pop-Location
 
+# Явная пересборка Worker.csproj — гарантирует, что последние правки
+# (фильтр Kafka из degraded в /health, etc.) попали в бинарник.
+Write-Host "  Явная пересборка Worker..."
+Push-Location $root
+dotnet build src/MarketDataCollector.Workers/MarketDataCollector.Worker/MarketDataCollector.Worker.csproj -c Debug --nologo --no-restore | Out-Host
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Worker build failed" }
+Pop-Location
+
 Write-Host "  Сборка Profiler..."
 Push-Location "$root/tools/Profiler"
 dotnet build -c Debug --nologo | Out-Host
@@ -246,8 +255,6 @@ $workerOut = Join-Path $root "$OutputDir/worker_out.log"
 $workerErr = Join-Path $root "$OutputDir/worker_err.log"
 
 Write-Step "[4/7] Запуск Worker (:5010, профиль LoadTest)"
-# Профиль LoadTest активируется через ASPNETCORE_ENVIRONMENT (WebApplication).
-$env:ASPNETCORE_ENVIRONMENT = "LoadTest"
 
 # Валидация рабочей директории: для скомпилированного .exe ContentRoot = текущая
 # рабочая директория процесса. Если она != каталогу вывода, appsettings*.json не
@@ -266,9 +273,12 @@ if (-not $hasBaseAppSettings -or -not $hasLoadTestAppSettings) {
     Write-Host "  Worker, вероятно, упадёт с 'Connection string MarketDataDb is not configured'." -ForegroundColor Yellow
 }
 
-$workerProc = Start-Process -FilePath $workerExe -ArgumentList @("--no-launch-profile") -WorkingDirectory $workerWorkDir -PassThru `
+# Аргумент --environment гарантированно загружает правильный appsettings.*.json,
+# в отличие от -Environment, который заменяет весь env block процесса.
+$workerProc = Start-Process -FilePath $workerExe `
+    -ArgumentList @("--no-launch-profile", "--environment", "LoadTest") `
+    -WorkingDirectory $workerWorkDir -PassThru `
     -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -NoNewWindow
-$env:ASPNETCORE_ENVIRONMENT = ""
 Write-Host "  Worker PID: $($workerProc.Id), лог: $workerOut" -ForegroundColor Green
 
 if (-not (Wait-Http "http://localhost:5010/health" 60 "Worker")) {

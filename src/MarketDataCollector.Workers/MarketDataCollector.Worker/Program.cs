@@ -309,12 +309,18 @@ app.MapGet("/health", async (HttpContext ctx) =>
     };
     healthChecks["channels"] = channelsInfo;
 
-    var allHealthy = healthChecks.Values.All(h =>
-    {
-        var status = h.GetType().GetProperty("status")?.GetValue(h)?.ToString();
-        // null — информационные блоки без статуса (например, channels) не влияют на здоровье.
-        return status == null || status == "healthy" || status == "disabled" || status == "unknown";
-    });
+    // Kafka исключён из расчёта degraded: Kafka — не критическая зависимость для core-функционала
+    // Worker (обработка рыночных данных, запись в Postgres). Kafka недоступна в LoadTest-среде
+    // и на ранних этапах старта Production. Информация о статусе Kafka остаётся в теле ответа
+    // для диагностики, но не роняет HTTP-код готовности.
+    var allHealthy = healthChecks
+        .Where(kvp => kvp.Key != "kafka")
+        .All(kvp =>
+        {
+            var status = kvp.Value.GetType().GetProperty("status")?.GetValue(kvp.Value)?.ToString();
+            // null — информационные блоки без статуса (например, channels) не влияют на здоровье.
+            return status == null || status == "healthy" || status == "disabled" || status == "unknown";
+        });
 
     // Комбинированно: 503, если Kafka/PostgreSQL unhealthy.
     // НЕ включаем wsAllDown в readiness HTTP-кода: WS-подключения — внешняя рыночная
