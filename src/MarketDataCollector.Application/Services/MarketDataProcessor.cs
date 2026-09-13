@@ -890,11 +890,20 @@ namespace MarketDataCollector.Application.Services
 
                 activity?.SetTag("inserted.count", inserted);
 
+                var writeDurationMs = sw.Elapsed.TotalMilliseconds;
+
                 MarketDataTelemetry.BatchWriteDuration.Record(
-                    sw.Elapsed.TotalMilliseconds,
+                    writeDurationMs,
                     ChannelTag(channelIndex),
                     new KeyValuePair<string, object?>("batch_size", batchSize),
                     new KeyValuePair<string, object?>("inserted_count", inserted));
+
+                // Логирование хвостов: Warning для батчей, занявших больше порога.
+                // Даёт видимость медленных записей (>200 мс в LoadTest), которые иначе слепят операцию.
+                if (_writeDurationWarningMs > 0 && writeDurationMs > _writeDurationWarningMs)
+                {
+                    LogSlowBatchWrite(writeDurationMs, batchSize, inserted, channelIndex, _writeDurationWarningMs);
+                }
 
                 // Thread-safe инкремент: счётчики читаются из фонового мониторинга /
                 // GetProcessedCountAsync параллельно с записью в hot path (всегда безопасно).

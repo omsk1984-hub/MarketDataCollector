@@ -83,4 +83,8 @@ public partial class MarketDataProcessor
     [LoggerMessage(EventId = 20, Level = LogLevel.Debug,
         Message = "Батч: {Cached} дубликатов отсеяно кэшем дедупликации (channel={Channel})")]
     partial void LogBatchDeduplicated(int cached, int channel);
+
+    [LoggerMessage(EventId = 21, Level = LogLevel.Warning,
+        Message = "МЕДЛЕННАЯ ЗАПИСЬ БАТЧА: {DurationMs:F0} мс (batch={BatchSize}, inserted={Inserted}, channel={Channel}), порог={ThresholdMs:F0} мс")]
+    partial void LogSlowBatchWrite(double durationMs, int batchSize, int inserted, int channel, double thresholdMs);
 }

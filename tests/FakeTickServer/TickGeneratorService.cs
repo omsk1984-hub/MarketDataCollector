@@ -39,6 +39,14 @@ public class TickGeneratorService : BackgroundService
     /// <summary>Глобальный счётчик trade ID. Гарантирует уникальность каждого тика.</summary>
     private long _globalTradeId;
 
+    /// <summary>
+    /// Монотонный источник «времени биржи» в миллисекундах эпохи, близкий к текущему времени.
+    /// Стартует от now() и далее только атомарно инкрементируется, поэтому:
+    ///  - timestamp данных ложится в актуальные day-партиции (а не в rawticks_default);
+    ///  - ключ (ticker, exchange, timestamp) остаётся уникальным (соседние тики отличаются >= 1 мс).
+    /// </summary>
+    private long _syntheticTimeMs;
+
     /// <summary>Счётчик отправленных сообщений для RPS-мониторинга.</summary>
     private long _sentCount;
 
@@ -109,6 +117,9 @@ public class TickGeneratorService : BackgroundService
         // Значение инициализируется один раз, далее только атомарно инкрементируется
         var random = ThreadLocalRandom.Value!;
         _globalTradeId = random.NextInt64(100_000_000, 1_000_000_000);
+
+        // Стартуем «время биржи» от текущего момента (мс эпохи), далее только монотонно растёт.
+        _syntheticTimeMs = (long)(DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
 
         // Вычисляем размер буфера для дублей: ~2 секунды данных на symbol, минимум 1000
         _bufferSize = Math.Max(_settings.Rps / Math.Max(_settings.Symbols.Length, 1) * 2, 1000);
@@ -423,8 +434,10 @@ public class TickGeneratorService : BackgroundService
                 "Это может указывать на проблему в логике генерации.", tradeId);
         }
 
-        // Timestamp = tradeId (строго монотонный)
-        var syntheticTimestamp = tradeId;
+        // Timestamp (мс эпохи) — монотонно растущее «время биржи», близкое к now().
+        // Не равен tradeId: это реальная дата (данные лягут в day-партиции),
+        // а монотонность (>= 1 мс между тиками) сохраняет уникальность ключа.
+        var syntheticTimestamp = Interlocked.Increment(ref _syntheticTimeMs);
 
         // Случайное отклонение цены +/- 0.2%
         var priceVariation = 1.0 + (random.NextDouble() - 0.5) * 0.004;
