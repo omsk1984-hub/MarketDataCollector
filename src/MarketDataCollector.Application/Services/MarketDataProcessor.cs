@@ -579,10 +579,18 @@ namespace MarketDataCollector.Application.Services
 
             try
             {
+                // P1 (остаток): поднимаем создание scope на уровень всего writer-цикла, а не на каждый батч.
+                // Раньше CreateScope() + GetRequiredService<IRawTickRepository>() выполнялись внутри
+                // ProcessBatchAsync на каждый батч — RavenDB резолвил новый RawTickRepository + DbContext
+                // (+ потенциально новое Npgsql-подключение) 1100+ раз за прогон. Один scope на цикл
+                // переиспользует подключение и репозиторий (single-consumer, последовательно — безопасно).
+                using var writerScope = _scopeFactory.CreateScope();
+                var repository = writerScope.ServiceProvider.GetRequiredService<IRawTickRepository>();
+
                 await foreach (var batch in _batchChannel.Reader.ReadAllAsync(cancellationToken))
                 {
                     var sw = Stopwatch.StartNew();
-                    await ProcessBatchAsync(batch.Items, batch.Count, filteredSlice, dedupCache, cancellationToken, channelIndex);
+                    await ProcessBatchAsync(batch.Items, batch.Count, filteredSlice, dedupCache, cancellationToken, channelIndex, repository);
                     sw.Stop();
 
                     // Track last write duration for adaptive batch size
@@ -827,7 +835,7 @@ namespace MarketDataCollector.Application.Services
         /// <summary>
         /// Обрабатывает один батч тиков: дедупликация in-place + bulk insert.
         /// </summary>
-        private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0)
+        private async Task ProcessBatchAsync(TickData[] batchArray, int batchCount, FilteredTickSlice filteredSlice, DeduplicationCache? dedupCache, CancellationToken cancellationToken, int channelIndex = 0, IRawTickRepository? reusedRepository = null)
         {
             // Батчевый сбор метрик: выносим накопленные per-message счётчики в OTel
             // раз в MetricFlushBatchInterval батчей (по умолчанию — каждый батч).
@@ -881,8 +889,20 @@ namespace MarketDataCollector.Application.Services
                 activity?.SetTag("filtered.count", writeIdx);
                 activity?.SetTag("cached.count", cachedCount);
 
-                using var scope = _scopeFactory.CreateScope();
-                var repository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
+                // P1 (остаток): если Writer передал переиспользуемый репозиторий — используем его
+                // (одно scope/подключение на весь writer-цикл), иначе создаём scope на батч (legacy multi-consumer).
+                if (reusedRepository != null)
+                {
+                    // fast path: никакого new scope per batch
+                }
+                else
+                {
+                    // slow path: legacy — новый scope + репозиторий на каждый батч
+                    using var scope = _scopeFactory.CreateScope();
+                    reusedRepository = scope.ServiceProvider.GetRequiredService<IRawTickRepository>();
+                }
+                ArgumentNullException.ThrowIfNull(reusedRepository);
+                var repository = reusedRepository;
 
                 var sw = Stopwatch.StartNew();
                 var inserted = await repository.BulkInsertFastAsync(filteredSlice, _timeService, cancellationToken);

@@ -1,6 +1,7 @@
 # Статистика записи батчей: inserted_count распределение + длительности.
 $ErrorActionPreference = 'Stop'
-$lines = Get-Content 'traces/counters_20260912_205238.csv' -Encoding UTF8
+$csvPath = if ($args.Count -gt 0) { $args[0] } else { 'traces/counters_20260912_205238.csv' }
+$lines = Get-Content $csvPath -Encoding UTF8
 $out = @()
 $pat = '^"([^"]*)","([^"]*)","((?:[^"]|"")*)","([^"]*)","([^"]*)"'
 $insVals = @(); $durVals = @()
