@@ -1,0 +1,181 @@
+﻿sample-picker: traces/counters_20260913_120717.csv
+=== process_runtime_dotnet_exceptions_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 6  val=6
+  [32] 2  val=0
+  [43] 8  val=2
+=== process_runtime_dotnet_gc_allocations_size_bytes_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 4  val=6
+  [32] 2  val=0
+  [43] 5  val=4
+=== process_runtime_dotnet_gc_collections_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 1  val=
+  [32] 2  val=0
+  [43] 1  val=
+=== process_runtime_dotnet_gc_collections_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen1""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 1  val=
+  [32] 2  val=0
+  [43] 1  val=
+=== process_runtime_dotnet_gc_collections_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen2""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 2  val=
+  [32] 2  val=0
+  [43] 4  val=
+=== process_runtime_dotnet_gc_duration_nanoseconds_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 6  val=9
+  [32] 2  val=0
+  [43] 9  val=0
+=== process_runtime_dotnet_gc_heap_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen0""  (n=36)
+  [0] 2  val=0
+  [8] 2  val=0
+  [17] 4  val=3
+  [26] 2  val=0
+  [35] 4  val=3
+=== process_runtime_dotnet_gc_heap_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen1""  (n=36)
+  [0] 2  val=0
+  [8] 2  val=0
+  [17] 8  val=8
+  [26] 2  val=0
+  [35] 8  val=1
+=== process_runtime_dotnet_gc_heap_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""gen2""  (n=36)
+  [0] 2  val=0
+  [8] 2  val=0
+  [17] 7  val=3
+  [26] 2  val=0
+  [35] 8  val=1
+=== process_runtime_dotnet_gc_heap_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""loh""  (n=36)
+  [0] 2  val=0
+  [8] 2  val=0
+  [17] 1  val=9
+  [26] 2  val=0
+  [35] 1  val=8
+=== process_runtime_dotnet_gc_heap_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0"",generation=""poh""  (n=36)
+  [0] 2  val=0
+  [8] 2  val=0
+  [17] 3  val=6
+  [26] 2  val=0
+  [35] 3  val=7
+=== process_runtime_dotnet_gc_objects_size_bytes|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 3  val=8
+  [32] 2  val=0
+  [43] 2  val=5
+=== process_runtime_dotnet_monitor_lock_contention_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 2  val=2
+  [32] 2  val=0
+  [43] 2  val=4
+=== process_runtime_dotnet_thread_pool_completed_items_count_total|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 9  val=5
+  [32] 2  val=0
+  [43] 1  val=1
+=== process_runtime_dotnet_thread_pool_threads_count|otel_scope_name=""OpenTelemetry.Instrumentation.Runtime"",otel_scope_version=""1.17.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 7  val=
+  [32] 2  val=0
+  [43] 3  val=
+=== processor_channel_backlog_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0""  (n=42)
+  [0] 2  val=0
+  [10] 2  val=0
+  [20] 2  val=0
+  [30] 2  val=0
+  [41] 0  val=
+=== processor_channel_fill_level_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",channel_index=""0""  (n=42)
+  [0] 2  val=0
+  [10] 2  val=0
+  [20] 2  val=0
+  [30] 2  val=0
+  [41] 0  val=
+=== ticks_deduplicated_cache_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",channel_index=""0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 4  val=2
+  [32] 2  val=0
+  [43] 5  val=0
+=== ticks_deduplicated_db_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",channel_index=""0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 2  val=
+  [32] 2  val=0
+  [43] 2  val=
+=== ticks_dropped_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 0  val=
+  [32] 2  val=0
+  [43] 0  val=
+=== ticks_dropped_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""kraken""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 0  val=
+  [32] 2  val=0
+  [43] 0  val=
+=== ticks_dropped_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""unknown""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 0  val=
+  [32] 2  val=0
+  [43] 0  val=
+=== ticks_dropped_silently_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 0  val=
+  [32] 2  val=0
+  [43] 0  val=
+=== ticks_incoming_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""unknown""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 1  val=4
+  [32] 2  val=0
+  [43] 1  val=7
+=== ticks_processed_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 1  val=3
+  [32] 2  val=0
+  [43] 1  val=6
+=== ticks_received_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",channel_index=""0""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 1  val=4
+  [32] 2  val=0
+  [43] 1  val=7
+=== ws_active_connections_count|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 3  val=
+  [32] 2  val=0
+  [43] 3  val=
+=== ws_messages_received_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance"",symbol=""btcusdt""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 4  val=9
+  [32] 2  val=0
+  [43] 5  val=8
+=== ws_messages_received_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance"",symbol=""ethusdt""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 4  val=8
+  [32] 2  val=0
+  [43] 5  val=6
+=== ws_messages_received_count_total|otel_scope_name=""MarketDataCollector"",otel_scope_version=""1.0.0"",exchange=""binance"",symbol=""solusdt""  (n=44)
+  [0] 2  val=0
+  [10] 2  val=0
+  [21] 4  val=5
+  [32] 2  val=0
+  [43] 5  val=4

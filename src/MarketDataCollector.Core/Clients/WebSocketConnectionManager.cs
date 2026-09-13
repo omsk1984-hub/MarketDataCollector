@@ -112,7 +112,15 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
 
         // Не async: это тривиальная обёртка. Прямой возврат Task нижележащего сокета
         // убирает box state machine (heap-Task) на каждый кадр (~21K кадров/сек).
-        return ws.ReceiveAsync(buffer, cancellationToken);
+
+        // Hot-path: передаём CancellationToken.None вместо входящего токена для операции чтения.
+        // Передача живого токена заставляет ManagedWebSocket регистрировать callback отмены
+        // (CancellationTokenSource.Register + lock) на КАЖДОЕ сообщение (~21K/с × 3 соединения) →
+        // это ~17–19% CPU и основной источник lock contention. Отмена приёма при остановке loop
+        // обеспечивается снаружи через StopReceiveLoopAsync (отмена _loopCts + ожидание выхода
+        // по IsCancellationRequested в верхней проверке цикла). Токен здесь не нужен для корректной остановки.
+        _ = cancellationToken;
+        return ws.ReceiveAsync(buffer, CancellationToken.None);
     }
 
     /// <summary>

@@ -2,7 +2,7 @@
 
 Система сбора, обработки и хранения ценовых данных с криптобирж в реальном времени.
 
-> **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + Binary COPY protocol. Sequential-режим (batch=2500) даёт ~10 700 ticks/sec, что покрывает текущую нагрузку (~19K msg/s). Single Consumers (per-ticker routing) даёт до ~19–24K processed ticks/sec при входящем потоке ~25 000 msg/s при непрерывной нагрузке. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
+> **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + Binary COPY protocol. Текущая конфигурация (`batchSize=5000`, адаптивный 2500–5000) обрабатывает весь входящий поток **без дропов канала**: dropped = 0, записано в БД **97%** тиков (1 648 977 из 1 700 000), пропускная способность записи ~21–28K ticks/sec при входе ~23–25K msg/s. Ранее в Sequential-режиме (batch=2500) дропы достигали 352 749 (20,7%) и записывалось ~77% — увеличение батча устранило переполнение канала. Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
 
 ## Нагрузочное тестирование одной кнопкой
 
@@ -71,7 +71,7 @@
   1. [`DeduplicationCache`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs) — in-memory FIFO (10 000 записей, batch-эвикция 10%)
   2. `GroupBy` в памяти `(Ticker, Exchange, Timestamp)` — внутри батча
   3. `ON CONFLICT DO NOTHING` — глобально, через unique-индекс БД
-- **Single Consumer Mode** (по умолчанию): ровно 1 consumer + 1 writer, Channel с `SingleReader=true`. Полностью исключает deadlock'и (40P01), снижает GC-давление и lock contention. Sequential batch=2500 даёт ~10 700 ticks/sec.
+- **Single Consumer Mode** (по умолчанию): ровно 1 consumer + 1 writer, Channel с `SingleReader=true`. Полностью исключает deadlock'и (40P01), снижает GC-давление и lock contention. С адаптивным batch (5000) обеспечивает запись всего входящего потока без дропов канала: **dropped = 0, ~97% тиков записано** при входе ~23–25K msg/s (прогон 13.09.2026).
 - **Multiple Consumers Mode** (`UseSingleConsumer=false`): N параллельных consumer'ов, каждый получает disjoint набор тикеров через per-ticker routing (hash ticker'а) → B-tree страницы unique-индекса не пересекаются → deadlock'и невозможны. Полезен при throughput > 25K ticks/sec. `ConsumerCount=0` → авто `Math.Clamp(CPU/2, 1, 4)`.
 - **Async Writer** — Collector отправляет батчи Writer'у через отдельный `Channel<CollectedBatch>` (`BatchChannelCapacity`, FullMode=Wait → backpressure), Writer выполняет запись в БД. Это предотвращает блокировку Collector'а на записи.
 - **Adaptive Batch Size** — автоматически подстраивает размер батча под backlog (`MinBatchSize`–`MaxBatchSize`, линейная интерполяция между `BacklogLowThreshold` и `BacklogHighThreshold`), плюс снижение на 20% при медленной записи (`WriteDurationWarningMs`)
@@ -112,6 +112,8 @@ Per-message счётчики (`ticks.incoming`, `ticks.dropped`, `ws.messages.re
 | `ticks.batch.adaptive_size` | Histogram | Адаптивный batch size |
 | `ticks.batch.write.duration` | Histogram | Длительность записи батча (ms) |
 | `processor.batch_channel.fill` | Histogram | Заполненность batch channel |
+| `ticks.deduplicated.cache` | Counter | Отсев in-process `DeduplicationCache` (по channel_index) |
+| `ticks.deduplicated.db` | Counter | Отсев `ON CONFLICT DO NOTHING` в БД (по channel_index) |
 | `exceptions_total` | Counter | Исключения по типам (exception_type, sql_state) |
 
 **Метрики экспортируются:**
@@ -996,4 +998,4 @@ telegram: @Omsk1984
 
 ---
 
-*Последнее обновление: июль 2026 (актуализировано под Single Consumer и новые скрипты)*
+*Последнее обновление: сентябрь 2026 (актуализировано: batchSize 5000 устранил дропы канала — dropped 0, запись 97%; добавлены счётчики дедупликации)*

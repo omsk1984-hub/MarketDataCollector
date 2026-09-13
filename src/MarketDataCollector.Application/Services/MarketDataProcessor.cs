@@ -84,6 +84,15 @@ namespace MarketDataCollector.Application.Services
                 ? ChannelIndexTags[index]
                 : new KeyValuePair<string, object?>("channel_index", index);
 
+        // Гистерезис тишины канала: количество итераций ожидания, после которых включается
+        // таймерный флаш partial batch (slow path с CreateLinkedTokenSource + CancelAfter).
+        // В плотном горячем path канал наполняется быстро → TryRead находит данные и сбрасывает
+        // счётчик до порога; таким образом CancelAfter не создаётся на каждое опустошение канала
+        // (источник ~40-57% topN CPU: Register/CancelAfter/CreateLinkedTokenSource — см.
+        // plans/counters-analysis_20260913_104057.md и plans/eliminate-cts-channel-hotpath-plan.md).
+        private static readonly int FlushTimerHysteresisThreshold = 8;
+        private static readonly TimeSpan FlushTimerPollDelay = TimeSpan.FromMilliseconds(5);
+
         // Cached exception type and sql_state tags
         private static readonly KeyValuePair<string, object?> ExceptionTypePersistenceTag = new("exception_type", "PersistenceException");
         private static readonly KeyValuePair<string, object?> SqlStateNoneTag = new("sql_state", "none");
@@ -424,6 +433,7 @@ namespace MarketDataCollector.Application.Services
 
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
+            int silenceStreak = 0;
 
             try
             {
@@ -433,64 +443,75 @@ namespace MarketDataCollector.Application.Services
 
                     if (_flushIntervalSeconds > 0 && batchCount > 0 && channel.Reader.Count == 0)
                     {
-                        // Быстрый путь: если канал уже содержит данные — сразу читаем без создания
-                        // linked CTS / CancelAfter (накладные расходы CancellationTokenSource.Register
-                        // на каждую итерацию давали до ~32% CPU и contention, см. topN trace 115513).
-                        // Таймерный флаш нужен ТОЛЬКО при тишине канала (partial batch не зависнет).
-                        //
-                        // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
-                        // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
-                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
-
-                        try
+                        // Hot-path: канал опустел при накопленном partial batch.
+                        // В плотном потоке канал наполняется быстро — ждём данные через короткий
+                        // неблокирующий опрос (Task.Delay без токена НЕ регистрирует отмену на каждое
+                        // ожидание). Гистерезис (silenceStreak): только после N подряд пустых опросов
+                        // включается таймерный флаш (slow path CancelAfter). Это убирает создание
+                        // CreateLinkedTokenSource + CancelAfter на каждое опустошение канала
+                        // (источник ~40% topN CPU, см. plans/counters-analysis_20260913_104057.md).
+                        silenceStreak++;
+                        if (silenceStreak < FlushTimerHysteresisThreshold)
                         {
-                            var hasData = await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false);
-                            if (hasData)
+                            // Короткий опрос (Task.Delay без токена НЕ регистрирует отмену):
+                            // при тишине счётчик растёт и таймерный флаш включится после порога.
+                            if (channel.Reader.Count == 0)
                             {
-                                goto readTicks;
+                                await Task.Delay(FlushTimerPollDelay).ConfigureAwait(false);
                             }
-                            else
-                            {
-                                goto channelCompleted;
-                            }
+                            continue; // перепроверка сверху: данные пришли → уйдём в else-ветку; иначе рост счётчика
                         }
-                        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+                        else
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
+                            // Реальная тишина — partial batch не должен висеть. Замена Timer+Task.WhenAny+Task.Delay
+                            // на CancellationTokenSource.CancelAfter() — ноль аллокаций Task[]/Task.Delay.
+                            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
 
-                            // Timer flush — skip if partial batch is too small (micro-batch prevention)
-                            if (_minPartialBatchSize > 0 && batchCount < _minPartialBatchSize)
+                            try
                             {
-                                LogTimerFlushSkipped(_sessionId, batchCount, _minPartialBatchSize, channelIndex);
+                                if (!await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false))
+                                {
+                                    goto channelCompleted;
+                                }
+                            }
+                            catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+
+                                // Timer flush — skip if partial batch is too small (micro-batch prevention)
+                                if (_minPartialBatchSize > 0 && batchCount < _minPartialBatchSize)
+                                {
+                                    LogTimerFlushSkipped(_sessionId, batchCount, _minPartialBatchSize, channelIndex);
+                                    continue;
+                                }
+
+                                // Send partial batch
+                                LogTimerFlush(_sessionId, batchCount, adaptiveBatchSize, channelIndex);
+
+                                var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
+                                await _batchChannel.Writer.WriteAsync(batch, cancellationToken);
+                                batchArray = ArrayPool<TickData>.Shared.Rent(_maxBatchSize);
+                                batchCount = 0;
+
+                                adaptiveBatchSize = CalculateAdaptiveBatchSize(channel.Reader.Count, lastWriteDurationMs);
                                 continue;
                             }
-
-                            // Send partial batch
-                            LogTimerFlush(_sessionId, batchCount, adaptiveBatchSize, channelIndex);
-
-                            var batch = new CollectedBatch { Items = batchArray, Count = batchCount };
-                            await _batchChannel.Writer.WriteAsync(batch, cancellationToken);
-                            batchArray = ArrayPool<TickData>.Shared.Rent(_maxBatchSize);
-                            batchCount = 0;
-
-                            adaptiveBatchSize = CalculateAdaptiveBatchSize(channel.Reader.Count, lastWriteDurationMs);
-                            continue;
                         }
                     }
                     else
                     {
-                        if (await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
-                        {
-                            goto readTicks;
-                        }
-                        else
+                        // Обычный путь: ожидание БЕЗ регистрации отмены (CancellationToken.None).
+                        // Остановка обеспечивается снаружи через TryComplete() канала в StopProcessingAsync.
+                        if (!await channel.Reader.WaitToReadAsync(CancellationToken.None).ConfigureAwait(false))
                         {
                             goto channelCompleted;
                         }
                     }
 
                 readTicks:
+                    // Данные пришли — сбрасываем гистерезис тишины для следующего прогона.
+                    silenceStreak = 0;
                     while (channel.Reader.TryRead(out var tick))
                     {
                         batchArray[batchCount++] = tick;
@@ -671,6 +692,7 @@ namespace MarketDataCollector.Application.Services
 
             var fillLevelTimer = Stopwatch.StartNew();
             const int fillLevelIntervalMs = 10_000;
+            int silenceStreak = 0;
 
             try
             {
@@ -680,52 +702,59 @@ namespace MarketDataCollector.Application.Services
 
                     if (_flushIntervalSeconds > 0 && batchCount > 0 && channel.Reader.Count == 0)
                     {
-                        // Быстрый путь: если канал уже содержит данные — сразу читаем без создания
-                        // linked CTS / CancelAfter (накладные расходы CancellationTokenSource.Register
-                        // на каждую итерацию давали до ~32% CPU и contention, см. topN trace 115513).
-                        // Таймерный флаш нужен ТОЛЬКО при тишине канала (partial batch не зависнет).
-                        //
-                        // Замена Timer+Task.WhenAny+Task.Delay на CancellationTokenSource.CancelAfter()
-                        // — ноль аллокаций Task[]/Task.Delay, −~23% CPU (Task.WhenAny 12.38% + Task.Delay 10.97%).
-                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
-
-                        try
+                        // Hot-path: канал опустел при накопленном partial batch.
+                        // Гистерезис (silenceStreak): короткий опрос без токена, чтобы не создавать
+                        // CreateLinkedTokenSource + CancelAfter на каждое опустошение канала.
+                        // Только после N подряд пустых опросов включается таймерный флаш (CancelAfter).
+                        // (Источник ~40% topN CPU — см. plans/counters-analysis_20260913_104057.md.)
+                        silenceStreak++;
+                        if (silenceStreak < FlushTimerHysteresisThreshold)
                         {
-                            var hasData = await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false);
-                            if (hasData)
+                            // Короткий опрос без токена; при тишине счётчик растёт к порогу.
+                            if (channel.Reader.Count == 0)
                             {
-                                goto readTicks;
+                                await Task.Delay(FlushTimerPollDelay).ConfigureAwait(false);
                             }
-                            else
-                            {
-                                goto channelCompleted;
-                            }
-                        }
-                        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-
-                            LogTimerFlush(_sessionId, batchCount, _maxBatchSize, channelIndex);
-
-                            await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
-                            batchCount = 0;
                             continue;
+                        }
+                        else
+                        {
+                            // Реальная тишина — partial batch не должен висеть.
+                            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            linkedCts.CancelAfter(TimeSpan.FromSeconds(_flushIntervalSeconds));
+
+                            try
+                            {
+                                if (!await channel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false))
+                                {
+                                    goto channelCompleted;
+                                }
+                            }
+                            catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+
+                                LogTimerFlush(_sessionId, batchCount, _maxBatchSize, channelIndex);
+
+                                await ProcessBatchAsync(batchArray, batchCount, filteredSlice, dedupCache, cancellationToken, channelIndex).ConfigureAwait(false);
+                                batchCount = 0;
+                                continue;
+                            }
                         }
                     }
                     else
                     {
-                        if (await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
-                        {
-                            goto readTicks;
-                        }
-                        else
+                        // Обычный путь: ожидание БЕЗ регистрации отмены (CancellationToken.None).
+                        // Остановка обеспечивается снаружи через TryComplete() канала в StopProcessingAsync.
+                        if (!await channel.Reader.WaitToReadAsync(CancellationToken.None).ConfigureAwait(false))
                         {
                             goto channelCompleted;
                         }
                     }
 
                 readTicks:
+                    // Данные пришли — сбрасываем гистерезис тишины для следующего прогона.
+                    silenceStreak = 0;
                     while (channel.Reader.TryRead(out var tick))
                     {
                         batchArray[batchCount++] = tick;

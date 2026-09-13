@@ -15,6 +15,14 @@ services:
       # не выполняет корректно SCRAM-SHA-256). В production (docker-compose.prod.yml)
       # используется полноценная аутентификация по паролю из .env.
       POSTGRES_HOST_AUTH_METHOD: trust
+    # A2-диагностика (diagnose-slow-batch-write-A2-plan.md, H7): synchronous_commit=off
+    # отключает ожидание fsync WAL на каждый COMMIT-батч. Кандидат на устранение
+    # хвостовых execute 1-10 с (медленная подложка fsync Docker Desktop на Windows).
+    # Приемлемо для локального нагрузочного стенда; НЕ для production.
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
     ports:
       - "5433:5432"
     volumes:

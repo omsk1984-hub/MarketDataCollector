@@ -100,7 +100,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     }
 
                     var result = await _connectionManager.ReceiveAsync(
-                        readSegment, cancellationToken).ConfigureAwait(false);
+                        readSegment, CancellationToken.None).ConfigureAwait(false);
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
@@ -119,7 +119,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested)
                         {
                             result = await _connectionManager.ReceiveAsync(
-                                readSegment, cancellationToken).ConfigureAwait(false);
+                                readSegment, CancellationToken.None).ConfigureAwait(false);
                         }
 
                         messageBuffer.Clear();
