@@ -495,6 +495,12 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
             var now = timeService.UtcNow;
 
+            // Диагностика P1: замер фазы подготовки массивов (UUID v7 + сборка numeric[]/text[]).
+            // Нужен для отделения CPU-времени нашего кода от сетевого времени INSERT (см. план
+            // optimize-p1-p2-p3-plan.md). Stopwatch.StartNew() — тривиальная аллокация, выносим в
+            // hot path только для диагностики медленных батчей (см. лог ниже).
+            var prepareSw = System.Diagnostics.Stopwatch.StartNew();
+
             for (int i = 0; i < count; i++)
             {
                 var t = ticks[i];
@@ -525,7 +531,26 @@ namespace MarketDataCollector.Infrastructure.Repositories
 
                 try
                 {
-                    return await _context.Database.ExecuteSqlRawAsync(SqlTickDataBulkCopy, _tickDataParameters, cancellationToken);
+                    prepareSw.Stop();
+                    var executeSw = System.Diagnostics.Stopwatch.StartNew();
+                    var inserted = await _context.Database.ExecuteSqlRawAsync(SqlTickDataBulkCopy, _tickDataParameters, cancellationToken);
+                    executeSw.Stop();
+
+                    // Диагностика P1: разбивка времени записи на подготовку (наш CPU) и execute (сеть+БД).
+                    // Логируем только медленные батчи (>150ms), чтобы не шуметь в hot path;
+                    // точный порог совпадает с WriteDurationWarningMs в прикладном слое (~200ms).
+                    // Хвосты (tail=true) помечаются отдельно для операционной видимости медленных вставок
+                    // (план optimize-p1-batch-write-and-p2-contention-plan.md, A2).
+                    var totalMs = (prepareSw.Elapsed.TotalMilliseconds + executeSw.Elapsed.TotalMilliseconds);
+                    if (totalMs > 150.0)
+                    {
+                        _logger.LogWarning(
+                            "BulkCopy (TickData) phase-timing: prepare={PrepareMs:F1}ms execute={ExecuteMs:F1}ms total={TotalMs:F1}ms count={Count} tail={Tail:B}",
+                            prepareSw.Elapsed.TotalMilliseconds, executeSw.Elapsed.TotalMilliseconds, totalMs, count,
+                            totalMs > 1000.0);
+                    }
+
+                    return inserted;
                 }
                 catch (Exception ex) when (IsTransient(ex) && attempt < BulkCopyMaxRetries)
                 {

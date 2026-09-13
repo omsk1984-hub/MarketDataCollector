@@ -1,0 +1,3 @@
+. OK  src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.json -=5000 Max=5000
+. OK  src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.LoadTest.json -=5000 Max=5000
+. OK  src/MarketDataCollector.Workers/MarketDataCollector.Worker/appsettings.Production.json -=5000 Max=5000

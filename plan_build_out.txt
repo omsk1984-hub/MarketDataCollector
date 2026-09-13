@@ -1,0 +1,9 @@
+  MarketDataCollector.Domain -> D:\work\MarketDataCollector\src\MarketDataCollector.Domain\bin\Debug\net8.0\MarketDataCollector.Domain.dll
+  MarketDataCollector.Core -> d:\work\MarketDataCollector\src\MarketDataCollector.Core\bin\Debug\net8.0\MarketDataCollector.Core.dll
+  MarketDataCollector.Infrastructure -> d:\work\MarketDataCollector\src\MarketDataCollector.Infrastructure\bin\Debug\net8.0\MarketDataCollector.Infrastructure.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:05.29

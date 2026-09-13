@@ -78,6 +78,10 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
     {
         // Используем ArrayPool для эффективного управления памятью
         var tempBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
+        // Один ArraySegment поверх tempBuffer на весь цикл — избегает аллокации
+        // на каждую итерацию (~21K кадров/сек). Безопасно: tempBuffer принадлежит
+        // этому loop и не пересоздаётся, а ReceiveAsync пишет в его содержимое.
+        var readSegment = new ArraySegment<byte>(tempBuffer);
         // Переиспользуемый буфер сообщения: ArrayBufferWriter растёт при необходимости
         // и переиспользует внутренний массив между сообщениями — без аллокаций на тик
         // и без перераспределений MemoryStream при росте сообщения.
@@ -96,7 +100,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                     }
 
                     var result = await _connectionManager.ReceiveAsync(
-                        new ArraySegment<byte>(tempBuffer), cancellationToken).ConfigureAwait(false);
+                        readSegment, cancellationToken).ConfigureAwait(false);
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
@@ -115,7 +119,7 @@ public class WebSocketMessageReceiver : IWebSocketMessageReceiver
                         while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested)
                         {
                             result = await _connectionManager.ReceiveAsync(
-                                new ArraySegment<byte>(tempBuffer), cancellationToken).ConfigureAwait(false);
+                                readSegment, cancellationToken).ConfigureAwait(false);
                         }
 
                         messageBuffer.Clear();

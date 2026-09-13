@@ -310,6 +310,12 @@ public class BinanceWebSocketClientTests
     [InlineData("BTCUSDT", "12345.6789", "999.9", "33333")]
     [InlineData("BTCUSDT", "-0.5", "-1", "44444")]
     [InlineData("BTCUSDT", "0", "0", "55555")]
+    // P2: edge cases — leading zeros, scale=8 (DECIMAL(18,8)), границы диапазона, отрицательный ноль.
+    [InlineData("BTCUSDT", "0.00000001", "0.1", "66666")]
+    [InlineData("BTCUSDT", "9999999999.99999999", "9999999999.99999999", "77777")]
+    [InlineData("BTCUSDT", "000123.4500", "0007", "88888")]
+    [InlineData("BTCUSDT", "-0.0", "-0.00", "99999")]
+    [InlineData("BTCUSDT", "1.", ".5", "10000")]
     public async Task ProcessMessageAsync_ValidTradeMessage_CallsDataProcessorWithCorrectValues(
         string symbol, string priceStr, string volumeStr, string tradeId)
     {
@@ -348,6 +354,50 @@ public class BinanceWebSocketClientTests
             expectedPrice,
             expectedVolume,
             expectedTimestamp,
+            "Binance"), Times.Once);
+    }
+
+    [Theory(Timeout = 5000)]
+    // P2: сверка с decimal.Parse(InvariantCulture) — гарантия, что long-накопление
+    // даёт численно тот же результат, что и поразрядный decimal-алгоритм / стандартный парсер.
+    [InlineData("0.001")]
+    [InlineData("1000.50")]
+    [InlineData("12345.6789")]
+    [InlineData("0.00000001")]
+    [InlineData("9999999999.99999999")]
+    [InlineData("-12345.6789")]
+    [InlineData("-0.5")]
+    [InlineData("000123.4500")]
+    [InlineData("-0.0")]
+    [InlineData("0")]
+    [InlineData("1.")]
+    [InlineData(".5")]
+    [InlineData("0.5")]
+    public async Task ParseDecimalFromUtf8_MatchesDecimalParse(string valueStr)
+    {
+        var expected = decimal.Parse(valueStr, CultureInfo.InvariantCulture);
+
+        var jsonMessage = @"{ ""e"": ""trade"", ""s"": ""BTCUSDT"", ""p"": """ + valueStr
+            + @""", ""q"": ""1"", ""T"": 1609459200000 }";
+
+        var testableClient = new TestableBinanceWebSocketClient(
+            _testUri,
+            "Binance",
+            "BTCUSDT",
+            _dataProcessorMock.Object,
+            _connectionManagerMock.Object,
+            _messageReceiverMock.Object,
+            _reconnectStrategyMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object);
+
+        await testableClient.TestProcessMessageAsync(jsonMessage);
+
+        _dataProcessorMock.Verify(dp => dp.ProcessTickAsync(
+            "BTCUSDT",
+            expected,
+            1m,
+            DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime,
             "Binance"), Times.Once);
     }
 }

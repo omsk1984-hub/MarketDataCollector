@@ -206,7 +206,17 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     /// <remarks>
     /// Zero-copy: работает прямо по байтам, без копирования в <c>stackalloc char[]</c>
     /// и без вызова <c>decimal.TryParse</c> (который парсит символы и тратит CPU на внутренние проверки).
-    /// Значение накапливается сразу в <c>decimal</c>, поэтому нет риска переполнения <c>long</c>.
+    ///
+    /// Оптимизация: цифры накапливаются в <c>long</c> (целая и дробная части отдельно),
+    /// а не поразрядным накоплением в <c>decimal</c>. Это заменяет O(число цифр) арифметических
+    /// операций <c>decimal</c> (каждая из которых порождает .ctor(Decimal, Span<int16>)
+    /// в горячем пути — см. topN trace) на константное число (одно деление + одно сложение)
+    /// независимо от длины строки. Численное значение идентично прежнему алгоритму и
+    /// <c>decimal.Parse</c> (scale умалчивается семантикой decimal-арифметики).
+    ///
+    /// Guard на число цифр: при превышении 18 значимых цифр (переполнение long) возвращается 0m,
+    /// как и для прочих некорректных входов. Для реальных Binance price/quantity (до 8 знаков
+    /// после точки, целая часть ≤ 10^10 по схеме DECIMAL(18,8)) переполнение недостижимо.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static decimal ParseDecimalFromUtf8(ReadOnlySpan<byte> utf8)
@@ -224,20 +234,23 @@ public class BinanceWebSocketClient : BaseWebSocketClient
         if (i >= utf8.Length)
             return 0m; // только знак без цифр
 
-        decimal whole = 0m;
+        long whole = 0;
+        int wholeDigits = 0;
         bool digitsSeen = false;
         while (i < utf8.Length && utf8[i] != (byte)'.')
         {
             byte c = utf8[i];
             if (c < (byte)'0' || c > (byte)'9')
                 return 0m; // некорректный символ в целой части
-            whole = whole * 10m + (c - (byte)'0');
+            whole = whole * 10 + (c - (byte)'0');
+            wholeDigits++;
             digitsSeen = true;
             i++;
         }
 
-        decimal frac = 0m;
+        long frac = 0;
         long scale = 1;
+        int fracDigits = 0;
         if (i < utf8.Length) // есть '.'
         {
             i++; // skip '.'
@@ -246,17 +259,24 @@ public class BinanceWebSocketClient : BaseWebSocketClient
                 byte c = utf8[i];
                 if (c < (byte)'0' || c > (byte)'9')
                     return 0m; // некорректный символ в дробной части
-                frac = frac * 10m + (c - (byte)'0');
+                frac = frac * 10 + (c - (byte)'0');
                 scale *= 10;
+                fracDigits++;
                 i++;
             }
         }
 
         // Ни одной цифры — пустое число.
-        if (!digitsSeen && scale == 1)
+        if (!digitsSeen && fracDigits == 0)
             return 0m;
 
-        decimal result = whole + (frac / scale);
+        // Long не вмещает > ~18 значимых цифр — для реальных данных недостижимо,
+        // но guard защищает от молчаливого переполнения на произвольном входе.
+        if (wholeDigits > 18 || fracDigits > 18)
+            return 0m;
+
+        // Одна дробная операция + одно сложение (константно, независимо от числа цифр).
+        decimal result = (decimal)whole + (decimal)frac / (decimal)scale;
         return neg ? -result : result;
     }
 }

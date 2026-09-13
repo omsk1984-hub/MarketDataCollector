@@ -104,13 +104,15 @@ public class WebSocketConnectionManager : IWebSocketConnectionManager
     }
 
     /// <inheritdoc />
-    public async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+    public Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
         var ws = _webSocket;
         if (ws.State != WebSocketState.Open)
             throw new InvalidOperationException("WebSocket не подключён.");
 
-        return await ws.ReceiveAsync(buffer, cancellationToken);
+        // Не async: это тривиальная обёртка. Прямой возврат Task нижележащего сокета
+        // убирает box state machine (heap-Task) на каждый кадр (~21K кадров/сек).
+        return ws.ReceiveAsync(buffer, cancellationToken);
     }
 
     /// <summary>
