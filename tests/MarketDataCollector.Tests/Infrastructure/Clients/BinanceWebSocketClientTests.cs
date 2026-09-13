@@ -400,6 +400,66 @@ public class BinanceWebSocketClientTests
             DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime,
             "Binance"), Times.Once);
     }
+
+    [Fact(Timeout = 5000)]
+    public async Task ProcessMessageAsync_SymbolConfiguredInLowercase_NormalizesToUpper()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_SymbolConfiguredInLowercase_NormalizesToUpper)} ===");
+        // Arrange
+        // Конфиг задаёт символ в нижнем регистре (ридеры appsettings.json), Binance шлёт "s" в верхнем.
+        var jsonMessage = @"{ ""e"": ""trade"", ""s"": ""BTCUSDT"", ""p"": ""1000.50"", ""q"": ""0.5"", ""T"": 1609459200000 }";
+
+        // Act
+        var testableClient = new TestableBinanceWebSocketClient(
+            _testUri,
+            "Binance",
+            "btcusdt",
+            _dataProcessorMock.Object,
+            _connectionManagerMock.Object,
+            _messageReceiverMock.Object,
+            _reconnectStrategyMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object);
+        await testableClient.TestProcessMessageAsync(jsonMessage);
+
+        // Assert — тикер интернирован в верхнем регистре, совпадение по нормализованному символу.
+        _dataProcessorMock.Verify(dp => dp.ProcessTickAsync(
+            "BTCUSDT",
+            decimal.Parse("1000.50", CultureInfo.InvariantCulture),
+            decimal.Parse("0.5", CultureInfo.InvariantCulture),
+            DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime,
+            "Binance"), Times.Once);
+    }
+
+    [Fact(Timeout = 5000)]
+    public async Task ProcessMessageAsync_UnknownSymbol_UsesFallbackGetString()
+    {
+        _output.WriteLine($"=== Running: {nameof(ProcessMessageAsync_UnknownSymbol_UsesFallbackGetString)} ===");
+        // Arrange
+        // Чужой символ, отличный от символа подписки экземпляра — fallback GetString должен вернуть его как есть.
+        var jsonMessage = @"{ ""e"": ""trade"", ""s"": ""XRPUSDT"", ""p"": ""1.5"", ""q"": ""2"", ""T"": 1609459200000 }";
+
+        // Act
+        var testableClient = new TestableBinanceWebSocketClient(
+            _testUri,
+            "Binance",
+            "BTCUSDT",
+            _dataProcessorMock.Object,
+            _connectionManagerMock.Object,
+            _messageReceiverMock.Object,
+            _reconnectStrategyMock.Object,
+            Options.Create(_defaultOptions),
+            _loggerMock.Object);
+        await testableClient.TestProcessMessageAsync(jsonMessage);
+
+        // Assert — fallback возвращает тикер из сообщения без изменений.
+        _dataProcessorMock.Verify(dp => dp.ProcessTickAsync(
+            "XRPUSDT",
+            decimal.Parse("1.5", CultureInfo.InvariantCulture),
+            decimal.Parse("2", CultureInfo.InvariantCulture),
+            DateTimeOffset.FromUnixTimeMilliseconds(1609459200000).UtcDateTime,
+            "Binance"), Times.Once);
+    }
 }
 
 // Тестовый подкласс для тестирования protected методов

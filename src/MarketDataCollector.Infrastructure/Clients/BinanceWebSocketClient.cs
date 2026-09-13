@@ -20,6 +20,17 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     private readonly IMarketDataProcessor _dataProcessor;
 
     /// <summary>
+    /// Символ экземпляра в верхнем регистре (Binance присылает "s" в верхнем регистре,
+    /// а в конфиге символы задаются в нижнем). Используется как интернированная строка тикера.
+    /// </summary>
+    private readonly string _normalizedSymbol;
+
+    /// <summary>
+    /// UTF-8 байты нормализованного символа для zero-alloc сверки с <c>ValueSpan</c> в парсере.
+    /// </summary>
+    private readonly byte[] _symbolUtf8;
+
+    /// <summary>
     /// Создаёт экземпляр Binance WebSocket-клиента.
     /// </summary>
     public BinanceWebSocketClient(
@@ -37,6 +48,11 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     {
         _webSocketUri = webSocketUri;
         _dataProcessor = dataProcessor ?? throw new ArgumentNullException(nameof(dataProcessor));
+
+        // Клиент подписан ровно на один символ (фабрика — клиент на инструмент).
+        // Нормализуем символ один раз: конфиг может содержать нижний регистр, Binance шлёт верхний.
+        _normalizedSymbol = Symbol.ToUpperInvariant();
+        _symbolUtf8 = System.Text.Encoding.UTF8.GetBytes(_normalizedSymbol);
     }
 
     /// <inheritdoc />
@@ -119,8 +135,9 @@ public class BinanceWebSocketClient : BaseWebSocketClient
     /// <summary>
     /// Zero-alloc парсинг trade-сообщения Binance через <see cref="Utf8JsonReader"/>.
     /// Ref struct — не может быть в async, поэтому вынесен в отдельный метод.
+    /// Instance-метод: сверяет поле "s" с собственным символом экземпляра (клиент на инструмент).
     /// </summary>
-    private static TradeParseResult ParseTradeMessage(ReadOnlySpan<byte> json)
+    private TradeParseResult ParseTradeMessage(ReadOnlySpan<byte> json)
     {
         var reader = new Utf8JsonReader(json);
 
@@ -157,14 +174,11 @@ public class BinanceWebSocketClient : BaseWebSocketClient
                         // symbol — строка в верхнем регистре, напр. "BTCUSDT"
                         if (reader.Read() && reader.TokenType == JsonTokenType.String)
                         {
-                            // Интернирование известных символов: ноль аллокаций на тик.
-                            // Строковые литералы заинтернированы компилятором, сравнение —
-                            // по байтам ValueSpan (без вызова GetString/TranscodeHelper).
-                            var span = reader.ValueSpan;
-                            if (span.SequenceEqual("BTCUSDT"u8)) ticker = "BTCUSDT";
-                            else if (span.SequenceEqual("ETHUSDT"u8)) ticker = "ETHUSDT";
-                            else if (span.SequenceEqual("SOLUSDT"u8)) ticker = "SOLUSDT";
-                            else ticker = reader.GetString(); // fallback для неизвестных символов
+                            // Экземпляр подписан ровно на один символ (фабрика — клиент на инструмент).
+                            // Zero-alloc сверка по байтам ValueSpan с собственным символом (без GetString).
+                            // Fallback GetString — защита от чужих символов в стриме.
+                            if (reader.ValueSpan.SequenceEqual(_symbolUtf8)) ticker = _normalizedSymbol;
+                            else ticker = reader.GetString();
                         }
                         break;
                     case 'p':
