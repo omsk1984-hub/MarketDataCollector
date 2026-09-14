@@ -2,7 +2,7 @@
 
 Система сбора, обработки и хранения ценовых данных с криптобирж в реальном времени.
 
-> **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + Binary COPY protocol. Текущая конфигурация (`batchSize=5000`, адаптивный 2500–5000) обрабатывает весь входящий поток **без дропов канала**: dropped = 0, записано в БД **97%** тиков (1 648 977 из 1 700 000), пропускная способность записи ~21–28K ticks/sec при входе ~23–25K msg/s, **~265 Б аллокаций на тик** (≈450 МБ суммарно за прогон ~106 с). Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
+> **Результаты нагрузочного тестирования:** FakeTickServer (~25 000 msg/s, 3 символа) + **Single Consumer** (по умолчанию) + параметризованный массовый `INSERT ... SELECT unnest(...)`. Текущая конфигурация (`batchSize=5000`, адаптивный 2500–5000) обрабатывает весь входящий поток **без дропов канала**: dropped = 0, записано в БД **97%** тиков (1 648 977 из 1 700 000), пропускная способность записи ~21–28K ticks/sec при входе ~23–25K msg/s, **~265 Б аллокаций на тик** (≈450 МБ суммарно за прогон ~106 с). Канал (ChannelCapacity=150000) утилизирует backlog при простое генератора. Потери уникальных данных при graceful shutdown — **0** (благодаря `_internalCts`).
 
 ## Нагрузочное тестирование одной кнопкой
 
@@ -80,7 +80,7 @@
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
 ### 3. Хранение в БД
-- Сохранение сырых тиков в PostgreSQL через параметризованный массовый `INSERT ... SELECT unnest(...)` (Npgsql-массивы) + `INSERT ON CONFLICT DO NOTHING` (см. [`RawTickRepository.BulkInsertFastAsync`](src/MarketDataCollector.Infrastructure/Repositories/RawTickRepository.cs:359))
+- Сохранение сырых тиков в PostgreSQL через параметризованный массовый `INSERT ... SELECT unnest(...)` (Npgsql-массивы) + `INSERT ON CONFLICT DO NOTHING` (см. [`RawTickRepository.BulkInsertFastAsync`](src/MarketDataCollector.Infrastructure/Repositories/RawTickRepository.cs:476))
 - Уникальный индекс `(Ticker, Exchange, Timestamp)` — финальная защита от дубликатов на уровне БД
 - **Deadlock-free** параллельная запись: per-ticker routing гарантирует непересекающиеся B-tree страницы
 - Retry-логика (5 попыток, exponential backoff + jitter) как safety net
@@ -147,7 +147,7 @@ Per-message счётчики (`ticks.incoming`, `ticks.dropped`, `ws.messages.re
 - **Aspire Dashboard** — визуализация метрик, трейсов и логов
 - **Polly 8** — политики повторных попыток (референс в проекте; фактическая стратегия — собственная реализация [`ExponentialReconnectStrategy`](src/MarketDataCollector.Core/Clients/ExponentialReconnectStrategy.cs))
 - **Newtonsoft.Json** — парсинг JSON сообщений бирж
-- **Npgsql** — драйвер PostgreSQL для .NET (Binary COPY protocol)
+- **Npgsql** — драйвер PostgreSQL для .NET (бинарная передача массивов-параметров для `UNNEST`)
 - **WebSocket (`System.Net.WebSockets`)** — протокол для реального времени
 - **xUnit + Moq + FluentAssertions** — модульное тестирование
 - **Testcontainers** — интеграционные тесты с реальным Kafka/PostgreSQL в Docker
@@ -211,7 +211,7 @@ MarketDataCollector/
 │   │   │   ├── KafkaCandleProducer.cs         # Producer для OHLCV-свечей
 │   │   │   └── KafkaCandleConsumerService.cs  # Consumer свечей (Kafka → PostgreSQL)
 │   │   ├── Repositories/
-│   │   │   ├── RawTickRepository.cs           # Репозиторий тиков (Binary COPY)
+│   │   │   ├── RawTickRepository.cs           # Репозиторий тиков (массовый INSERT + ON CONFLICT)
 │   │   │   ├── AggregatedDataRepository.cs    # Репозиторий агрегированных данных
 │   │   │   └── ConnectionLogRepository.cs     # Репозиторий логов подключений
 │   │   └── Services/SystemTimeService.cs      # Реализация ITimeService
@@ -399,8 +399,8 @@ Collector (Consumer: читает канал)
 Async Writer (один, пишет в БД)
     ↓ (дедупликация: GroupBy в памяти)
     ↓
-RawTickRepository.BulkCopyAsync()
-    ↓ (Binary COPY → temp table → INSERT ON CONFLICT DO NOTHING)
+RawTickRepository.BulkInsertFastAsync()
+    ↓ (INSERT ... SELECT unnest(...) → ON CONFLICT DO NOTHING)
     ↓ (OTel: ticks.processed, batch size, write duration)
 PostgreSQL (RawTicks)
 ```
@@ -450,7 +450,7 @@ Worker слушает HTTP на порту 5010 и предоставляет:
 - **Strategy** — стратегия переподключения ([`IReconnectStrategy`](src/MarketDataCollector.Core/Interfaces/IReconnectStrategy.cs))
 - **Channel** — асинхронная очередь с backpressure (Single Consumer: один канал с `SingleReader=true`; Multiple Consumers: N независимых каналов с per-ticker routing) + отдельный канал для Async Writer
 - **Bridge** — разделение монолитного клиента на связанные, но независимые иерархии (ConnectionManager, MessageReceiver, SubscriptionManager, ReconnectStrategy)
-- **Bulk Copy** — Binary COPY protocol (Npgsql) для массовой вставки (10-100x быстрее AddRangeAsync)
+- **Bulk insert** — параметризованный `INSERT ... SELECT unnest(...)` (Npgsql-массивы) для массовой вставки (10-100x быстрее `AddRangeAsync`)
 - **FIFO Cache (batch eviction)** — [`DeduplicationCache`](src/MarketDataCollector.Application/Services/DeduplicationCache.cs) с эвикцией 10% при переполнении (быстрее, чем по одному элементу)
 
 ## Быстрый старт
@@ -740,13 +740,15 @@ public class NewExchangeWebSocketClient : BaseWebSocketClient
 
 ### TickWriteBenchmark
 
-Проект [`tests/TickWriteBenchmark/`](tests/TickWriteBenchmark/) сравнивает три метода записи тиков в PostgreSQL:
+Проект [`tests/TickWriteBenchmark/`](tests/TickWriteBenchmark/) сравнивает методы записи тиков в PostgreSQL:
 
 | Метод | Описание | Производительность |
 |-------|----------|-------------------|
 | **BinaryCopyDirect** | Прямой Binary COPY в таблицу | Самый быстрый, но без ON CONFLICT |
-| **BulkCopyAsync** | Binary COPY → temp table → INSERT ON CONFLICT DO NOTHING | Production-путь (используется в системе) |
-| **BulkInsertIgnoreConflicts** | Параметризованный INSERT с ON CONFLICT | Медленнее COPY, не требует temp table |
+| **BulkInsertFastAsync (COPY→staging)** | Binary COPY → temp table → INSERT ON CONFLICT DO NOTHING | Кандидат на оптимизацию (не в production-пути) |
+| **BulkInsertIgnoreConflicts** | Параметризованный построчный INSERT с ON CONFLICT | Медленнее COPY, не требует temp table |
+
+> **Примечание.** Production-путь записи — [`BulkInsertFastAsync(IReadOnlyList<TickData>)`](src/MarketDataCollector.Infrastructure/Repositories/RawTickRepository.cs:476) через `INSERT ... SELECT unnest(...)` (без COPY/temp-таблицы). Вариант с BINARY COPY в staging-таблицу (строки выше) — это экспериментальный кандидат, оценённый в плане оптимизации [`speedup-db-write-buffercopy-staging-plan.md`](plans/speedup-db-write-buffercopy-staging-plan.md:50), и в боевом пайплайне не используется.
 
 Также выполняет **READ-бенчмарк** — сравнение производительности SELECT-запросов на обычной таблице vs партиционированной (partition pruning).
 
@@ -1024,6 +1026,7 @@ docker exec marketdata-kafka kafka-topics.sh --bootstrap-server localhost:9092 -
 ### P2 — Дальнейшая оптимизация производительности
 
 - **Пулы переиспользуемых массивов батчей** — см. [`plans/arraypool-for-batch-arrays-plan.md`](plans/arraypool-for-batch-arrays-plan.md). Текущий уровень ~265 Б аллокаций/тик.
+- **BINARY COPY в staging-таблицу** — экспериментальный кандидат вместо текущего `UNNEST`-INSERT: `COPY` во временную (staging) таблицу + `INSERT ... ON CONFLICT DO NOTHING` (см. [`plans/speedup-db-write-buffercopy-staging-plan.md`](plans/speedup-db-write-buffercopy-staging-plan.md)). Оценён в бенчмарке [`TickWriteBenchmark`](tests/TickWriteBenchmark/BenchmarkRunner.cs:152), в боевом пайплайне не используется.
 - Продолжить снижение аллокаций в hot path (single writer, минимизация тредов).
 
 ### P2 — Метаданные и сервис данных
