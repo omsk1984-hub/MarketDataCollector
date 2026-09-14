@@ -76,11 +76,11 @@
 - **Async Writer** — Collector отправляет батчи Writer'у через отдельный `Channel<CollectedBatch>` (`BatchChannelCapacity`, FullMode=Wait → backpressure), Writer выполняет запись в БД. Это предотвращает блокировку Collector'а на записи.
 - **Adaptive Batch Size** — автоматически подстраивает размер батча под backlog (`MinBatchSize`–`MaxBatchSize`, линейная интерполяция между `BacklogLowThreshold` и `BacklogHighThreshold`), плюс снижение на 20% при медленной записи (`WriteDurationWarningMs`)
 - **MinPartialBatchSize** — минимальный размер частичного батча при flush по таймеру, предотвращает микробатчи
-- **Bulk insert** через Binary COPY protocol (Npgsql) — в 10-100x быстрее `AddRangeAsync`
+- **Bulk insert** через параметризованный `INSERT ... SELECT unnest(...)` (Npgsql-массивы) + `ON CONFLICT DO NOTHING` — в 10-100x быстрее `AddRangeAsync`
 - Обработка критических ошибок с остановкой Worker для внешнего перезапуска (Docker/K8s)
 
 ### 3. Хранение в БД
-- Сохранение сырых тиков в PostgreSQL через **Binary COPY protocol** (Npgsql) + temp table + `INSERT ON CONFLICT DO NOTHING`
+- Сохранение сырых тиков в PostgreSQL через параметризованный массовый `INSERT ... SELECT unnest(...)` (Npgsql-массивы) + `INSERT ON CONFLICT DO NOTHING` (см. [`RawTickRepository.BulkInsertFastAsync`](src/MarketDataCollector.Infrastructure/Repositories/RawTickRepository.cs:359))
 - Уникальный индекс `(Ticker, Exchange, Timestamp)` — финальная защита от дубликатов на уровне БД
 - **Deadlock-free** параллельная запись: per-ticker routing гарантирует непересекающиеся B-tree страницы
 - Retry-логика (5 попыток, exponential backoff + jitter) как safety net
